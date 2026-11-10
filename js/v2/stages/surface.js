@@ -7,7 +7,7 @@ import * as O from '../optics.js';
 import { backdrop } from './common.js';
 
 const WAIST = 1.25, BOX = [6.2, 4.4, 2.3];
-let prog = null, photons = [], photonKey = '';
+let prog = null, photons = [], photonKey = '', omegaT = 0, lastT = null;
 const rand = rng(23);
 
 // The angle at which the rainbow ray meets the surface at each of its three crossings.
@@ -142,7 +142,9 @@ void main(){
     backdrop(R, T, [0.010, 0.016, 0.036], [0.003, 0.005, 0.012]);
     const si = Math.sin(c.th), ci = Math.cos(c.th), st = Math.sin(c.F.thetaT), ct = Math.cos(c.F.thetaT);
     // one crest passes about every 1.3 s whatever the colour is told to be: frequency scaled with 1/λ
-    const omegaT = T * 4.8 * 550 / S.lambda;
+    // The phase is added up frame by frame, so changing the colour never makes the wave jump.
+    if (lastT !== null) omegaT = (omegaT + Math.max(0, T - lastT) * 4.8 * 550 / S.lambda) % (2 * Math.PI);
+    lastT = T;
     gl.useProgram(prog.p); R.setRayUniforms(prog, T);
     gl.uniform4f(prog.u.uA, c.k0 * c.n1, si, ci, c.sy);
     gl.uniform4f(prog.u.uB, c.k0 * c.n2, st, ct, c.F.tir ? 1 : 0);
@@ -174,7 +176,7 @@ void main(){
 
     if (!wave) {
       // photons: each reflects or passes with the Fresnel odds, and travels at c/n
-      const key = [S.cross, S.theta, S.lambda, S.pol].join();
+      const key = [S.cross, S.theta, S.pol].join();       // a change of colour leaves the photons where they are
       if (!photons.length) for (let i = 0; i < 520; i++) photons.push({ t0: -rand() * 6 });
       const fresh = key !== photonKey; photonKey = key;
       const LEN = 6.0, speed = 2.3;

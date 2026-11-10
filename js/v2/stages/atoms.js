@@ -11,14 +11,17 @@ import { backdrop } from './common.js';
 const NL = 9, DX = 0.95, X1 = 0.55, AMP = 1.3, SI = 8.2, ST = 9.6, SR = 4.6, W = 2.3, YF = -3.0, XB = 8.6, ZB = 7.2;
 const lamD = l => 3.2 * l / 550;                 // drawn vacuum wavelength, scene units
 let mols = [];
+// The wave's phase is added up frame by frame, so a change of colour changes how fast it advances from
+// here on and never where it already is: the wave does not jump or race while the slider moves.
+let phase = 0, lastT = null;
 const WHITE = [0.82, 0.88, 1.0], BCOL = [0.35, 0.75, 1.0];
 
 // The exact plane-wave solution for light arriving at an angle with its electric field along y
 // (across the plane of the bend, which is the floor of the scene). Fresnel gives r and t.
-function setup(S, T) {
+function setup(S) {
   const l = S.lambda, n = O.nWater(l), th = Math.min(75, S.tilt) * DEG;
   const si = Math.sin(th), ci = Math.cos(th), sT = si / n, cT = Math.sqrt(1 - sT * sT);
-  const k0 = 2 * Math.PI / lamD(l), wT = k0 * 2.1 * T, r = (ci - n * cT) / (ci + n * cT), t = 1 + r;
+  const k0 = 2 * Math.PI / lamD(l), wT = phase, r = (ci - n * cT) / (ci + n * cT), t = 1 + r;
   return { l, n, th, thT: Math.asin(sT), k0, wT, r, t,
     di: [ci, 0, -si], dt: [cT, 0, -sT], dr: [-ci, 0, -si],          // directions of travel
     bi: [si, 0, ci], bt: [sT, 0, cT], br: [si, 0, -ci],             // the magnetic field's direction, k × E
@@ -63,7 +66,7 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
 <dt>Real layers per drawn layer</dt><dd>about ${Math.round(DX / (lamD(l) / e.n) * (l / e.n) / 0.31 / 10) * 10}</dd></dl>`;
   },
   labels(S) {
-    const c = setup(S, 0), at = (d, k, up = 0, b = null, kb = 0) => { const p = V.mul(d, k); if (b) { p[0] += b[0] * kb; p[2] += b[2] * kb; } p[1] += up; return p; };
+    const c = setup(S), at = (d, k, up = 0, b = null, kb = 0) => { const p = V.mul(d, k); if (b) { p[0] += b[0] * kb; p[2] += b[2] * kb; } p[1] += up; return p; };
     const m = molPos(mols[3], c);
     const mid = (a, b) => V.norm(V.add(a, b));
     return [
@@ -87,7 +90,9 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
   },
 
   draw(R, S, T) {
-    const c = setup(S, T), col = O.wlRGB(c.l), e = O.energySplit(c.l), lam = lamD(c.l);
+    if (lastT !== null) phase = (phase + 2 * Math.PI / lamD(S.lambda) * 2.1 * Math.max(0, T - lastT)) % (2 * Math.PI);
+    lastT = T;
+    const c = setup(S), col = O.wlRGB(c.l), e = O.energySplit(c.l), lam = lamD(c.l);
     backdrop(R, T, [0.012, 0.016, 0.04], [0.003, 0.004, 0.012], [0.02, 0.05, 0.12], [1, 0, 0]);
 
     // the surface (the plane x = 0) and the body of water behind it

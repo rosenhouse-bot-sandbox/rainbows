@@ -23,6 +23,9 @@ let paused = RM.matches, lost = false;
 canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; });
 canvas.addEventListener('webglcontextrestored', () => location.reload());      // the view is in the address bar, so a reload restores it
 
+// What is drawn: the same state, except that the colour glides to the slider's value over a few
+// frames, so a jump of the slider is a fade and not a cut. Text and the address bar use S itself.
+let D = null;
 const S = {
   stage: 0, mode: 'ray', focus: 'both',
   sun: 14, bowpos: 0.5, exag: false, second: false,
@@ -256,6 +259,8 @@ function frame(now) {
   else if (raw < 18) { slow = 0; if (++fast > 240 && scale < 1) { scale = Math.min(1, scale / 0.85); fast = 0; } }
   R.resize(cssW, cssH, dprCap(), scale);
 
+  D ??= Object.assign(Object.create(S), { lambda: S.lambda });
+  { const gap = S.lambda - D.lambda; D.lambda = RM.matches || Math.abs(gap) < 0.05 ? S.lambda : D.lambda + gap * (1 - Math.exp(-dt * 9)); }
   for (const c of cams) { const k = 1 - Math.exp(-dt * 9); c.yaw += (c.gy - c.yaw) * k; c.pitch += (c.gp - c.pitch) * k; c.dist += (c.gd - c.dist) * k; }
 
   let mix = 0, labelView;
@@ -292,8 +297,8 @@ function frame(now) {
     }
     mix = sstep(0.3, 0.8, E);
     const rush = still ? 0 : Math.sin(Math.PI * p) ** 2;
-    R.begin(0, vHi, 1); STAGES[hi].draw(R, S, time, dt);
-    R.begin(1, vLo, 1); STAGES[lo].draw(R, S, time, dt);
+    R.begin(0, vHi, 1); STAGES[hi].draw(R, D, time, dt);
+    R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt);
     labelView = deeper ? vLo : vHi;
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
@@ -303,11 +308,11 @@ function frame(now) {
     }
   } else {
     labelView = viewFor(S.stage, time);
-    R.begin(0, labelView, 1); STAGES[S.stage].draw(R, S, time, dt);
+    R.begin(0, labelView, 1); STAGES[S.stage].draw(R, D, time, dt);
     R.present(null, time, STAGES[S.stage].bloom, STAGES[S.stage].exposure);
   }
   const st = STAGES[tr ? tr.to : S.stage];
-  drawLabels(st.labels ? st.labels(S, labelView) : [], labelView);
+  drawLabels(st.labels ? st.labels(D, labelView) : [], labelView);
   if (st.liveReadout && (readoutClock += dt) > 0.25 && !tr) { readoutClock = 0; $('readout').innerHTML = st.readout(S); }
 }
 
