@@ -3,6 +3,8 @@ import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
 import { PH } from './profile.js';
 import { INFO } from './info.js';
+import { Experiment, Sampler, PARAMS, T_TOTAL, toValue } from './infer.js';
+import { Dashboard } from './inferui.js';
 import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
 
 const $ = (id) => document.getElementById(id);
@@ -37,6 +39,17 @@ const LABELS = Object.fromEntries(Object.entries(INFO).map(([id, v]) => [id, v.l
 LABELS.cleft = 'Synaptic cleft, 20 nm'; LABELS.gap = `Medium, ${GAP} nm`; LABELS.coverslip = 'Coverslip, 0.17 mm';
 LABELS.objective = 'Objective, 100×, NA 1.49'; LABELS.laser = '488 nm laser in'; LABELS.emission = '510 nm fluorescence to camera';
 LABELS.dish = 'Glass-bottom dish, 35 mm'; LABELS.neigh = 'Other vesicles, some fusing';
+// The story the inference view tells, keyed to milliseconds since the (hidden) moment of fusion.
+const INF_STAGES = [
+  { at: -1e9, name: 'Before', title: 'Nothing has happened yet',
+    body: 'Only a dim, quenched spot. The beliefs on the right are still the priors: what the literature would let us assume before seeing this video. Each outline in the scene is one guess.' },
+  { at: 0, name: 'The flash', title: 'The flash pins the moment',
+    body: 'Brightness jumps when the pore opens. Within two frames the moment of fusion is known to a few milliseconds, and the number of tags follows from how bright the flash is.' },
+  { at: 25, name: 'Settling', title: 'The shape of the rise',
+    body: 'As the vesicle flattens its tags sink into brighter light. How fast that happens says how quickly it collapsed. Size is harder: a bigger vesicle with fewer tags looks much the same.' },
+  { at: 120, name: 'Spreading', title: 'Spreading reveals diffusion',
+    body: 'The spot widens as tagged synaptobrevin drifts away, and every extra frame sharpens the diffusion estimate. The blue fan is the forecast for frames not yet seen.' },
+];
 const FAR = new Set(['reserve', 'mito', 'psd']);
 
 const st = {
@@ -45,12 +58,21 @@ const st = {
   dist: +params.get('dist') || 165, cut: params.has('cut') ? +params.get('cut') : 110,
   vitro: params.get('mode') === 'vitro', angle: +params.get('angle') || 68,
   play: false, spin: !reduced && !params.has('still'), labels: !params.has('nolabels'), hi: 0,
+  infer: params.get('mode') === 'infer', t: +params.get('t') || 0, power: 1.5, dt: 10, prior: 1, seed: 1, truth: false,
 };
+if (st.infer) st.vitro = true;
+const modeName = () => (st.infer ? 'infer' : st.vitro ? 'vitro' : 'vivo');
 
 // The view is mirrored into the address bar after '#', so any state can be bookmarked or shared.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const HASH = {
-  mode: [() => (st.vitro ? 'vitro' : 'vivo'), (v) => { st.vitro = v === 'vitro'; }],
+  mode: [() => modeName(), (v) => { st.infer = v === 'infer'; st.vitro = v !== 'vivo'; }],
+  t: [() => Math.round(st.t), (v) => { st.t = clamp(+v || 0, 0, T_TOTAL); }],
+  power: [() => st.power, (v) => { st.power = clamp(+v || 1.5, 0.1, 5); }],
+  frame: [() => st.dt, (v) => { st.dt = clamp(Math.round((+v || 10) / 5) * 5, 5, 40); }],
+  prior: [() => st.prior, (v) => { st.prior = clamp(+v || 1, 0.5, 2); }],
+  seed: [() => st.seed, (v) => { st.seed = Math.max(1, Math.round(+v) || 1); }],
+  truth: [() => (st.truth ? 1 : 0), (v) => { st.truth = v === '1'; }],
   p: [() => +st.p.toFixed(3), (v) => { st.p = clamp(+v || 0, 0, 1); }],
   size: [() => st.diam, (v) => { st.diam = clamp(Math.round(+v) || 42, 30, 90); }],
   angle: [() => +st.angle.toFixed(1), (v) => { st.angle = clamp(+v || 68, 50, 79); }],
@@ -69,7 +91,8 @@ function readHash() {
   st.spin = false; st.play = false;
   return true;
 }
-const hashNow = () => Object.entries(HASH).filter(([k]) => k !== 'angle' || st.vitro).map(([k, [get]]) => k + '=' + get()).join('&');
+const INF_KEYS = new Set(['t', 'power', 'frame', 'prior', 'seed', 'truth']);
+const hashNow = () => Object.entries(HASH).filter(([k]) => (k !== 'angle' || st.vitro) && (st.infer ? k !== 'p' : !INF_KEYS.has(k))).map(([k, [get]]) => k + '=' + get()).join('&');
 let hashTimer = 0;
 function writeHash() {
   clearTimeout(hashTimer);
@@ -110,7 +133,7 @@ function syncUI() {
     const el = $(id); if (document.activeElement !== el || !el.matches(':active')) el.value = v;
     fill(el); $(id + 'V').textContent = text;
   };
-  set('prog', st.p * 1000, Math.round(st.p * 100) + '%');
+  if (st.infer) set('prog', st.t / T_TOTAL * 1000, Math.round(st.t) + ' ms'); else set('prog', st.p * 1000, Math.round(st.p * 100) + '%');
   set('size', st.diam, st.diam + ' nm');
   set('cut', st.cut, st.cut ? Math.round(st.cut) + '°' : 'off');
   set('orbit', st.az, Math.round(st.az) + '°');
@@ -124,14 +147,20 @@ function syncUI() {
       : `Below the critical angle of ${o.crit.toFixed(1)}°: the beam refracts into the cell and lights all of it.`;
     if (shown.note !== note) { shown.note = note; $('angleNote').textContent = note; $('pipInfo').textContent = o.tir ? `TIRF, ${Math.round(o.depth)} nm deep` : 'No TIRF: background'; }
   }
-  const pl = st.play ? 'Pause' : st.p > 0.995 ? 'Replay the fusion' : 'Play the fusion';
+  if (st.infer) {
+    set('power', st.power, st.power.toFixed(1) + ' photons/ms');
+    set('frameT', st.dt, `${st.dt} ms, ${Math.round(T_TOTAL / st.dt)} frames`);
+    set('prior', st.prior, st.prior < 0.8 ? 'confident' : st.prior > 1.3 ? 'vague' : 'textbook');
+  }
+  const pl = st.play ? 'Pause' : (st.infer ? st.t > T_TOTAL - 2 : st.p > 0.995) ? 'Replay' : st.infer ? 'Play the video' : 'Play the fusion';
   if (shown.play !== pl) { shown.play = pl; $('play').setAttribute('aria-pressed', st.play); $('play').setAttribute('aria-label', pl); }
-  let i = 0; while (i < STAGES.length - 1 && st.p >= STAGES[i + 1].at) i++;
+  const SG = st.infer ? INF_STAGES : STAGES, pos = st.infer ? st.t - truthOf(st.seed)[0] : st.p;
+  let i = 0; while (i < SG.length - 1 && pos >= SG[i + 1].at) i++;
   if (i !== stageIdx) {
     const first = stageIdx < 0; stageIdx = i;
     const apply = () => {
-      $('stageNo').textContent = `Stage ${i + 1} of ${STAGES.length}`; $('stageTime').textContent = STAGES[i].name;
-      $('capTitle').textContent = STAGES[i].title; $('capBody').textContent = (st.vitro && STAGES[i].vitro) || STAGES[i].body;
+      $('stageNo').textContent = `${st.infer ? 'Evidence' : 'Stage'} ${i + 1} of ${SG.length}`; $('stageTime').textContent = SG[i].name;
+      $('capTitle').textContent = SG[i].title; $('capBody').textContent = (st.vitro && SG[i].vitro) || SG[i].body;
       $('cap').classList.remove('swap');
     };
     if (first || reduced) apply(); else { $('cap').classList.add('swap'); setTimeout(apply, 180); }
@@ -141,7 +170,7 @@ function syncUI() {
 STAGES.forEach((s) => { const t = document.createElement('i'); t.style.left = (s.at * 100) + '%'; $('ticks').append(t); });
 
 const stopSpin = () => { st.spin = false; $('spin').checked = false; };
-$('prog').addEventListener('input', (e) => { st.p = e.target.value / 1000; st.play = false; syncUI(); });
+$('prog').addEventListener('input', (e) => { if (st.infer) st.t = e.target.value / 1000 * T_TOTAL; else st.p = e.target.value / 1000; st.play = false; syncUI(); });
 $('size').addEventListener('input', (e) => { st.diam = +e.target.value; syncUI(); });
 $('cut').addEventListener('input', (e) => { st.cut = +e.target.value; syncUI(); });
 $('orbit').addEventListener('input', (e) => { st.az = +e.target.value; stopSpin(); syncUI(); });
@@ -149,17 +178,24 @@ $('tilt').addEventListener('input', (e) => { st.el = +e.target.value; syncUI(); 
 $('zoom').addEventListener('input', (e) => { st.dist = zoomToDist(+e.target.value); syncUI(); });
 $('angle').max = Math.floor(THETA_MAX * 10) / 10;
 $('angle').addEventListener('input', (e) => { st.angle = +e.target.value; syncUI(); });
-function setMode(vitro) {
-  st.vitro = vitro; st.dist = Math.min(st.dist, maxDist());
-  document.body.classList.toggle('vitro', vitro);
-  $('modeVivo').setAttribute('aria-pressed', !vitro); $('modeVitro').setAttribute('aria-pressed', vitro);
-  $('pip').hidden = !vitro; $('ctl-angle').hidden = !vitro; $('keyVitro').hidden = !vitro; $('keyVivo').hidden = vitro;
-  $('sub').textContent = vitro ? 'watched on a TIRF microscope' : 'how a synapse releases its signal';
+function setMode(mode) {
+  const infer = mode === 'infer', vitro = mode !== 'vivo';
+  st.infer = infer; st.vitro = vitro; st.dist = Math.min(st.dist, maxDist()); st.play = false;
+  document.body.classList.toggle('vitro', vitro); document.body.classList.toggle('infer', infer);
+  for (const [id, m] of [['modeVivo', 'vivo'], ['modeVitro', 'vitro'], ['modeInfer', 'infer']]) $(id).setAttribute('aria-pressed', m === mode);
+  $('pip').hidden = !vitro || infer; $('inf').hidden = !infer; $('ctl-infer').hidden = !infer; $('ticks').hidden = infer;
+  $('ctl-angle').hidden = !vitro; $('keyVitro').hidden = !vitro; $('keyVivo').hidden = vitro; $('keyInfer').hidden = !infer;
+  $('sub').textContent = infer ? 'working back from the video' : vitro ? 'watched on a TIRF microscope' : 'how a synapse releases its signal';
+  $('progL').textContent = infer ? 'Video time' : 'Fusion progress'; $('sizeL').textContent = infer ? 'True vesicle diameter' : 'Vesicle diameter';
+  $('truth').checked = st.truth;
   stageIdx = -1; for (const k in shown) delete shown[k];
   syncUI();
+  resize(); pipRect = $(infer ? 'inf' : 'pip').getBoundingClientRect();
 }
-$('modeVivo').addEventListener('click', () => setMode(false));
-$('modeVitro').addEventListener('click', () => setMode(true));
+for (const [id, m] of [['modeVivo', 'vivo'], ['modeVitro', 'vitro'], ['modeInfer', 'infer']]) $(id).addEventListener('click', () => {
+  setMode(m);
+  if (m === 'infer' && !reduced) { st.t = 0; st.play = true; syncUI(); }     // start the video from the top
+});
 $('energy').textContent = `Excitation ${LAMBDA_EX} nm, ${EV(LAMBDA_EX).toFixed(2)} eV per photon. Emission ${LAMBDA_EM} nm, ${EV(LAMBDA_EM).toFixed(2)} eV. The difference is lost as heat in the protein.`;
 $('spin').addEventListener('change', (e) => { st.spin = e.target.checked; });
 $('lab').addEventListener('change', (e) => { st.labels = e.target.checked; $('labels').classList.toggle('off', !st.labels); writeHash(); });
@@ -169,7 +205,7 @@ $('share').addEventListener('click', async () => {
   catch (e) { prompt('Copy this link', url); }
   setTimeout(() => { b.textContent = 'Copy link to this view'; }, 1800);
 });
-addEventListener('hashchange', () => { if (readHash()) { $('spin').checked = st.spin; $('lab').checked = st.labels; $('labels').classList.toggle('off', !st.labels); setMode(st.vitro); } });
+addEventListener('hashchange', () => { if (readHash()) { $('spin').checked = st.spin; $('lab').checked = st.labels; $('labels').classList.toggle('off', !st.labels); setMode(modeName()); } });
 // Pointing at an entry in the colour key picks those molecules out in the scene; a click holds it.
 let hiHeld = 0;
 for (const li of document.querySelectorAll('.key li[data-cat]')) {
@@ -184,7 +220,16 @@ for (const li of document.querySelectorAll('.key li[data-cat]')) {
   li.addEventListener('click', toggle);
   li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
 }
-$('play').addEventListener('click', () => { if (!st.play && st.p > 0.995) st.p = 0; st.play = !st.play; syncUI(); });
+$('play').addEventListener('click', () => {
+  if (!st.play && st.infer && st.t > T_TOTAL - 2) st.t = 0;
+  if (!st.play && !st.infer && st.p > 0.995) st.p = 0;
+  st.play = !st.play; syncUI();
+});
+$('power').addEventListener('input', (e) => { st.power = +e.target.value; syncUI(); });
+$('frameT').addEventListener('input', (e) => { st.dt = +e.target.value; syncUI(); });
+$('prior').addEventListener('input', (e) => { st.prior = +e.target.value; syncUI(); });
+$('newEvent').addEventListener('click', () => { st.seed++; st.t = 0; st.play = !reduced; syncUI(); });
+$('truth').addEventListener('change', (e) => { st.truth = e.target.checked; writeHash(); });
 $('moreBtn').addEventListener('click', () => {
   const open = $('panel').classList.toggle('open');
   $('moreBtn').setAttribute('aria-expanded', open);
@@ -225,8 +270,10 @@ function resize() {
   cam.w = w; cam.h = h;
   // Centre the subject in the part of the screen the panel leaves free.
   const r = $('panel').getBoundingClientRect();
-  if (phone.matches) { cam.ox = 0; cam.oy = Math.min(0.62, r.height / ch); }
-  else { cam.ox = r.right / cw; cam.oy = 0; }
+  // The inference view adds a second panel (right on desktop, top on phones) to steer clear of.
+  const q = st.infer ? $('inf').getBoundingClientRect() : null;
+  if (phone.matches) { const bot = Math.min(0.62, r.height / ch), top = q ? q.bottom / ch : 0; cam.ox = 0; cam.fw = 1; cam.oy = bot - top; cam.fh = Math.max(0.15, 1 - bot - top); }
+  else { const left = r.right / cw, right = q ? (cw - q.left) / cw : 0; cam.ox = left - right; cam.fw = Math.max(0.2, 1 - left - right); cam.oy = 0; cam.fh = 1; }
 }
 new ResizeObserver(resize).observe($('panel')); addEventListener('resize', resize); resize();
 
@@ -240,7 +287,7 @@ function setCamera() {
   lookAt(cam.view, cam.eye, cam.target, cam.basis);
   // Fit the subject to the free area, whichever of its dimensions is tighter.
   const cw = canvas.clientWidth, ch = canvas.clientHeight, f = 1 / Math.tan(17 * Math.PI / 180);
-  const p11 = f * Math.min(ch * (1 - cam.oy), cw * (1 - cam.ox) * 1.12) / ch, p00 = p11 * ch / cw;
+  const p11 = f * Math.min(ch * cam.fh, cw * cam.fw * 1.12) / ch, p00 = p11 * ch / cw;
   perspective(cam.proj, p00, p11, Math.max(1.5, st.dist * 0.04), st.dist * 40 + 6000, cam.ox, cam.oy);
 }
 
@@ -311,6 +358,47 @@ function drawCamera(now) {
 $('pipBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%';
 $('pipNote').textContent = `Every vesicle near the glass shows up, blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Ours is at the centre; the trace follows it.`;
 
+// ---- inference (third view) ----------------------------------------------------------------------
+// The hidden truth for a given event. The diameter comes from the size slider; the rest are drawn
+// once per event, so that "New event" gives a fresh puzzle.
+function truthOf(seed) {
+  const r = (k) => { const v = Math.sin(seed * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+  const g = (k) => Math.sqrt(-2 * Math.log(r(k) + 1e-9)) * Math.cos(6.2832 * r(k + 0.5));
+  return [110 + 90 * r(1), Math.log(st.diam), Math.log(30) + 0.4 * g(2), Math.log(30) + 0.7 * g(3), Math.log(0.2) + 0.7 * g(4)];
+}
+const dash = new Dashboard({ obs: $('obs'), exp: $('expect'), fan: $('fan'), strips: $('strips'), pair: $('pair') });
+let exper = null, sampler = null, expKey = '', viewDiam = 42, diamAt = 0, infTick = 0;
+const med = (a) => { const b = Float64Array.from(a).sort(); return b[b.length >> 1]; };
+function runInference(now) {
+  const key = [st.dt, st.power, st.angle, st.prior, st.seed, st.diam].join('|');
+  if (key !== expKey) {
+    expKey = key;
+    exper = new Experiment({ dt: st.dt, power: st.power, angle: st.angle, prior: st.prior });
+    exper.simulate(truthOf(st.seed), st.seed * 7 + 3);
+    if (sampler) sampler.reset(exper); else sampler = new Sampler(exper);
+  }
+  sampler.observe(Math.min(exper.nf, Math.floor(st.t / st.dt + 1e-6)));
+  sampler.run(phone.matches ? 5 : 7);
+  // What each walker thinks the vesicle looks like right now.
+  const s = new Float64Array(3);
+  const ghosts = sampler.x.map((u) => {
+    exper.state(u, st.t, s);
+    const fused = st.t > u[0];
+    return { R: Math.exp(u[1]) / 2 - 2.4, fused, p: fused ? PH.PORE + 0.02 + (0.98 - PH.PORE) * s[2] : 0.2, spread: Math.sqrt(s[1]) * CAM.nm };
+  });
+  // The solid scene shows the middle guess. The vesicle is rebuilt only now and then, as resizing it is not free.
+  const d = Math.round(med(sampler.x.map((u) => Math.exp(u[1]))));
+  if (d !== viewDiam && now - diamAt > 350) { viewDiam = Math.min(90, Math.max(30, d)); diamAt = now; }
+  if (++infTick % 2 === 0) {
+    dash.draw(exper, sampler, st.t, st.truth);
+    const fr = `frame ${sampler.upto} of ${exper.nf}`;
+    if (shown.fr !== fr) { shown.fr = fr; $('infFrames').textContent = fr; }
+    if (dash.pairText && shown.pt !== dash.pairText) { shown.pt = dash.pairText; $('pairNote').textContent = dash.pairText; }
+    if (infTick % 40 === 0) pipRect = $('inf').getBoundingClientRect();
+  }
+  return Object.assign({}, st, { p: med(ghosts.map((g) => g.p)), diam: viewDiam, ghosts });
+}
+
 // ---- frame loop ----------------------------------------------------------------------------------
 const maxFrames = +params.get('frames') || 0; let drawn = 0;
 let last = performance.now(), clock = 0, slow = 0, frames = 0, shownGlu = 0;
@@ -318,20 +406,21 @@ function frame(now) {
   const dt = Math.max(0, Math.min(0.1, (now - last) / 1000)); last = now;
   if (!reduced || st.play) clock += dt;
   if (st.play) {
-    st.p = Math.min(1, st.p + dt / 26);
-    if (st.p >= 1) st.play = false;
+    if (st.infer) { st.t = Math.min(T_TOTAL, st.t + dt * T_TOTAL / 24); if (st.t >= T_TOTAL) st.play = false; }
+    else { st.p = Math.min(1, st.p + dt / 26); if (st.p >= 1) st.play = false; }
     syncUI();
   }
   if (st.spin && !pointers.size && !hoverTag) { st.az = (st.az + dt * 3.2) % 360; syncUI(); }
-  scene.update(st, clock);
+  const view = st.infer ? runInference(now) : st;
+  scene.update(view, clock);
   if (scene.glutamate !== shownGlu) {
     shownGlu = scene.glutamate;
     $('sizeNote').textContent = `Holds about ${(Math.round(shownGlu / 50) * 50).toLocaleString('en')} glutamate molecules at 150 mM`;
   }
   setCamera();
-  scene.draw(cam, st, clock);
+  scene.draw(cam, view, clock);
   if (st.labels) placeLabels();
-  if (st.vitro) drawCamera(now);
+  if (st.vitro && !st.infer) drawCamera(now);
   // If the device cannot keep up, thin the lipids (each one is then drawn a little larger).
   if (++frames > 30 && !params.has('q')) {
     slow = slow * 0.95 + dt * 0.05;
@@ -341,7 +430,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 document.addEventListener('visibilitychange', () => { frames = 0; slow = 0; last = performance.now(); });
-setMode(st.vitro);
+setMode(modeName());
 if (fromLink) { $('spin').checked = st.spin; $('lab').checked = st.labels; $('labels').classList.toggle('off', !st.labels); syncUI(); }
-if (!reduced && !fromLink && !params.has('p') && !params.has('still')) setTimeout(() => { if (st.p === 0) { st.play = true; syncUI(); } }, 1400);
+if (!reduced && !fromLink && !params.has('p') && !params.has('t') && !params.has('still')) setTimeout(() => { if (st.p === 0 && st.t === 0) { st.play = true; syncUI(); } }, 1400);
 requestAnimationFrame(frame);

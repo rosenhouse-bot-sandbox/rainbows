@@ -132,3 +132,18 @@ export function surf(S, leaf, a, phi, out) {
   out[0] = r * cs; out[1] = y; out[2] = r * sn; out[3] = nr / l * cs; out[4] = ny / l; out[5] = nr / l * sn;
   return out;
 }
+
+// Midplane profile as a short list of [r, y] points, for sketching a vesicle's outline cheaply.
+// A gap in the membrane (before the two bilayers touch) is marked with NaN.
+export function outline(p, R) {
+  const S = shape(p, R), pts = [], lift = S.neck < -D ? S.extra : 0;
+  for (let i = 0; i <= 26; i++) { const a = S.theta * i / 26; pts.push(S.Rc * Math.sin(a), S.h + lift + S.Rc * Math.cos(a)); }
+  let broke = false;
+  for (let i = 1; i <= 14; i++) {
+    const ps = S.theta * (1 - i / 14), r = S.c - S.rho * Math.sin(ps);
+    if (r < 0) { if (!broke) { pts.push(NaN, NaN); broke = true; } continue; }
+    pts.push(r, S.rho - S.rho * Math.cos(ps) + (broke ? 0 : lift));
+  }
+  pts.push(Math.max(S.c, 0) + 0.5 * R, 0);
+  return pts;
+}

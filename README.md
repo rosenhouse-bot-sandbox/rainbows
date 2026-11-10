@@ -47,10 +47,28 @@ dish over a TIRF microscope, and synaptobrevin carries superecliptic pHluorin on
 
 Optics, bench geometry and the camera simulation are in `js/vesicle/vitro.js`.
 
+A third setting, **Inference**, turns the problem around. It simulates a noisy 400 ms TIRF video
+of one fusion event from hidden parameters, then infers them back with Bayes' rule, live:
+
+- Five unknowns: the moment of fusion, vesicle diameter, number of pHluorin copies, collapse
+  time and the tags' diffusion coefficient, each with a prior (log-normal, or flat for the time).
+- The forward model gives the expected photons in every pixel of every frame; the likelihood is
+  Poisson. An affine-invariant ensemble of 40 walkers samples the posterior in the browser.
+- The video-time slider sets how many frames have been seen, so you can watch beliefs sharpen as
+  evidence arrives: the flash fixes the fusion time, the rise gives collapse time, the spreading
+  gives diffusion. Vesicle size stays vague, because it trades off against copy number.
+- Uncertainty is drawn three ways: density strips (prior in grey, posterior in gold, with a 90%
+  range and the bits learned), a fan chart that turns into a forecast past the last frame seen,
+  and in the 3D scene one faint outline per walker, so a blurred membrane means doubt.
+- Laser power, frame time, laser angle and prior width are adjustable; "New event" draws a new
+  hidden truth and "Show the true values" reveals it.
+
+The model and sampler are in `js/vesicle/infer.js`, the charts in `js/vesicle/inferui.js`.
+
 Around the scene:
 
 - The address bar tracks the view after `#` (`mode`, `p`, `size`, `angle`, `cut`, `orbit`, `tilt`,
-  `dist`, `labels`), so any state can be bookmarked or shared; there is also a copy-link button.
+  `dist`, `labels`, plus `t`, `power`, `frame`, `prior`, `seed`, `truth` in the inference view), so any state can be bookmarked or shared; there is also a copy-link button.
 - On a desktop, hovering a label opens a short explanation with a Wikipedia link
   (text in `js/vesicle/info.js`).
 - Hovering an entry in the colour key picks those molecules out and dims the rest; clicking holds it.

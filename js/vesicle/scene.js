@@ -1,7 +1,7 @@
 // Builds and draws the synapse: lipids, proteins, transmitter and the hazy surroundings.
 // Units are nanometres. y points into the sending cell; the cleft is below y = 0.
 import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
-import { compute, surf, D, CLEFT, TABW, BAREA, PH } from './profile.js';
+import { compute, surf, outline, D, CLEFT, TABW, BAREA, PH } from './profile.js';
 import * as SH from './shaders.js';
 import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
 
@@ -49,7 +49,7 @@ export class Scene {
       nt: program(gl, SH.transmitterVS, SH.sphereFS), ntHalo: program(gl, SH.transmitterVS, SH.haloFS),
       sheet: program(gl, SH.sheetVS, SH.sheetFS), sky: program(gl, SH.skyVS, SH.skyFS),
       glow: program(gl, SH.skyVS, SH.glowFS), field: program(gl, SH.fieldVS, SH.fieldFS),
-      mesh: program(gl, SH.meshVS, SH.meshFS), beam: program(gl, SH.beamVS, SH.beamFS),
+      mesh: program(gl, SH.meshVS, SH.meshFS), beam: program(gl, SH.beamVS, SH.beamFS), line: program(gl, SH.lineVS, SH.lineFS),
     };
     this.corners = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.corners);
@@ -77,6 +77,10 @@ export class Scene {
     gl.bindVertexArray(null);
     this.opt = optics(68); this.emit = []; this.fluor = 0; this.labelText = {};
     this.buildCell();
+    this.lineBuf = gl.createBuffer(); this.lineVAO = gl.createVertexArray();
+    gl.bindVertexArray(this.lineVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.lineBuf);
+    [[0, 3, 0], [1, 4, 12]].forEach(([loc, size, off]) => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 28, off); });
+    gl.bindVertexArray(null);
   }
 
   // ---- static geometry -------------------------------------------------------------------------
@@ -526,7 +530,8 @@ export class Scene {
       };
     }
     this.gapBottom = vitro ? -GAP + 1.4 : -CLEFT + D + 1.4;
-    this.vitro = vitro;
+    this.vitro = vitro; this.ghosts = st.ghosts || null;
+    if (this.ghosts) this.labels.push({ id: 'ghost', q: [-(Math.min(S.Rc, 60) + D + 4) * 0.72, Math.max(6, Math.min(top * 0.72, 70)), 0], max: 2500, free: true });
     this.focusY = Math.max(-3, Math.min(13, 0.3 * top - 2));
     this.kept = kept;
   }
@@ -645,6 +650,7 @@ export class Scene {
     u = common(P.ballHalo); gl.uniform3f(u.uBall, 4.2, 0, 0); gl.uniform1f(u.uGlow, 0.55);
     gl.bindVertexArray(this.dyn.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.dyn.n);
     if (vitro) this.drawBench(cam, st, common, mesh);
+    if (this.ghosts && cam.dist < 6000) this.drawGhosts(common);
     gl.disable(gl.BLEND); gl.depthMask(true); gl.bindVertexArray(null);
   }
 
@@ -691,6 +697,28 @@ export class Scene {
     }
     const em = (0.035 + 0.3 * Math.min(1, this.fluor)) * sstep(5.7, 6.5, lg);
     if (em > 0) { common(P.mesh); mesh(B.emission, 1, 0, em); }
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  // Inference view: one faint outline per sampled guess. Where the guesses agree the lines pile
+  // up into a bright edge; where they disagree they smear into a haze, so blur means doubt.
+  drawGhosts(common) {
+    const gl = this.gl, v = [], n = this.ghosts.length, a = 3.2 / n, AZ = 6;
+    const seg = (x0, y0, z0, x1, y1, z1, c) => v.push(x0, y0, z0, c[0], c[1], c[2], a, x1, y1, z1, c[0], c[1], c[2], a);
+    for (const g of this.ghosts) {
+      const pts = outline(g.p, g.R);
+      for (let k = 0; k < AZ; k++) {
+        const az = CUT_CENTRE + PI / AZ + k * TAU / AZ, cs = Math.cos(az), sn = Math.sin(az);
+        for (let i = 0; i + 3 < pts.length; i += 2) if (pts[i] === pts[i] && pts[i + 2] === pts[i + 2]) seg(pts[i] * cs, pts[i + 1], pts[i] * sn, pts[i + 2] * cs, pts[i + 3], pts[i + 2] * sn, [1.0, 0.78, 0.42]);
+      }
+      // How far the tags are believed to have spread: a ring at two standard deviations.
+      const r = 2 * g.spread;
+      if (g.fused) for (let i = 0; i < 48; i++) { const a0 = i / 48 * TAU, a1 = (i + 1) / 48 * TAU; seg(r * Math.cos(a0), -D - 7, r * Math.sin(a0), r * Math.cos(a1), -D - 7, r * Math.sin(a1), [0.35, 1.0, 0.45]); }
+    }
+    common(this.P.line);
+    gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
+    gl.bindVertexArray(this.lineVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.lineBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW); gl.drawArrays(gl.LINES, 0, v.length / 7);
     gl.enable(gl.DEPTH_TEST);
   }
 
