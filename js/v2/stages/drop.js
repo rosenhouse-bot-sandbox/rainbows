@@ -132,7 +132,17 @@ export default {
   bloom: 1.0, exposure: 1.0,
   cam: { type: 'orbit', target: [-0.5, -0.95, 0], yaw: 0.2, pitch: 0.15, dist: 13.5, fov: 34,
     lim: { yaw: [-1.25, 1.25], pitch: [-0.6, 1.0], dist: [4.5, 17] } },
-  portal: S => { const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[0]; return [h[0], h[1], 0]; },
+  // the crossing the next scale is set to show: where the rainbow ray enters, meets the back, or leaves
+  portal: S => { const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1]; return [h[0], h[1], 0]; },
+
+  // The Surface scene is a patch of this drop's skin, a thousandth of its radius across, tangent to the
+  // sphere where the rainbow ray crosses it, with the light arriving from the right direction.
+  embed(S) {
+    const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits, i = S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1;
+    const Y = [h[i][0], h[i][1], 0], d = i === 0 ? [1, 0, 0] : V.norm([h[i][0] - h[i - 1][0], h[i][1] - h[i - 1][1], 0]);
+    const X = V.norm(V.mad(d, Y, -V.dot(d, Y)));
+    return { o: Y, s: 1e-3, X, Y, Z: V.cross(X, Y) };
+  },
 
   caption(S) {
     if (S.focus === 'eye') return { title: 'The few rays that reach you',

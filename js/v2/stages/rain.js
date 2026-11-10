@@ -23,18 +23,31 @@ function heroes(S, T) {
     if (lo < 0.6 || lo > 8.2) continue;
     const u = (T / 16 + ph) % 1, y = lo + 0.55 - 1.1 * u;
     const P = [x, y, z], th = angleAt(P, s), c = O.sampleBow(tab, th / DEG), m = Math.max(c[0], c[1], c[2], 1e-4);
-    out.push({ P, th, col: c.map(v => v / Math.max(m, 0.25)), level: Math.min(1, m / 0.25), lam: O.wavelengthAt(th), fade: Math.min(1, u * 8, (1 - u) * 8) });
+    out.push({ P, th, col: c.map(v => v / Math.max(m, 0.25)), level: Math.min(1, m / 0.25), lam: O.wavelengthAt(th), u, fade: Math.min(1, u * 8, (1 - u) * 8) });
   }
   return out;
 }
-let lastHeroes = [];
+let lastHeroes = [], lock = 0, lockAt = 0;
 
 export default {
   id: 'rain', name: 'Rain', scale: '1 m', scaleNote: 'drops drawn much larger than life', modes: true, focus: true,
   controls: ['focus', 'mode', 'sun'], bloom: 1.0, exposure: 1.0,
   cam: { type: 'orbit', target: [0, 2.9, -4.6], yaw: 0.62, pitch: 0.1, dist: 14.5, fov: 40,
     lim: { yaw: [-1.2, 1.2], pitch: [0.02, 0.6], dist: [7.5, 19] } },
-  portal: S => (lastHeroes[0] ? lastHeroes[0].P : [0, 5, -7]),
+  // the next scale is one of the marked drops: pick the one with the most of its fall left, and stay with it
+  portal: S => {
+    const now = performance.now();
+    if (now - lockAt > 1500 || !lastHeroes[lock]) { lock = 0; lastHeroes.forEach((h, i) => { if (h.u < (lastHeroes[lock]?.u ?? 2) ) lock = i; }); }
+    lockAt = now;
+    return lastHeroes[lock] ? lastHeroes[lock].P : [0, 5, -7];
+  },
+
+  // The Drop scene is one of the marked drops: sunlight along its +x, and its eye direction toward the figure.
+  embed(S) {
+    const P = this.portal(S), X = sunDir(S), v = V.norm(V.sub(EYE, P));
+    const Y = V.mul(V.norm(V.mad(v, X, -V.dot(v, X))), -1);
+    return { o: P, s: 0.01, X, Y, Z: V.cross(X, Y), theta: Math.acos(clamp(-V.dot(v, X), -1, 1)) };
+  },
 
   caption(S) {
     if (S.focus === 'eye') return { title: 'Only some drops are aimed at you',
@@ -89,7 +102,8 @@ void main(){
   vC = (vec3(0.022,0.027,0.036) + bow*uSunCol*uGain)*uFade*edge;
   vec4 c = uVP*vec4(p,1.0);
   if(c.w < 0.05){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
-  float px = max(0.02*uP11*uRes.y*0.5/c.w, 1.0*uPx);
+  float truePx = 0.02*uP11*uRes.y*0.5/c.w, px = max(truePx, 1.0*uPx);
+  vC *= min(1.0, truePx*truePx/(px*px)*6.0);      // seen from far off, a drop keeps its share of light, not a whole pixel
   gl_Position = vec4(c.xy + corner*vec2(1.0,2.4)*px/(uRes*0.5)*c.w, c.z, c.w); vUV = corner; }`,
     `#version 300 es
 precision highp float; in vec3 vC; in vec2 vUV; layout(location=0) out vec4 o;

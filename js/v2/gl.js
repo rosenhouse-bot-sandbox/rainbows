@@ -26,6 +26,13 @@ export const V = {
   norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
   lerp: (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t],
 };
+// turn unit vector a toward unit vector b by a fraction t of the angle between them
+export function slerp(a, b, t) {
+  const c = clamp(V.dot(a, b), -1, 1), w = Math.acos(c);
+  if (w < 1e-4) return V.norm(V.lerp(a, b, t));
+  const s = Math.sin(w);
+  return V.norm(V.add(V.mul(a, Math.sin((1 - t) * w) / s), V.mul(b, Math.sin(t * w) / s)));
+}
 export const IDENT = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 export function matMul(a, b) {
   const o = new Float32Array(16);
@@ -41,9 +48,9 @@ export function modelTRS(t, s = 1, rotX = 0, sy = s, sz = s) {
 
 // Build everything a shader needs to know about the camera.
 // ox, oy shift the optical centre (in NDC) so the subject clears the UI panel.
-export function makeView(eye, fwd, fovY, w, h, near, far, ox = 0, oy = 0) {
+export function makeView(eye, fwd, fovY, w, h, near, far, ox = 0, oy = 0, up = [0, 1, 0]) {
   const f = V.norm(fwd);
-  let r = V.cross(f, [0, 1, 0]);
+  let r = V.cross(f, up);
   if (V.len(r) < 1e-4) r = [1, 0, 0];
   r = V.norm(r);
   const u = V.cross(r, f);
@@ -122,9 +129,9 @@ out vec4 vC; out vec2 vUV;
 void main(){
   vec4 c = uVP*uModel*vec4(P,1.0);
   if(c.w < 1e-4){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
-  float px = max(S*uP11*uRes.y*0.5/c.w, uMinPx*uPx);
+  float truePx = S*uP11*uRes.y*0.5/c.w, px = max(truePx, uMinPx*uPx);
   gl_Position = vec4(c.xy + corner*px/(uRes*0.5)*c.w, c.z, c.w);
-  vC = C; vUV = corner;
+  vC = C; vC.a *= min(1.0, truePx*truePx/(px*px)*12.0); vUV = corner;      // far-off points fade instead of staying a pixel wide
 }`;
 const POINT_FS = `#version 300 es
 precision highp float; in vec4 vC; in vec2 vUV; uniform float uGain; layout(location=0) out vec4 o;
@@ -162,13 +169,26 @@ void main(){ vec2 uv = v*0.5+0.5;
   c += (texture(T, uv+uDir*3.2308).rgb + texture(T, uv-uDir*3.2308).rgb)*0.070270;
   o = vec4(c, 1.0); }`;
 const POST_MIX = `#version 300 es
-precision highp float; in vec2 v; uniform sampler2D A, B; uniform float uT; layout(location=0) out vec4 o;
-void main(){ vec2 uv = v*0.5+0.5; o = vec4(mix(texture(A,uv).rgb, texture(B,uv).rgb, uT), 1.0); }`;
+precision highp float; in vec2 v; uniform sampler2D A, B; uniform vec4 uHole; uniform vec3 uMix; layout(location=0) out vec4 o;
+// B shows through a soft-edged round opening in A: centre uHole.xy (uv), radius uHole.z in screen heights,
+// aspect uHole.w. uMix: the opening's opacity, a floor that fades B in everywhere, and the edge softness.
+void main(){ vec2 uv = v*0.5+0.5;
+  float d = length((uv-uHole.xy)*vec2(uHole.w, 1.0));
+  float w = max((1.0-smoothstep(uHole.z*(1.0-uMix.z), uHole.z, d))*uMix.x, uMix.y);
+  vec3 a = texture(A,uv).rgb, b = texture(B,uv).rgb;
+  float rim = smoothstep(uHole.z*(1.0-uMix.z), uHole.z*(1.0-0.5*uMix.z), d)*(1.0-smoothstep(uHole.z*(1.0-0.5*uMix.z), uHole.z, d));
+  o = vec4(mix(a, b, w) + (a+b)*0.12*rim*uMix.x*(1.0-uMix.y), 1.0); }`;
 const POST_FINAL = `#version 300 es
-precision highp float; in vec2 v; uniform sampler2D T, B1, B2, B3; uniform float uBloom, uTime, uExposure; layout(location=0) out vec4 o;
+precision highp float; in vec2 v; uniform sampler2D T, B1, B2, B3; uniform float uBloom, uTime, uExposure; uniform vec3 uStreak; layout(location=0) out vec4 o;
 float h(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
 void main(){ vec2 uv = v*0.5+0.5;
-  vec3 c = texture(T, uv).rgb + uBloom*(texture(B1, uv).rgb*0.55 + texture(B2, uv).rgb*0.5 + texture(B3, uv).rgb*0.6);
+  vec3 c = texture(T, uv).rgb;
+  if(uStreak.z > 0.001){      // a radial smear toward the point being zoomed into, during the move between scales
+    float j = h(gl_FragCoord.xy + 3.7); c = vec3(0.0);
+    for(int i=0;i<12;i++) c += texture(T, mix(uv, uStreak.xy, (float(i)+j)/12.0*uStreak.z)).rgb;
+    c /= 12.0;
+  }
+  c += uBloom*(texture(B1, uv).rgb*0.55 + texture(B2, uv).rgb*0.5 + texture(B3, uv).rgb*0.6);
   c *= uExposure;
   c *= 1.0 - 0.28*pow(length(v*vec2(0.9,0.8)), 2.4);
   c = clamp((c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14), 0.0, 1.0);
@@ -364,15 +384,16 @@ export function createEngine(canvas) {
       gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0);
     },
     // ---- post: (optional cross-fade) → bloom → tone map ----
-    present(mixAmount, time, bloomAmt = 1, exposure = 1) {
+    // hole: null, or {c:[u,v], r, alpha, floor, soft} describing how scene 1 shows through scene 0
+    present(hole, time, bloomAmt = 1, exposure = 1, streak = 0) {
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
       gl.bindVertexArray(emptyVAO);
       let src = scene[0];
       const bind = (unit, t) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t.tex); };
-      if (mixAmount > 0) {
+      if (hole) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, mixT.fb); gl.viewport(0, 0, R.W, R.H);
         gl.useProgram(pMix.p); bind(0, scene[0]); bind(1, scene[1]);
-        gl.uniform1i(pMix.u.A, 0); gl.uniform1i(pMix.u.B, 1); gl.uniform1f(pMix.u.uT, mixAmount);
+        gl.uniform1i(pMix.u.A, 0); gl.uniform1i(pMix.u.B, 1); gl.uniform4f(pMix.u.uHole, hole.c[0], hole.c[1], hole.r, R.W / R.H); gl.uniform3f(pMix.u.uMix, hole.alpha, hole.floor, hole.soft);
         gl.drawArrays(gl.TRIANGLES, 0, 3); src = mixT;
       }
       let from = src;
@@ -392,6 +413,7 @@ export function createEngine(canvas) {
       bind(0, src); bind(1, bloom[0][0]); bind(2, bloom[1][0]); bind(3, bloom[2][0]);
       gl.uniform1i(pFinal.u.T, 0); gl.uniform1i(pFinal.u.B1, 1); gl.uniform1i(pFinal.u.B2, 2); gl.uniform1i(pFinal.u.B3, 3);
       gl.uniform1f(pFinal.u.uBloom, bloomAmt); gl.uniform1f(pFinal.u.uTime, time); gl.uniform1f(pFinal.u.uExposure, exposure);
+      const sc = hole ? hole.c : [0.5, 0.5]; gl.uniform3f(pFinal.u.uStreak, sc[0], sc[1], streak);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE0);
     },

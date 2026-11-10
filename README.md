@@ -13,12 +13,15 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
 | Rain | 1 m | 30 000 falling drops, each coloured by what it sends to your eye |
 | Drop | 1 mm | One drop traced in 3D: every route the light takes, with its share of the energy |
 | Surface | 1 µm | The exact field where light crosses the water's surface, including the evanescent field |
-| Molecules | 1 nm | Why each colour is slowed by a different amount, in terms of where the wave's energy sits |
+| Molecules | 1 nm | Light arriving at an angle you set: why each colour is slowed, and so bent, by a different amount |
 
 - **Follow the light** picks out what comes from the Sun, or only what ends up in your eye.
 - **Show light as** switches between particles (rays and photons) and waves (crests), where both make sense.
 - The camera at each scale turns and zooms only within fixed limits, and "Reset view" (or a double click) returns it.
 - The address bar tracks the scale and settings after `#`, so a view can be bookmarked or shared.
+- The scales are one connected world. Each deeper scene sits inside the one above at its true place,
+  size and orientation (the sky where you stand on the globe, the drop in the rain, a patch of surface
+  tangent to the drop where the ray crosses it), and moving between scales is a single camera flight.
 
 The physics, all in `js/v2/optics.js`:
 

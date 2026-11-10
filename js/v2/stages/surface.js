@@ -37,7 +37,10 @@ export default {
     lim: { yaw: [-1.1, 1.1], pitch: [-0.35, 0.8], dist: [6, 25] } },
   // past the critical angle, come in close and level with the surface so the thin field outside shows
   camGoal: S => S.cross === 'tir' ? { yaw: 0.3, pitch: 0.045, dist: 9.5 } : { yaw: 0.42, pitch: 0.2, dist: 19 },
-  portal: () => [0.6, -0.4, 0],
+  portal: () => [0, 0, 0],
+  // The Molecules scene is the same surface where the beam meets it: its +x runs down into the water,
+  // and one of its units is 0.17 µm, so its wavelengths are this scene's wavelengths.
+  embed: () => ({ o: [0, 0, 0], s: 550 / 3200, X: [0, -1, 0], Y: [0, 0, 1], Z: [-1, 0, 0] }),
 
   caption(S) {
     const c = setup(S);
