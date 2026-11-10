@@ -65,6 +65,9 @@ of one fusion event from hidden parameters, then infers them back with Bayes' ru
 - Laser power, frame time, laser angle and prior width are adjustable; "New event" draws a new
   hidden truth and "Show the true values" reveals it.
 
+A "How it works" button in that view opens a short summary of the mathematics (Bayes' rule, the
+priors, the forward model, the Poisson likelihood, the sampler, and how to read the results).
+
 The model and sampler are in `js/vesicle/infer.js`, the charts in `js/vesicle/inferui.js`.
 
 Around the scene:

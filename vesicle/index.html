@@ -153,7 +153,7 @@
 </figure>
 
 <section class="inf" id="inf" aria-label="Inference from the video" hidden>
-  <header><b>Evidence</b><span id="infFrames">frame 0 of 40</span></header>
+  <header><b>Evidence</b><span id="infFrames">frame 0 of 40</span><button class="mathBtn" id="mathBtn" aria-haspopup="dialog">How it works</button></header>
   <div class="infTop">
     <figure><canvas id="obs" width="24" height="24" aria-label="The frame the camera recorded"></canvas><figcaption>Recorded</figcaption></figure>
     <figure><canvas id="expect" width="24" height="24" aria-label="The frame the model expects"></canvas><figcaption>Model expects</figcaption></figure>
@@ -164,6 +164,46 @@
   <canvas id="pair" aria-label="Joint belief about the two most entangled unknowns"></canvas>
   <p id="pairNote"></p>
 </section>
+
+<dialog class="math" id="math" aria-labelledby="mathTitle">
+  <button class="mathClose" id="mathClose" aria-label="Close">×</button>
+  <h2 id="mathTitle">How the inference works</h2>
+  <p class="lede">The video is a few thousand photon counts. The question is which values of five biological unknowns, written θ, could have produced them, and how sure we can be.</p>
+
+  <h3>1. Bayes' rule</h3>
+  <p class="eq">p(θ | video) ∝ p(video | θ) × p(θ)</p>
+  <p>What we believe after seeing the video (the <b>posterior</b>) is how well each guess explains the photons (the <b>likelihood</b>) times how plausible that guess was beforehand (the <b>prior</b>).</p>
+
+  <h3>2. The prior</h3>
+  <p>Each unknown gets a typical value and a spread, on a log scale because they can be off by multiples. "45 nm ×/÷ 1.28" means two thirds of the belief lies between 45/1.28 and 45×1.28.</p>
+  <ul id="mathPriors"></ul>
+
+  <h3>3. The forward model: from θ to expected photons</h3>
+  <p>A guess is turned into the image it predicts. The spot is a blurred point, so pixel at distance <i>r</i> from the centre, at time <i>t</i>, expects</p>
+  <p class="eq">λ(<i>r</i>, <i>t</i>) = <i>b</i> + <i>A</i>(<i>t</i>) / (2π<i>s</i>²) · exp(−<i>r</i>² / 2<i>s</i>²)</p>
+  <p>with background <i>b</i>, total brightness <i>A</i> and blur <i>s</i>:</p>
+  <p class="eq"><i>A</i>(<i>t</i>) = <i>N</i> · <i>P</i> · <i>q</i>(<i>t</i>) · <i>E</i>(<i>t</i>)<br><i>s</i>(<i>t</i>)² = σ<sub>PSF</sub>² + footprint + 2<i>D</i>·(<i>t</i> − <i>t</i><sub>f</sub>)</p>
+  <p><i>N</i> is the number of tags and <i>P</i> the laser power. <i>q</i> jumps from 0.04 to 1 at the moment of fusion <i>t</i><sub>f</sub>, when the acid escapes. <i>E</i> is the evanescent intensity at the tags' height, e<sup>−z/d</sup>; it rises as the vesicle flattens by a fraction 1 − e<sup>−(t − t<sub>f</sub>)/τ</sup> and the tags sink toward the glass. <i>D</i> is how fast they then diffuse apart.</p>
+
+  <h3>4. The likelihood</h3>
+  <p>Photon counts scatter around their expected value by Poisson statistics. For a count <i>k</i> in each pixel of each frame seen so far:</p>
+  <p class="eq">ln p(video | θ) = Σ<sub>frames</sub> Σ<sub>pixels</sub> ( <i>k</i> ln λ − λ )</p>
+  <p>Moving the video-time slider changes which frames are in that sum.</p>
+
+  <h3>5. Sampling the posterior</h3>
+  <p>There is no formula for the result, so it is explored by 40 "walkers", each holding one guess. A walker proposes a step along the line to another walker, stretched by a random factor <i>z</i>, and takes it with probability</p>
+  <p class="eq">min( 1, <i>z</i><sup>4</sup> · p(θ′ | video) / p(θ | video) )</p>
+  <p>Better guesses are always accepted, worse ones sometimes. Over many steps the walkers visit each region in proportion to its posterior probability, and those visits are the samples everything else is drawn from.</p>
+
+  <h3>6. Reading the result</h3>
+  <ul>
+    <li><b>Estimate and 90% range:</b> the median, and the 5th to 95th percentile, of the samples.</li>
+    <li><b>Bits learned:</b> the Kullback–Leibler divergence from prior to posterior. One bit means the plausible range has halved.</li>
+    <li><b>Fan chart and forecast:</b> every sample pushed through the forward model, for frames seen and not yet seen.</li>
+    <li><b>Gold band in the scene:</b> the same percentiles, drawn as membrane shapes.</li>
+  </ul>
+  <p class="fine">The video here is generated from this same model, so the inference is being tested on its own assumptions. The spot centre, blur, background and field depth are treated as known.</p>
+</dialog>
 
 <div class="fail" id="fail" hidden>
   <h2>This view needs WebGL 2</h2>

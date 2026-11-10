@@ -3,7 +3,7 @@ import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
 import { PH } from './profile.js';
 import { INFO } from './info.js';
-import { Experiment, Sampler, T_TOTAL, quantiles } from './infer.js';
+import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles } from './infer.js';
 import { Dashboard } from './inferui.js';
 import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
 
@@ -366,6 +366,15 @@ function truthOf(seed) {
   const g = (k) => Math.sqrt(-2 * Math.log(r(k) + 1e-9)) * Math.cos(6.2832 * r(k + 0.5));
   return [110 + 90 * r(1), Math.log(st.diam), Math.log(30) + 0.4 * g(2), Math.log(30) + 0.7 * g(3), Math.log(0.2) + 0.7 * g(4)];
 }
+// The maths summary. Prior values are read from the model so the text cannot drift from the code.
+for (const P of PARAMS) {
+  const li = document.createElement('li');
+  li.textContent = P.log ? `${P.name}: ${P.med} ${P.unit} ×/÷ ${P.gsd}` : `${P.name}: anywhere in the ${T_TOTAL} ms of video, equally likely`;
+  $('mathPriors').append(li);
+}
+$('mathBtn').addEventListener('click', () => { st.play = false; syncUI(); $('math').showModal(); $('math').scrollTop = 0; });
+$('mathClose').addEventListener('click', () => $('math').close());
+$('math').addEventListener('click', (e) => { if (e.target === $('math')) $('math').close(); });   // a click on the backdrop
 const dash = new Dashboard({ obs: $('obs'), exp: $('expect'), fan: $('fan'), strips: $('strips'), pair: $('pair') });
 let exper = null, sampler = null, expKey = '', viewDiam = 42, diamAt = 0, infTick = 0, goal = null;
 const belief = { p: [0.2, 0.2, 0.2, 0.2, 0.2], R: [20, 20, 20, 20, 20], sp: [80, 80, 80, 80, 80], fused: 0, ready: false };

@@ -132,6 +132,24 @@ input.laser::-moz-range-progress{background:#19b8ff}
 body.infer .scalebar{right:calc(362px + env(safe-area-inset-right))}
 body.infer #sizeNote{display:none}
 
+/* "How it works": a summary of the inference mathematics */
+.mathBtn{margin-left:auto;padding:3px 9px;border-radius:999px;border:1px solid var(--line);background:rgba(234,240,255,.08);color:var(--ink);font:inherit;font-family:var(--body);font-size:12px;letter-spacing:0;text-transform:none;cursor:pointer}
+.mathBtn:hover{background:rgba(234,240,255,.18)}
+.inf header span{margin-left:auto}
+.inf header .mathBtn{margin-left:8px}
+.math{width:min(640px,calc(100% - 24px));max-height:min(86%,860px);padding:22px 24px 20px;border:1px solid var(--line);border-radius:18px;background:#0a0f20;color:var(--ink2);font-size:15px;line-height:1.5;overflow-y:auto;overscroll-behavior:contain}
+.math::backdrop{background:rgba(3,5,12,.66);backdrop-filter:blur(3px)}
+.math h2{font-family:var(--display);font-weight:600;font-size:24px;letter-spacing:-.02em;color:var(--ink);margin:0 36px 8px 0}
+.math h3{font-family:var(--display);font-weight:600;font-size:16.5px;color:var(--ink);margin:18px 0 4px}
+.math p{margin:0 0 8px;max-width:64ch}
+.math .lede{color:var(--ink);font-size:16px}
+.math .eq{font-family:'Fraunces','Iowan Old Style',Georgia,serif;font-size:17.5px;line-height:1.7;color:#ffcf6b;padding:8px 14px;margin:8px 0 10px;border-left:2px solid rgba(255,207,107,.45);background:rgba(255,207,107,.06);border-radius:0 8px 8px 0;overflow-x:auto;white-space:nowrap}
+.math ul{margin:0 0 8px;padding-left:20px}
+.math li{margin:2px 0}
+.math b{color:var(--ink);font-weight:600}
+.math .fine{font-size:13px;color:var(--ink3);margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.mathClose{position:sticky;top:0;float:right;width:34px;height:34px;margin:-6px -8px 0 8px;border-radius:50%;border:1px solid var(--line);background:#141a30;color:var(--ink);font-size:20px;line-height:1;cursor:pointer}
+
 /* The microscope's camera, picture in picture */
 .pip{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));bottom:20px;width:232px;margin:0;padding:10px;display:grid;gap:7px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
 .pip figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
@@ -152,6 +170,9 @@ body.infer #sizeNote{display:none}
   #fan{grid-column:auto;height:78px}
   #strips{height:150px}
   #pair,.inf p,.inf header span{display:none}
+  .inf header .mathBtn{margin-left:auto}
+  .math{padding:18px 16px;font-size:14.5px}
+  .math .eq{font-size:15.5px}
   body.infer .scalebar,body.infer .hint{display:none}
   .pip{top:calc(92px + env(safe-area-inset-top));bottom:auto;width:124px;padding:7px;gap:5px;border-radius:13px}
   .pip p,.pip figcaption span{display:none}
