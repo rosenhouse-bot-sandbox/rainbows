@@ -14,6 +14,24 @@ Five stages, one continuous descent:
 | Drop | 1 mm | Ray tracing through one drop, colour by colour |
 | Wave | 1 µm | A real 2D wave simulation of light entering water |
 
+## Vesicle fusion
+
+A second experience, at `vesicle/`: a real-time 3D model of a synaptic vesicle fusing with the
+presynaptic membrane, drawn lipid by lipid and to scale in nanometres.
+
+- **Fusion progress** scrubs from a docked vesicle through SNARE zippering, the hemifusion stalk,
+  the opening and widening of the fusion pore, to full collapse into the membrane.
+- **Vesicle diameter** resizes the vesicle (and its glutamate load, at 150 mM).
+- **Cutaway, orbit, tilt, distance** fly the camera; drag, pinch and scroll work too.
+- Lipids keep the colour of the membrane they started in, so you can watch the two mix: the
+  facing leaflets from hemifusion onward, the far leaflets only once the pore is open.
+
+The membrane is a surface of revolution (sphere, toroidal neck, plane) whose two leaflets are
+offset copies; clipping those offsets at the axis yields the stalk and the pore without special
+cases. Lipids are placed by conserved area, so the vesicle's membrane flows out through the neck
+as it flattens. See `js/vesicle/profile.js`. It needs WebGL2 and has no dependencies. If the frame
+rate drops it draws fewer, larger lipids.
+
 ## Running it
 
 It is a static site with no build step. Open `index.html` (the landing page; the zoom experience is `v1/index.html`) through any local
@@ -43,4 +61,6 @@ for previews.
 - `js/physics.js`: refractive index of water, spectral colours, ray tracing.
 - `js/stages/*.js`: one module per stage, each with a `draw` and a `box`
   (the region of its picture that becomes the next stage's full frame).
+- `vesicle/index.html`, `css/vesicle.css`, `js/vesicle/*.js`: the vesicle fusion experience
+  (`profile.js` geometry, `scene.js` molecules and drawing, `shaders.js` GLSL, `main.js` controls).
 - `drafts/`: review boards from each design round.
