@@ -85,11 +85,12 @@ function viewFor(i, zoom, pm, time) {
 // ---------- transitions ----------
 const inited = new Set();
 function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); } }
-let tr = null;       // {from, to, t}
+let tr = null, queued = null;       // tr: {from, to, t}
 const DIVE = 3.2;    // seconds for the move between scales
 function go(to) {
   to = clamp(to, 0, STAGES.length - 1);
-  if (tr || to === S.stage) return;
+  if (tr) { queued = to; return; }      // remember a press made mid-flight and go there next
+  if (to === S.stage) return;
   ready(to);
   tr = { from: S.stage, to, t: 0 };
   $('labels').classList.add('off');
@@ -121,8 +122,8 @@ const sliders = {
 };
 for (const id in sliders) $(id).addEventListener('input', e => { S[id] = parseFloat(e.target.value); syncUI(true); });
 for (const id of ['exag', 'second']) $(id).addEventListener('change', e => { S[id] = e.target.checked; syncUI(); });
-$('prev').addEventListener('click', () => go(S.stage - 1));
-$('next').addEventListener('click', () => go(S.stage + 1));
+$('prev').addEventListener('click', () => go((tr ? tr.to : S.stage) - 1));
+$('next').addEventListener('click', () => go((tr ? tr.to : S.stage) + 1));
 $('resetView').addEventListener('click', resetView);
 const setPaused = p => { paused = p; $('pause').textContent = p ? 'Play' : 'Pause'; };
 $('pause').addEventListener('click', () => setPaused(!paused));
@@ -254,7 +255,10 @@ function frame(now) {
     R.begin(1, labelView, 1); STAGES[tr.to].draw(R, S, time, dt);
     const a = STAGES[tr.from], b = STAGES[tr.to];
     R.present(mix, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.5 * rush), lerp(a.exposure, b.exposure, mix), 0.16 * rush);
-    if (tr.t >= 1) { tr = null; $('labels').classList.remove('off'); }
+    if (tr.t >= 1) {
+      const done = tr.to; tr = null; S.stage = done;
+      if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; $('labels').classList.remove('off'); }
+    }
   } else {
     labelView = viewFor(S.stage, 1, 0, time);
     R.begin(0, labelView, 1); STAGES[S.stage].draw(R, S, time, dt);
