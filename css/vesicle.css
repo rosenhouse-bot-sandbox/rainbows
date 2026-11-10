@@ -126,7 +126,7 @@ input.laser::-moz-range-progress{background:#19b8ff}
 .infTop figure canvas{width:100%;max-width:118px;margin:0 auto;aspect-ratio:1;display:block;border-radius:6px;background:#000;image-rendering:pixelated}
 .infTop figcaption{font-size:11.5px;color:var(--ink3);text-align:center}
 #fan{grid-column:1/-1;width:100%;height:104px;display:block}
-#strips{width:100%;height:270px;display:block}
+#strips{width:100%;height:250px;display:block}
 #pair{width:100%;height:128px;display:block}
 .inf p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
 body.infer .scalebar{right:calc(362px + env(safe-area-inset-right))}
