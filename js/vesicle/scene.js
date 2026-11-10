@@ -714,7 +714,7 @@ export class Scene {
     } };
     const edge = (P, a) => { for (const [cs, sn] of planes) for (let i = 0; i + 3 < P.length; i += 2) { put(lin, P[i] * cs, P[i + 1], P[i] * sn, gold, a); put(lin, P[i + 2] * cs, P[i + 3], P[i + 2] * sn, gold, a); } };
     const tall = O(B.tall), low = O(B.low);
-    band(tall, low, 0.085); band(O(B.tall2), O(B.low2), 0.11);
+    band(tall, low, 0.05); band(O(B.tall2), O(B.low2), 0.07);
     edge(tall, 0.22); edge(low, 0.22); edge(O(B.mid), 0.9);
     // How far the tags have probably spread: the same kind of band, as a ring on the membrane.
     const y = -D - 7, f = B.fused, ring = (r0, r1, a) => { for (let i = 0; i < 56; i++) {
