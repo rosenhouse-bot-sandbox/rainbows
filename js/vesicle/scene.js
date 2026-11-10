@@ -3,13 +3,13 @@
 import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
 import { compute, surf, D, CLEFT, TABW, BAREA, PH } from './profile.js';
 import * as SH from './shaders.js';
-import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, F_OBJ, N_GLASS } from './vitro.js';
+import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
 
 const PI = Math.PI, TAU = 2 * PI;
 export const PATCH = 120;            // radius of membrane drawn lipid by lipid
 const LIPID_AREA = 0.68;             // nm^2 per lipid in a fluid bilayer
 const GLU_PER_NM3 = 0.0903;          // 150 mM glutamate
-const NT_MAX = 26000, BALL_MAX = 9000;
+const NT_MAX = 26000, BALL_MAX = 11000;
 export const CUT_CENTRE = PI / 2;
 
 export const COLORS = {
@@ -76,6 +76,7 @@ export class Scene {
     [[0, 3, 0], [1, 3, 12], [2, 4, 24], [3, 3, 40]].forEach(([loc, size, off]) => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 52, off); });
     gl.bindVertexArray(null);
     this.opt = optics(68); this.emit = []; this.fluor = 0; this.labelText = {};
+    this.buildCell();
   }
 
   // ---- static geometry -------------------------------------------------------------------------
@@ -130,7 +131,7 @@ export class Scene {
   }
 
   buildSheets() {
-    const gl = this.gl, rings = [PATCH - 14, PATCH, 150, 200, 280, 420, 700, 1300, 2600, 5000], seg = 72, v = [];
+    const gl = this.gl, rings = [PATCH - 14, PATCH, 150, 200, 280, 420, 700, 1300, 2600, 5000, 10000, 24000], seg = 72, v = [];
     for (let k = 0; k < rings.length - 1; k++) for (let i = 0; i < seg; i++) {
       const a0 = i / seg * TAU, a1 = (i + 1) / seg * TAU, r0 = rings[k], r1 = rings[k + 1];
       const p = (r, a) => [r * Math.cos(a), r * Math.sin(a)];
@@ -216,6 +217,51 @@ export class Scene {
     this.scenery.n = out.length / 8;
   }
 
+  // The rest of our cell at micrometre scale: the other vesicles near the glass (some of which
+  // fuse earlier or later than the one in focus), and enough interior to give the view depth.
+  buildCell() {
+    const gl = this.gl, r = rng(17), out = [];
+    const ball = (x, y, z, rad, c, style) => out.push(x, y, z, rad, c[0], c[1], c[2], style);
+    const inCell = () => { for (;;) { const a = r() * TAU, rr = CELL.r * 0.96 * Math.sqrt(r()); const x = CELL.x + rr * Math.cos(a), z = CELL.z + rr * Math.sin(a); if (Math.hypot(x, z) > 380) return [x, z]; } };
+    this.neigh = [];
+    for (let i = 0; i < 420; i++) {
+      const [x, z] = inCell();
+      if (this.neigh.some((n) => Math.hypot(n.x - x, n.z - z) < 110)) continue;
+      // Just under half fuse within the window, at their own moment; the rest stay docked.
+      this.neigh.push({ x, z, rad: 19 + r() * 5, off: r() < 0.45 ? -1.5 + 2.9 * r() : null, k: 0.75 + 0.5 * r() });
+    }
+    // Vesicles deeper in the cytoplasm, out of the laser's reach.
+    for (let i = 0; i < 1700; i++) {
+      const [x, z] = inCell(), top = domeY(x, z);
+      if (top < 260 || Math.hypot(x, z) < 700) continue;
+      ball(x, 70 + (Math.min(top, 2600) - 170) * Math.pow(r(), 1.6), z, 19 + r() * 6, shade([0.80, 0.58, 0.30], 0.8 + 0.35 * r()), 2);
+    }
+    const chain = (a, b, rad, step, c, style, wob) => {
+      const len = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]), n = Math.ceil(len / step), ph = r() * 9;
+      for (let i = 0; i <= n; i++) { const q = mixv(a, b, i / n), w = Math.sin(i * step / 900 + ph) * wob; ball(q[0] + w, q[1] + Math.cos(i * step / 700 + ph) * wob * 0.3, q[2] - w * 0.6, rad, c, style); }
+    };
+    // Mitochondria.
+    for (let i = 0; i < 22; i++) {
+      const [x, z] = inCell(), top = domeY(x, z);
+      if (top < 1500 || Math.hypot(x, z) < 1800 || Math.hypot(x - CELL.x, z - CELL.z) < 3300) continue;
+      const a = r() * TAU, len = 900 + r() * 1500, y = 500 + r() * Math.min(1800, top - 1100);
+      chain([x, y, z], [x + Math.cos(a) * len, y + (r() - 0.5) * 300, z + Math.sin(a) * len], 210 + r() * 60, 150, [0.66, 0.33, 0.37], 3, 120);
+    }
+    // Actin stress fibres along the footprint, and microtubules running out from beside the nucleus.
+    for (let i = 0; i < 9; i++) {
+      const a = 0.5 + (r() - 0.5) * 0.7, off = (i - 4) * 1900 + r() * 500, hl = Math.sqrt(Math.max(0, CELL.r * CELL.r * 0.84 - off * off));
+      const cx = CELL.x - Math.sin(a) * off, cz = CELL.z + Math.cos(a) * off;
+      chain([cx - Math.cos(a) * hl, 95, cz - Math.sin(a) * hl], [cx + Math.cos(a) * hl, 95, cz + Math.sin(a) * hl], 30, 55, [0.62, 0.36, 0.40], 0, 0);
+    }
+    for (let i = 0; i < 16; i++) {
+      const a = i / 16 * TAU + r() * 0.3, len = CELL.r * (0.55 + 0.33 * r()), o = [CELL.x + Math.cos(a) * 2600, 900, CELL.z + Math.sin(a) * 2600];
+      chain(o, [CELL.x + Math.cos(a) * len, 160 + 200 * r(), CELL.z + Math.sin(a) * len], 26, 55, [0.42, 0.62, 0.60], 0, 60);
+    }
+    this.cellStuff = { b: gl.createBuffer(), n: out.length / 8 };
+    this.cellStuff.vao = instancedVAO(gl, this.corners, this.cellStuff.b, [4, 4], 8);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.cellStuff.b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(out), gl.STATIC_DRAW);
+  }
+
   // ---- per-frame state -------------------------------------------------------------------------
   update(st, time) {
     const gl = this.gl, R = st.diam / 2 - 2.4, key = st.p.toFixed(5) + '|' + R;
@@ -234,7 +280,9 @@ export class Scene {
     const kept = (x, z) => half < 0.002 || Math.abs(((Math.atan2(z, x) - CUT_CENTRE + PI) % TAU + TAU) % TAU - PI) >= half;
 
     const d = this.dynData; let n = 0;
-    const ball = (q, rad, c, style = 0) => { if (n >= BALL_MAX) return; const k = n++ * 8; d[k] = q[0]; d[k + 1] = q[1]; d[k + 2] = q[2]; d[k + 3] = rad; d[k + 4] = c[0]; d[k + 5] = c[1]; d[k + 6] = c[2]; d[k + 7] = style; };
+    // Each ball carries a category, so the legend can pick out one kind of molecule.
+    let CAT = 0;
+    const ball = (q, rad, c, style = 0, cat = CAT) => { if (n >= BALL_MAX) return; const k = n++ * 8; d[k] = q[0]; d[k + 1] = q[1]; d[k + 2] = q[2]; d[k + 3] = rad; d[k + 4] = c[0]; d[k + 5] = c[1]; d[k + 6] = c[2]; d[k + 7] = style + 8 * cat; };
     const tmp = new Float64Array(6);
     const at = (leaf, a, phi) => { surf(S, leaf, a, phi, tmp); return { p: [tmp[0], tmp[1], tmp[2]], n: [tmp[3], tmp[4], tmp[5]] }; };
     const strand = (a, b, steps, rad, c) => { for (let i = 0; i <= steps; i++) ball(mixv(a, b, i / steps), rad, c); };
@@ -252,8 +300,8 @@ export class Scene {
       this.emit.push([c[0], c[2], b, c[1]]);
       if (!draw) return c;
       const col = lit ? shade(C.phluorin, Math.min(1.25, 0.3 + 1.5 * b)) : [0.30, 0.40, 0.34];
-      ball(add(base, A.n, -0.9), 0.34, shade(C.synaptobrevin, 0.9));
-      for (const t of [-2.3, -3.6, -4.9]) ball(add(base, A.n, t), 1.15, col, lit ? 1 : 0);
+      ball(add(base, A.n, -0.9), 0.34, shade(C.synaptobrevin, 0.9), 0, 5);
+      for (const t of [-2.3, -3.6, -4.9]) ball(add(base, A.n, t), 1.15, col, lit ? 1 : 0, lit ? 13 : 14);
       return c;
     };
 
@@ -293,22 +341,26 @@ export class Scene {
         for (let i = 0; i <= 27; i++) {
           const s = i / 27; let q = bundle(j, s), rad = 0.58;
           if (s > zip) { const u = (s - zip) / (1 - zip); q = add(q, off, u * u * (3 - 2 * u)); rad = 0.36; }
-          ball(q, rad, cols[j]);
+          ball(q, rad, cols[j], 0, [3, 4, 5, 4][j]);
           if (i === 27) tips.push(q);
         }
       }
       // Linkers and the two membrane-spanning helices.
       for (const [tip, A, c] of [[tips[0], Sx, C.syntaxin], [tips[2], B, C.synaptobrevin]]) {
+        CAT = c === C.syntaxin ? 3 : 5;
         strand(tip, A.p, 3, 0.36, c);
         for (let t = 0.5; t <= 2 * D + 0.3; t += 0.55) ball(add(A.p, A.n, -t), 0.55, shade(c, 0.82));
       }
       // SNAP-25's two helices are joined by a loop that is lipid-anchored to the plasma membrane.
+      CAT = 4;
       const ctrl = add(add(C0, dir, Lb * 0.5), Sx.n, -2.6), lc = shade(C.snap25, 0.8);
       for (let i = 1; i < 12; i++) { const u = i / 12; ball(mixv(mixv(tips[1], ctrl, u), mixv(ctrl, heads[3], u), u), 0.3, lc); }
       if (!anchors.snare || sn.phi % TAU > 2.9 && sn.phi % TAU < 3.6) anchors.snare = add(C0, dir, Lb * 0.6);
     });
 
+    CAT = 0;
     if (vitro) {
+      CAT = 5;
       this.free.forEach((fr) => {
         const site = freeSite(S, fr, p), A = at(0, site[0], site[1]), draw = kept(A.p[0], A.p[2]);
         if (draw) {
@@ -323,14 +375,33 @@ export class Scene {
       if (lit.length) for (let j = 0; j < 80; j++) {
         const cyc = time * 0.5 + j * 0.6180339, ph = cyc % 1, id = Math.abs(Math.floor(cyc)) * 131 + j * 17, e = lit[id % lit.length];
         const dy = 1 - 2 * hash(id + 0.3), a = hash(id + 0.7) * TAU, dr = Math.sqrt(1 - dy * dy), L = 170 * ph;
-        ball([e[0] + dr * Math.cos(a) * L, e[3] + dy * L, e[1] + dr * Math.sin(a) * L], 0.62 * (1 - ph) * Math.min(1, e[2] * 1.6), C.emission, 1);
+        ball([e[0] + dr * Math.cos(a) * L, e[3] + dy * L, e[1] + dr * Math.sin(a) * L], 0.62 * (1 - ph) * Math.min(1, e[2] * 1.6), C.emission, 1, 12);
       }
       this.fluor = this.emit.reduce((t, e) => t + e[2], 0) / 36;
-      if (st.dist > 4000) ball([0, -6, 0], 0.005 * st.dist, shade(C.emission, Math.min(1, 0.08 + this.fluor * 1.6)), 1);
+      if (st.dist > 4000) ball([0, -6, 0], 0.005 * st.dist, shade(C.emission, Math.min(1, 0.08 + this.fluor * 1.6)), 1, 12);
+      // The laser footprint covers the whole cell, so every vesicle near the glass is in the
+      // picture: most sit docked and dark, and some fuse a little before or after ours.
+      this.emitN = [];
+      let near = null;
+      for (const nb of this.neigh) {
+        const pi = nb.off === null ? 0 : p + nb.off, pc = Math.min(1, Math.max(0, pi));
+        const u = sstep(PH.PORE, PH.PORE + 0.04, pi), sink = sstep(PH.PORE, 0.72, pc);
+        const h = GAP + lerp(nb.rad + D + 3.5, -5, sink);
+        const spread = 110 * Math.pow(sstep(PH.PORE + 0.02, 1, pc), 0.8) + 260 * Math.max(0, pi - 1);
+        const amp = 36 * opt.at(h) * (0.04 + 0.96 * u) * spot(nb.x, nb.z) * nb.k;
+        this.emitN.push([nb.x, nb.z, amp, spread]);
+        if (pc < 0.72) ball([nb.x, (nb.rad + D + 3.5) * (1 - sink), nb.z], nb.rad * (1 - 0.55 * sstep(0.5, 0.72, pc)), [0.86, 0.62, 0.30], 2, 1);
+        const glow = amp / 36 * 55 * 55 / (55 * 55 + spread * spread);
+        // A soft glow on each side of the membrane, so a flash shows from inside the cell and from under the glass.
+        if (glow > 0.03) for (const y of [9, -9]) ball([nb.x, y, nb.z], (30 + spread) * 0.5, shade(C.phluorin, Math.min(1.3, glow * 2.2)), 4, 13);
+        if (nb.off !== null && Math.abs(pi - 0.5) < 0.45 && (!near || Math.hypot(nb.x, nb.z) < Math.hypot(near[0], near[2]))) near = [nb.x, 30, nb.z];
+      }
+      anchors.neigh = near;
     }
 
     // Synaptotagmin, the calcium sensor: anchored in the vesicle, with two C2 domains that
     // plunge into the plasma membrane when calcium binds.
+    CAT = 6;
     const wCa = sstep(0.07, 0.15, p), wDock = wCa * (1 - sstep(0.42, 0.62, p));
     this.sytPos = [];
     this.syts.forEach((sy) => {
@@ -346,12 +417,13 @@ export class Scene {
       for (let t = 0.5; t <= 2 * D + 0.3; t += 0.55) ball(add(T.p, T.n, -t), 0.55, shade(c, 0.8));
       strand(T.p, c2a, 4, 0.33, shade(c, 0.9)); strand(c2a, c2b, 3, 0.33, shade(c, 0.9));
       for (const q of [c2a, c2b]) for (const [a, b, e] of [[0.8, 0.5, 0], [-0.8, 0.5, 0], [0, -0.6, 0.8], [0, -0.6, -0.8]]) ball(add(add(add(q, er, a), [0, 1, 0], b), et, e), 1.25, c);
-      if (wCa > 0.5) for (const o of [[0.9, -1.1, 0.4], [-0.7, -1.2, -0.5], [0.1, -1.3, -0.9]]) ball(add(c2b, o), 0.3 * wCa, C.calcium, 1);
+      if (wCa > 0.5) for (const o of [[0.9, -1.1, 0.4], [-0.7, -1.2, -0.5], [0.1, -1.3, -0.9]]) ball(add(c2b, o), 0.3 * wCa, C.calcium, 1, 8);
       this.sytPos.push(c2b);
       if (!anchors.syt) anchors.syt = c2b;
     });
 
     // Voltage-gated calcium channels, and the calcium that rushes in when one opens.
+    CAT = 0;
     const caFlow = sstep(0.03, 0.09, p) * (1 - sstep(0.2, 0.3, p));
     this.channels.forEach((ch, ci) => {
       const A = at(0, Av + PI * ch.r * ch.r, ch.phi);
@@ -374,7 +446,7 @@ export class Scene {
           let q;
           if (ph < 0.4) q = add(mid, [jx, lerp(-11, 5, ph / 0.4), jz]);
           else { const u = (ph - 0.4) / 0.6; q = mixv(add(mid, [jx, 5, jz]), add(tgt, [Math.sin(wob * 2.3) * 7, Math.cos(wob * 3.1) * 4 + 3, Math.cos(wob * 2.9) * 7]), Math.sqrt(u)); }
-          ball(q, 0.34 * (1 - Math.pow(ph, 4)), C.calcium, 1);
+          ball(q, 0.34 * (1 - Math.pow(ph, 4)), C.calcium, 1, 8);
         }
       }
     });
@@ -398,6 +470,7 @@ export class Scene {
     if (!vitro) this.receptors.forEach((rc, ri) => {
       if (!kept(rc.x, rc.z)) return;
       const open = sstep(0, 0.035, p - (0.415 + rc.r * 0.0019 + (rc.nmda ? 0.05 : 0)));
+      CAT = rc.nmda ? 10 : 9;
       const base = rc.nmda ? C.nmda : C.ampa, lit = mixv(base, [1, 1, 0.9], 0.3 * open), k = rc.nmda ? 1.12 : 1;
       for (let j = 0; j < 4; j++) {
         const a = rc.rot + j * PI / 2, cx = Math.cos(a), sz = Math.sin(a), pair = (j % 2 ? 1 : -1) * 0.5;
@@ -407,11 +480,11 @@ export class Scene {
         ball(px(1.7 + 0.5 * open, yTop + 1.0, 0), 1.3, shade(base, 0.9));
         ball(px(2.3, yTop + 3.9, 1.0), 1.85, lit);
         ball(px(2.5, yTop + 8.4 * k, 2.2), 2.0, shade(base, 1.05));
-        if (open > 0.5) ball(px(3.2, yTop + 3.9, 1.0), 0.42, C.glutamate, 1);
+        if (open > 0.5) ball(px(3.2, yTop + 3.9, 1.0), 0.42, C.glutamate, 1, 7);
       }
       if (open > 0.3) for (let j = 0; j < 5; j++) {
         const ph = (time * 0.55 + j * 0.2 + ri * 0.137) % 1, y = lerp(yTop + 7, -CLEFT - 16, ph), sp = y < -CLEFT - D ? (-CLEFT - D - y) * 0.22 : 0.15;
-        ball([rc.x + Math.sin(j * 7.1 + ri) * sp, y, rc.z + Math.cos(j * 5.3 + ri) * sp], 0.3 * open * (1 - ph * ph), C.sodium, 1);
+        ball([rc.x + Math.sin(j * 7.1 + ri) * sp, y, rc.z + Math.cos(j * 5.3 + ri) * sp], 0.3 * open * (1 - ph * ph), C.sodium, 1, 0);
       }
       const score = Math.hypot(rc.x + 22, rc.z + 12);
       if (!rc.nmda && (!nearest || score < nearest.s)) nearest = { s: score, q: [rc.x, yTop + 10, rc.z] };
@@ -441,7 +514,8 @@ export class Scene {
         { id: 'field', q: [fx * 46, GLASS_TOP + (opt.tir ? Math.min(opt.depth, 150) : 60), fz * 46], max: 3000 },
         { id: 'membrane', q: [fx * 84, D, fz * 84] }, { id: 'gap', q: [fx * 66, -GAP / 2, fz * 66] },
         { id: 'glass', q: [fx * 100, GLASS_TOP, fz * 100], max: 3e4, free: true }, ...cellSide,
-        far('cell', [3400 + 6000, 4200, -2100], 9e3, 6e5), far('coverslip', [6 * MM, GLASS_BOT / 2, 0], 1.5e5, 4e7),
+        { id: 'neigh', q: anchors.neigh, min: 700, max: 4e4, free: true }, far('spot', [9000, GLASS_TOP, 6500], 6e3, 3e5),
+        far('cell', [CELL.x + 6000, 4200, CELL.z], 9e3, 6e5), far('coverslip', [6 * MM, GLASS_BOT / 2, 0], 1.5e5, 4e7),
         far('oil', [2.9 * MM, (GLASS_BOT + LENS_Y) / 2, 0], 6e5, 4e7), far('objective', [12.6 * MM, LENS_Y - 18 * MM, 0], 4e6),
         far('laser', [-x2, LENS_Y - 34 * MM, 0], 4e6), far('emission', [0, LENS_Y - 56 * MM, 0], 4e6),
         far('medium', [-9 * MM, 3.6 * MM, 0], 8e6), far('dish', [17.5 * MM, 7 * MM, 0], 8e6),
@@ -490,8 +564,9 @@ export class Scene {
       gl.uniform4f(u.uFog, cam.dist * 0.9, 150 + cam.dist * 0.9, 45 + 0.45 * cam.dist, 190 + 1.5 * cam.dist);
       gl.uniform3fv(u.uFocus, cam.target); gl.uniform2f(u.uCut, CUT_CENTRE, cut * PI / 360);
       gl.uniform1f(u.uTime, time);
-      if (vitro) gl.uniform4f(u.uTIR, GLASS_TOP, opt.tir ? 1 / opt.depth : 0, opt.I0 / 4, 1); else gl.uniform4f(u.uTIR, 0, 0, 0, 0);
+      if (vitro) gl.uniform4f(u.uTIR, GLASS_TOP, opt.tir ? 1 / opt.depth : 0, opt.I0 / 4, SPOT); else gl.uniform4f(u.uTIR, 0, 0, 0, 0);
       gl.uniform2f(u.uMode, vitro ? 1 : 0, sstep(3.6, 4.5, lg));
+      gl.uniform1f(u.uHi, st.hi || 0);
       return u;
     };
     gl.viewport(0, 0, cam.w, cam.h);
@@ -509,7 +584,7 @@ export class Scene {
     gl.uniform1f(u.uGrain, this.spacing * 1.4);
     gl.bindVertexArray(this.sheetVAO);
     for (const [y, c] of [[D, C.plasma], [-D, C.plasmaOut], [-CLEFT + D, C.post], [-CLEFT - D, C.postIn]].slice(0, vitro ? 2 : 4)) {
-      gl.uniform1f(u.uY, y); gl.uniform3fv(u.uSheetCol, c); gl.drawArrays(gl.TRIANGLES, 0, this.sheetN);
+      gl.uniform1f(u.uY, y); gl.uniform3fv(u.uSheetCol, c); gl.uniform4f(u.uFoot, CELL.x, CELL.z, vitro ? CELL.r * 0.985 : 0, y > -CLEFT / 2 ? 2 : 0); gl.drawArrays(gl.TRIANGLES, 0, this.sheetN);
     }
 
     gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
@@ -558,6 +633,7 @@ export class Scene {
     if (vitro) {
       // Solid parts of the bench: the objective, and the nuclei of the cells in the dish.
       u = common(P.ball); gl.uniform3f(u.uBall, 1, 0, 0);
+      gl.bindVertexArray(this.cellStuff.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, cam.dist > 2e5 ? 0 : this.cellStuff.n);
       gl.bindVertexArray(this.nuclei.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, cam.dist > 3000 ? this.nuclei.n : 0);
       u = common(P.mesh); mesh(this.bench.objective, 1, 0.7);
     }
@@ -579,7 +655,7 @@ export class Scene {
     const glassTop = () => {
       const u = common(P.field), H = Math.min(1.1e7, 40 * cam.dist + 2000);
       gl.uniform4f(u.uWave, opt.kx, opt.ky, opt.kyMed, opt.delta);
-      gl.uniform4f(u.uWave2, opt.r, 0, 1, 15000);
+      gl.uniform4f(u.uWave2, opt.r, 0, 1, 1 + 1.1 * sstep(3.2, 4.1, lg));
       gl.uniform3f(u.uO, -H, GLASS_TOP, -H); gl.uniform3f(u.uA, 2 * H, 0, 0); gl.uniform3f(u.uB, 0, 0, 2 * H);
       gl.bindVertexArray(this.emptyVAO); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       // The same field in cross-section, painted on the two faces of the cutaway.

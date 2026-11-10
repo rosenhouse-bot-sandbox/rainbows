@@ -1,0 +1,35 @@
+// What each on-screen label says when you hover over it, and where to read more.
+// Entries are [label, detail, Wikipedia article].
+const W = 'https://en.wikipedia.org/wiki/';
+const I = {
+  vesicle: ['Synaptic vesicle', 'A 40 nm bubble of membrane that stores neurotransmitter. A nerve terminal holds hundreds, and each one releases its contents in a single all-or-nothing event.', 'Synaptic_vesicle'],
+  stalk: ['Hemifusion stalk', 'An hourglass-shaped bridge in which only the facing halves of the two bilayers have merged. Lipids can cross it; the contents cannot.', 'Lipid_bilayer_fusion'],
+  pore: ['Fusion pore', 'The first water-filled channel between the vesicle interior and the outside, about 2 nm wide. It can flicker open and shut before it widens.', 'Exocytosis'],
+  glutamate: ['Glutamate', 'The main excitatory neurotransmitter of the brain. One vesicle carries roughly 1,500 to 2,000 molecules.', 'Glutamate_(neurotransmitter)'],
+  snare: ['SNARE complex', 'Four helices from three proteins: syntaxin and SNAP-25 on the cell membrane, synaptobrevin on the vesicle. Zipping them together supplies the force that fuses the membranes.', 'SNARE_protein'],
+  syt: ['Synaptotagmin', 'The calcium sensor. Its two C2 domains bind calcium and plunge into the cell membrane, which triggers fusion within a fraction of a millisecond.', 'Synaptotagmin'],
+  channel: ['Calcium channel', 'Voltage-gated channels open when the nerve impulse arrives. They sit within tens of nanometres of docked vesicles, so calcium reaches the sensor almost at once.', 'Voltage-gated_calcium_channel'],
+  receptor: ['AMPA receptor', 'A glutamate-gated ion channel on the receiving cell. Binding glutamate opens it and lets sodium in, which starts the electrical signal in the next neuron.', 'AMPA_receptor'],
+  pre: ['Presynaptic membrane', 'The membrane of the sending cell at the active zone, where vesicles dock and fuse.', 'Active_zone'],
+  cleft: ['Synaptic cleft', 'The 20 nm gap between the two cells. Transmitter crosses it by diffusion in a few microseconds.', 'Chemical_synapse'],
+  post: ['Postsynaptic membrane', 'The membrane of the receiving cell, studded with receptors directly opposite the release site.', 'Dendritic_spine'],
+  psd: ['Postsynaptic density', 'A dense scaffold of proteins under the receiving membrane that holds receptors in place opposite the release site.', 'Postsynaptic_density'],
+  reserve: ['Reserve vesicles', 'Vesicles held back from the membrane, tethered to each other and to the cytoskeleton, that refill the release sites during sustained activity.', 'Synaptic_vesicle'],
+  mito: ['Mitochondrion', 'Supplies the ATP that the terminal spends on refilling vesicles, pumping ions and pulling SNARE complexes apart for reuse.', 'Mitochondrion'],
+  phl: ['pHluorin', 'A pH-sensitive green fluorescent protein fused to the inner end of synaptobrevin. It is dark in the acidic vesicle and about twenty times brighter at the pH outside the cell.', 'Synapto-pHluorin'],
+  field: ['Evanescent field', 'Light that leaks a short way past a totally reflecting surface. Its intensity falls off exponentially with height, so only molecules within about 100 nm of the glass are excited.', 'Evanescent_field'],
+  membrane: ['Cell membrane', 'The part of the cell membrane that lies flat against the coverslip. Fusion events here happen inside the evanescent field.', 'Cell_membrane'],
+  gap: ['Medium', 'A thin film of culture medium between the cell and the glass. Adherent cells sit tens of nanometres above the surface.', 'Growth_medium'],
+  glass: ['Coverslip glass', 'Refractive index 1.52, higher than the cell at about 1.36. That step in index is what makes total internal reflection possible.', 'Cover_slip'],
+  neigh: ['Other vesicles', 'The laser footprint covers the whole cell, so every vesicle near the glass is in view. Each fuses at its own moment: a flash, then a spreading, fading spot.', 'Exocytosis'],
+  spot: ['Laser footprint', 'The illuminated patch of glass, tens of micrometres across and stretched along the beam because the light arrives at a steep angle.', 'Total_internal_reflection'],
+  cell: ['The cell', 'A cultured cell spread on the glass. Only the bottom hundred nanometres or so of it is lit.', 'Cell_culture'],
+  coverslip: ['Coverslip', 'Standard No. 1.5 glass, 0.17 mm thick. High-NA objectives are corrected for exactly this thickness.', 'Cover_slip'],
+  oil: ['Immersion oil', 'Matches the refractive index of the glass, so steeply angled rays pass from lens to coverslip without bending or reflecting.', 'Oil_immersion'],
+  objective: ['Objective', 'A 100× oil-immersion lens with numerical aperture 1.49. An aperture above the index of the cell is what lets it deliver light beyond the critical angle.', 'Objective_(optics)'],
+  laser: ['488 nm laser', 'Focused off-centre at the back of the objective, the beam leaves the front lens tilted. Moving it further off-centre steepens the angle.', 'Total_internal_reflection_fluorescence_microscope'],
+  emission: ['510 nm fluorescence', 'Light given off by the tags, collected by the same objective and separated from the laser light by a filter on its way to the camera.', 'Fluorescence'],
+  medium: ['Culture medium', 'Buffered salt solution with nutrients that keeps the cells alive on the microscope.', 'Growth_medium'],
+  dish: ['Glass-bottom dish', 'A 35 mm plastic dish with a coverslip sealed across a hole in its base, so an oil-immersion objective can get close enough.', 'Petri_dish'],
+};
+export const INFO = Object.fromEntries(Object.entries(I).map(([k, v]) => [k, { label: v[0], detail: v[1], url: W + v[2] }]));

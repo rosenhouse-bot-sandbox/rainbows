@@ -8,6 +8,10 @@ export const LAMBDA_EX = 488, LAMBDA_EM = 510;       // nm: argon-line laser, pH
 export const NA = 1.49, F_OBJ = 2e6;                 // 100x TIRF objective, 2 mm focal length
 export const GAP = 40;                               // nm of medium between the cell and the glass
 export const UM = 1e3, MM = 1e6;
+export const CELL = { x: 3400, z: -2100, r: 9500 };  // our cell's footprint on the glass
+export const SPOT = 15000;                           // nm, 1/e half-width of the laser footprint (wider along the beam)
+export const spot = (x, z) => Math.exp(-(x * x * 0.25 + z * z) / (2 * SPOT * SPOT));
+export const domeY = (x, z) => { const r = Math.hypot(x - CELL.x, z - CELL.z) / CELL.r; return r >= 1 ? 0 : CELL.r * (0.62 * Math.pow(1 - r * r, 0.8) + 0.035 * (1 - r)); };
 export const GLASS_TOP = -GAP, GLASS_BOT = -GAP - 170 * UM, LENS_Y = GLASS_BOT - 120 * UM;
 export const THETA_MAX = Math.asin(NA / N_GLASS) * 180 / Math.PI;   // steepest ray the objective can deliver
 export const EV = (nm) => 1239.84 / nm;              // photon energy in electron-volts
@@ -80,11 +84,11 @@ export function buildBench(gl) {
   const med = [0.95, 0.55, 0.62, 0.10];
   B.medium = mesh(lathe([[0, 3.6 * MM, med], [16.7 * MM, 3.6 * MM, med]]));
   // Cells: low domes spread on the glass. The first is ours; the rest are neighbours in the culture.
-  const cellCol = [0.30, 0.62, 0.66, 0.34], prof = [];
+  const cellCol = [0.34, 0.57, 0.80, 0.24], prof = [];
   for (let i = 0; i <= 14; i++) { const r = i / 14; prof.push([r, 0.62 * Math.pow(1 - r * r, 0.8) + 0.035 * (1 - r), cellCol]); }
-  const r = rng(41), inst = [3400, D0, -2100, 9.5 * UM], nuc = [[3400, 3.3 * UM, -2100, 2.9 * UM]];
+  const r = rng(41), inst = [CELL.x, D0, CELL.z, CELL.r], nuc = [[CELL.x, 3.3 * UM, CELL.z, 2.9 * UM]];
   let guard = 0;
-  const placed = [[3400, -2100, 9.5 * UM]];
+  const placed = [[CELL.x, CELL.z, CELL.r]];
   while (placed.length < 420 && guard++ < 20000) {
     const a = r() * 2 * PI, rr = Math.pow(r(), 0.7) * 1.9 * MM, x = rr * Math.cos(a), z = rr * Math.sin(a), s = (7 + r() * 5) * UM;
     if (placed.some((q) => Math.hypot(q[0] - x, q[1] - z) < q[2] + s + 2 * UM)) continue;
@@ -101,7 +105,7 @@ export function buildBench(gl) {
 // Path of the laser through the objective to the glass surface and back, as line segments.
 export function beamPath(o) {
   const t = Math.tan(o.th), x1 = (GLASS_TOP - LENS_Y) * t, x2 = F_OBJ * N_GLASS * Math.sin(o.th);
-  const ex = [0.10, 0.72, 1.0], w = 22 * UM, seg = [];
+  const ex = [0.10, 0.72, 1.0], w = 30 * UM, seg = [];
   const leg = (sx, k) => {
     seg.push({ a: [sx * x2, LENS_Y - 70 * MM, 0], b: [sx * x2, LENS_Y - 3.2 * MM, 0], w, c: ex, k });
     seg.push({ a: [sx * x2, LENS_Y - 3.2 * MM, 0], b: [sx * x1, LENS_Y, 0], w, c: ex, k });
@@ -115,20 +119,23 @@ export function beamPath(o) {
 // ---- the camera image ----------------------------------------------------------------------------
 // What a camera behind the objective records: every fluorophore becomes a diffraction-limited
 // blur about 175 nm wide, sampled by 65 nm pixels, with photon shot noise on top.
-export const CAM = { px: 48, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA };
+export const CAM = { px: 128, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA };
 export class Camera {
   constructor(canvas, trace) {
     this.ctx = canvas.getContext('2d'); this.img = this.ctx.createImageData(CAM.px, CAM.px);
     this.f = new Float32Array(CAM.px * CAM.px); this.trace = trace; this.tctx = trace.getContext('2d');
     this.r = rng(99); this.curve = null; this.noise = new Float32Array(CAM.px * CAM.px);
   }
-  // emit: [[x, z, brightness]...] in nm; bg: uniform background from out-of-focus fluorescence.
+  // emit: [[x, z, brightness, spread]...] in nm, where spread is how far a vesicle's tags have
+  // wandered (it widens the blur and lowers the peak); bg: out-of-focus background.
   render(emit, bg, reshuffle) {
-    const n = CAM.px, f = this.f, s = CAM.sigma / CAM.nm, k = 1 / (2 * s * s), half = n / 2;
+    const n = CAM.px, f = this.f, s = CAM.sigma / CAM.nm, half = n / 2;
     f.fill(bg);
-    for (const [x, z, b] of emit) {
-      if (b < 1e-4) continue;
-      const cx = x / CAM.nm + half - 0.5, cy = z / CAM.nm + half - 0.5, R = Math.ceil(s * 4);
+    for (const [x, z, b0, spread] of emit) {
+      if (b0 < 1e-4) continue;
+      const sw = spread ? Math.hypot(s, spread / CAM.nm) : s, k = 1 / (2 * sw * sw), b = b0 * s * s / (sw * sw);
+      const cx = x / CAM.nm + half - 0.5, cy = z / CAM.nm + half - 0.5, R = Math.min(20, Math.ceil(sw * 3.5));
+      if (cx < -R || cy < -R || cx > n + R || cy > n + R) continue;
       for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(n - 1, Math.ceil(cy + R)); j++)
         for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(n - 1, Math.ceil(cx + R)); i++)
           f[j * n + i] += b * Math.exp(-((i - cx) * (i - cx) + (j - cy) * (j - cy)) * k);

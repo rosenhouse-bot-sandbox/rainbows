@@ -2,6 +2,7 @@
 import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
 import { PH } from './profile.js';
+import { INFO } from './info.js';
 import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
 
 const $ = (id) => document.getElementById(id);
@@ -32,15 +33,10 @@ const STAGES = [
     body: 'The vesicle is gone and its lipids keep mixing with their neighbours. The cell will pull SNAREs apart for reuse and pinch off new vesicles nearby.',
     vitro: 'The vesicle is gone. Its tags keep spreading until the spot fades into the background, which is how a fusion event is told apart from a vesicle that just arrives.' },
 ];
-const LABELS = {
-  vesicle: 'Synaptic vesicle', stalk: 'Hemifusion stalk', pore: 'Fusion pore', glutamate: 'Glutamate',
-  snare: 'SNARE complex', syt: 'Synaptotagmin', channel: 'Calcium channel', receptor: 'AMPA receptor',
-  pre: 'Presynaptic membrane', cleft: 'Synaptic cleft, 20 nm', post: 'Postsynaptic membrane',
-  psd: 'Postsynaptic density', reserve: 'Reserve vesicles', mito: 'Mitochondrion',
-  phl: 'pHluorin', field: 'Evanescent field', membrane: 'Cell membrane', gap: `Medium, ${GAP} nm`, glass: 'Coverslip glass',
-  cell: 'The cell', coverslip: 'Coverslip, 0.17 mm', oil: 'Immersion oil', objective: 'Objective, 100×, NA 1.49',
-  laser: '488 nm laser in', emission: '510 nm fluorescence to camera', medium: 'Culture medium', dish: 'Glass-bottom dish, 35 mm',
-};
+const LABELS = Object.fromEntries(Object.entries(INFO).map(([id, v]) => [id, v.label]));
+LABELS.cleft = 'Synaptic cleft, 20 nm'; LABELS.gap = `Medium, ${GAP} nm`; LABELS.coverslip = 'Coverslip, 0.17 mm';
+LABELS.objective = 'Objective, 100×, NA 1.49'; LABELS.laser = '488 nm laser in'; LABELS.emission = '510 nm fluorescence to camera';
+LABELS.dish = 'Glass-bottom dish, 35 mm'; LABELS.neigh = 'Other vesicles, some fusing';
 const FAR = new Set(['reserve', 'mito', 'psd']);
 
 const st = {
@@ -48,8 +44,43 @@ const st = {
   az: params.has('az') ? +params.get('az') : 24, el: params.has('el') ? +params.get('el') : 9,
   dist: +params.get('dist') || 165, cut: params.has('cut') ? +params.get('cut') : 110,
   vitro: params.get('mode') === 'vitro', angle: +params.get('angle') || 68,
-  play: false, spin: !reduced && !params.has('still'), labels: !params.has('nolabels'),
+  play: false, spin: !reduced && !params.has('still'), labels: !params.has('nolabels'), hi: 0,
 };
+
+// The view is mirrored into the address bar after '#', so any state can be bookmarked or shared.
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const HASH = {
+  mode: [() => (st.vitro ? 'vitro' : 'vivo'), (v) => { st.vitro = v === 'vitro'; }],
+  p: [() => +st.p.toFixed(3), (v) => { st.p = clamp(+v || 0, 0, 1); }],
+  size: [() => st.diam, (v) => { st.diam = clamp(Math.round(+v) || 42, 30, 90); }],
+  angle: [() => +st.angle.toFixed(1), (v) => { st.angle = clamp(+v || 68, 50, 79); }],
+  cut: [() => Math.round(st.cut), (v) => { st.cut = clamp(+v || 0, 0, 180); }],
+  orbit: [() => +st.az.toFixed(1), (v) => { st.az = ((+v || 0) % 360 + 360) % 360; }],
+  tilt: [() => +st.el.toFixed(1), (v) => { st.el = clamp(+v || 0, -85, 88); }],
+  dist: [() => +st.dist.toPrecision(3), (v) => { st.dist = clamp(+v || 165, 38, 1.6e8); }],
+  labels: [() => (st.labels ? 1 : 0), (v) => { st.labels = v !== '0'; }],
+};
+let wroteHash = '';
+function readHash() {
+  const h = location.hash.slice(1);
+  if (!h || h === wroteHash) return false;
+  const q = new URLSearchParams(h);
+  for (const [k, [, set]] of Object.entries(HASH)) if (q.has(k)) set(q.get(k));
+  st.spin = false; st.play = false;
+  return true;
+}
+const hashNow = () => Object.entries(HASH).filter(([k]) => k !== 'angle' || st.vitro).map(([k, [get]]) => k + '=' + get()).join('&');
+let hashTimer = 0;
+function writeHash() {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    const h = hashNow();
+    if (h === wroteHash) return;
+    wroteHash = h;
+    try { history.replaceState(null, '', '#' + h); } catch (e) { /* sandboxed frames may refuse; the Copy link button still works */ }
+  }, 300);
+}
+const fromLink = readHash();
 
 let gl, scene;
 try {
@@ -72,6 +103,7 @@ const fmtLen = (nm) => (nm < 1000 ? Math.round(nm) + ' nm' : nm < 1e6 ? +(nm / 1
 const fill = (el) => el.style.setProperty('--v', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
 let stageIdx = -1; const shown = {};
 function syncUI() {
+  writeHash();
   // Only touch the DOM when a value has actually changed; this runs every frame during playback.
   const set = (id, v, text) => {
     if (shown[id] === text + v) return; shown[id] = text + v;
@@ -130,7 +162,28 @@ $('modeVivo').addEventListener('click', () => setMode(false));
 $('modeVitro').addEventListener('click', () => setMode(true));
 $('energy').textContent = `Excitation ${LAMBDA_EX} nm, ${EV(LAMBDA_EX).toFixed(2)} eV per photon. Emission ${LAMBDA_EM} nm, ${EV(LAMBDA_EM).toFixed(2)} eV. The difference is lost as heat in the protein.`;
 $('spin').addEventListener('change', (e) => { st.spin = e.target.checked; });
-$('lab').addEventListener('change', (e) => { st.labels = e.target.checked; $('labels').classList.toggle('off', !st.labels); });
+$('lab').addEventListener('change', (e) => { st.labels = e.target.checked; $('labels').classList.toggle('off', !st.labels); writeHash(); });
+$('share').addEventListener('click', async () => {
+  const url = location.origin + location.pathname + '#' + hashNow(), b = $('share');
+  try { await navigator.clipboard.writeText(url); b.textContent = 'Link copied'; }
+  catch (e) { prompt('Copy this link', url); }
+  setTimeout(() => { b.textContent = 'Copy link to this view'; }, 1800);
+});
+addEventListener('hashchange', () => { if (readHash()) { $('spin').checked = st.spin; $('lab').checked = st.labels; $('labels').classList.toggle('off', !st.labels); setMode(st.vitro); } });
+// Pointing at an entry in the colour key picks those molecules out in the scene; a click holds it.
+let hiHeld = 0;
+for (const li of document.querySelectorAll('.key li[data-cat]')) {
+  const cat = +li.dataset.cat;
+  const show = () => { st.hi = cat; }, hide = () => { st.hi = hiHeld; };
+  li.addEventListener('mouseenter', show); li.addEventListener('mouseleave', hide);
+  li.addEventListener('focus', show); li.addEventListener('blur', hide);
+  const toggle = () => {
+    hiHeld = hiHeld === cat ? 0 : cat; st.hi = hiHeld;
+    for (const o of document.querySelectorAll('.key li[data-cat]')) o.setAttribute('aria-pressed', +o.dataset.cat === hiHeld);
+  };
+  li.addEventListener('click', toggle);
+  li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+}
 $('play').addEventListener('click', () => { if (!st.play && st.p > 0.995) st.p = 0; st.play = !st.play; syncUI(); });
 $('moreBtn').addEventListener('click', () => {
   const open = $('panel').classList.toggle('open');
@@ -193,11 +246,22 @@ function setCamera() {
 
 // ---- labels and scale bar ------------------------------------------------------------------------
 const tags = {};
+let hoverTag = false;
 for (const [id, text] of Object.entries(LABELS)) {
   const t = document.createElement('div'); t.className = 'tag' + (FAR.has(id) ? ' far' : '');
-  const s = document.createElement('span'); s.textContent = text; t.append(s); $('labels').append(t); tags[id] = t;
+  const sp = document.createElement('span'); sp.textContent = text; t.append(sp);
+  // Hover card (desktop): a sentence or two, and a way out to read more.
+  const pop = document.createElement('div'); pop.className = 'pop';
+  const h = document.createElement('b'), d = document.createElement('p'), a = document.createElement('a');
+  h.textContent = INFO[id].label; d.textContent = INFO[id].detail;
+  a.href = INFO[id].url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Read more on Wikipedia';
+  pop.append(h, d, a); t.append(pop);
+  t.addEventListener('mouseenter', () => { hoverTag = true; t.classList.toggle('up', t.getBoundingClientRect().top > innerHeight - 230); });
+  t.addEventListener('mouseleave', () => { hoverTag = false; });
+  $('labels').append(t); tags[id] = t;
 }
 function placeLabels() {
+  if (hoverTag) return;
   const V = cam.view, P = cam.proj, cw = canvas.clientWidth, ch = canvas.clientHeight, pr = $('panel').getBoundingClientRect();
   const taken = [];
   const live = new Set(scene.labels.map((L) => L.id));
@@ -236,6 +300,7 @@ function drawCamera(now) {
   // Brightness is scaled so a fully lit vesicle resting on the glass would just saturate.
   const W = 5.5 / 36, emit = scene.emit.map((e) => [e[0], e[1], e[2] * W]);
   for (const [x, z, rad] of scene.docked) emit.push([x, z, 36 * 0.04 * W * o.at(GAP + rad + 6)]);
+  for (const e of scene.emitN) emit.push([e[0], e[1], e[2] * W, e[3]]);
   const bg = 0.035 + 0.05 * (o.I0 / 4) * Math.min(o.depth, 2600) / 100;
   camera.render(emit, bg, reshuffle);
   const key = st.diam + '|' + st.angle;
@@ -243,8 +308,8 @@ function drawCamera(now) {
   if (curve) camera.drawTrace(curve, st.p);
   if (reshuffle) pipRect = $('pip').getBoundingClientRect();
 }
-$('pipBar').style.width = (500 / (CAM.px * CAM.nm) * 100) + '%';
-$('pipNote').textContent = `Each point of light blurs to ${Math.round(CAM.fwhm)} nm, the diffraction limit. Pixels are ${CAM.nm} nm.`;
+$('pipBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%';
+$('pipNote').textContent = `Every vesicle near the glass shows up, blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Ours is at the centre; the trace follows it.`;
 
 // ---- frame loop ----------------------------------------------------------------------------------
 const maxFrames = +params.get('frames') || 0; let drawn = 0;
@@ -257,7 +322,7 @@ function frame(now) {
     if (st.p >= 1) st.play = false;
     syncUI();
   }
-  if (st.spin && !pointers.size) { st.az = (st.az + dt * 3.2) % 360; syncUI(); }
+  if (st.spin && !pointers.size && !hoverTag) { st.az = (st.az + dt * 3.2) % 360; syncUI(); }
   scene.update(st, clock);
   if (scene.glutamate !== shownGlu) {
     shownGlu = scene.glutamate;
@@ -277,5 +342,6 @@ function frame(now) {
 }
 document.addEventListener('visibilitychange', () => { frames = 0; slow = 0; last = performance.now(); });
 setMode(st.vitro);
-if (!reduced && !params.has('p') && !params.has('still')) setTimeout(() => { if (st.p === 0) { st.play = true; syncUI(); } }, 1400);
+if (fromLink) { $('spin').checked = st.spin; $('lab').checked = st.labels; $('labels').classList.toggle('off', !st.labels); syncUI(); }
+if (!reduced && !fromLink && !params.has('p') && !params.has('still')) setTimeout(() => { if (st.p === 0) { st.play = true; syncUI(); } }, 1400);
 requestAnimationFrame(frame);

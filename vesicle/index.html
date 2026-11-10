@@ -88,26 +88,27 @@
       <label class="toggle"><input id="spin" type="checkbox" checked><span>Slow orbit</span></label>
       <label class="toggle"><input id="lab" type="checkbox" checked><span>Labels</span></label>
     </div>
+    <button class="share" id="share">Copy link to this view</button>
     <ul class="key" id="keyVitro" aria-label="Colour key for light" hidden>
-      <li><i style="--c:#19b8ff"></i>488 nm laser light</li>
-      <li><i style="--c:#73ff5a"></i>510 nm fluorescence</li>
-      <li><i style="--c:#4dff66"></i>pHluorin, lit</li>
-      <li><i style="--c:#4d6657"></i>pHluorin, quenched</li>
+      <li data-cat="11" tabindex="0" role="button" aria-pressed="false"><i style="--c:#19b8ff"></i>488 nm laser light</li>
+      <li data-cat="12" tabindex="0" role="button" aria-pressed="false"><i style="--c:#73ff5a"></i>510 nm fluorescence</li>
+      <li data-cat="13" tabindex="0" role="button" aria-pressed="false"><i style="--c:#4dff66"></i>pHluorin, lit</li>
+      <li data-cat="14" tabindex="0" role="button" aria-pressed="false"><i style="--c:#4d6657"></i>pHluorin, quenched</li>
       <li class="wide" id="energy"></li>
     </ul>
     <ul class="key" aria-label="Colour key">
-      <li><i style="--c:#f7b04d"></i>Vesicle lipids</li>
-      <li><i style="--c:#5791e0"></i>Cell membrane lipids</li>
-      <li><i style="--c:#eb4247"></i>Syntaxin</li>
-      <li><i style="--c:#54cc6b"></i>SNAP-25</li>
-      <li><i style="--c:#5c54ff"></i>Synaptobrevin</li>
-      <li><i style="--c:#b87af5"></i>Synaptotagmin</li>
-      <li><i style="--c:#ff5cbd"></i>Glutamate</li>
-      <li><i style="--c:#ffe647"></i>Calcium ions</li>
+      <li data-cat="1" tabindex="0" role="button" aria-pressed="false"><i style="--c:#f7b04d"></i>Vesicle lipids</li>
+      <li data-cat="2" tabindex="0" role="button" aria-pressed="false"><i style="--c:#5791e0"></i>Cell membrane lipids</li>
+      <li data-cat="3" tabindex="0" role="button" aria-pressed="false"><i style="--c:#eb4247"></i>Syntaxin</li>
+      <li data-cat="4" tabindex="0" role="button" aria-pressed="false"><i style="--c:#54cc6b"></i>SNAP-25</li>
+      <li data-cat="5" tabindex="0" role="button" aria-pressed="false"><i style="--c:#5c54ff"></i>Synaptobrevin</li>
+      <li data-cat="6" tabindex="0" role="button" aria-pressed="false"><i style="--c:#b87af5"></i>Synaptotagmin</li>
+      <li data-cat="7" tabindex="0" role="button" aria-pressed="false"><i style="--c:#ff5cbd"></i>Glutamate</li>
+      <li data-cat="8" tabindex="0" role="button" aria-pressed="false"><i style="--c:#ffe647"></i>Calcium ions</li>
     </ul>
     <ul class="key plain" id="keyVivo" aria-label="Colour key for receptors">
-      <li><i style="--c:#33b8a8"></i>AMPA receptor</li>
-      <li><i style="--c:#db804d"></i>NMDA receptor</li>
+      <li data-cat="9" tabindex="0" role="button" aria-pressed="false"><i style="--c:#33b8a8"></i>AMPA receptor</li>
+      <li data-cat="10" tabindex="0" role="button" aria-pressed="false"><i style="--c:#db804d"></i>NMDA receptor</li>
     </ul>
     <p class="note">Shapes follow the stalk-and-pore model of membrane fusion, drawn to scale in nanometres. Every lipid keeps the colour of the membrane it started in. The whole event takes under a millisecond; here you set the pace.</p>
   </div>
@@ -116,8 +117,8 @@
 <figure class="pip" id="pip" hidden>
   <figcaption><b>Camera</b><span id="pipInfo">TIRF</span></figcaption>
   <div class="pipImg">
-    <canvas id="cam" width="48" height="48" aria-label="Simulated microscope image of the fusion site"></canvas>
-    <div class="pipScale"><i id="pipBar"></i><em>500 nm</em></div>
+    <canvas id="cam" width="128" height="128" aria-label="Simulated microscope image of the fusion site"></canvas>
+    <div class="pipScale"><i id="pipBar"></i><em>1 µm</em></div>
   </div>
   <canvas id="trace" width="336" height="84" aria-label="Fluorescence at the fusion site over the course of fusion"></canvas>
   <p id="pipNote"></p>

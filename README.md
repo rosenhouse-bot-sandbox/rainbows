@@ -41,7 +41,19 @@ dish over a TIRF microscope, and synaptobrevin carries superecliptic pHluorin on
 - A picture-in-picture camera view shows what the microscope records: each tag blurred to the
   175 nm diffraction limit, 65 nm pixels, shot noise, and a trace of brightness over the event.
 
+- The laser footprint is tens of micrometres wide, so the whole underside of the cell is lit.
+  A few hundred other vesicles sit near the glass; just under half fuse at their own moment
+  before or after the one in focus, and all of them appear in the camera view.
+
 Optics, bench geometry and the camera simulation are in `js/vesicle/vitro.js`.
+
+Around the scene:
+
+- The address bar tracks the view after `#` (`mode`, `p`, `size`, `angle`, `cut`, `orbit`, `tilt`,
+  `dist`, `labels`), so any state can be bookmarked or shared; there is also a copy-link button.
+- On a desktop, hovering a label opens a short explanation with a Wikipedia link
+  (text in `js/vesicle/info.js`).
+- Hovering an entry in the colour key picks those molecules out and dims the rest; clicking holds it.
 
 The membrane is a surface of revolution (sphere, toroidal neck, plane) whose two leaflets are
 offset copies; clipping those offsets at the axis yields the stalk and the pore without special
