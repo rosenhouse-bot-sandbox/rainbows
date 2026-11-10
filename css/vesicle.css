@@ -17,7 +17,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 :focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 
 /* Labels pinned to things in the scene */
-#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:3}
 #labels.off{display:none}
 .tag{position:absolute;left:0;top:0;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;letter-spacing:.01em;color:var(--ink);white-space:nowrap;text-shadow:0 1px 3px rgba(3,5,12,.95),0 0 10px rgba(3,5,12,.9);opacity:0;transition:opacity .3s;will-change:transform}
 .tag.on{opacity:.94}
@@ -88,6 +88,23 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 .fail{position:fixed;inset:0;display:grid;place-content:center;gap:8px;padding:24px;text-align:center;background:var(--bg);z-index:5}
 .fail h2{font-family:var(--display);margin:0}.fail p{margin:0;color:var(--ink2);max-width:40ch}
 
+/* Hover cards on labels (pointer devices on wide screens only) */
+.pop{display:none;position:absolute;left:14px;top:100%;width:270px;padding:11px 13px 12px;white-space:normal;text-shadow:none;font-weight:400;font-style:normal;font-size:13.5px;line-height:1.42;color:var(--ink2);background:rgba(7,11,24,.94);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.pop b{display:block;font-family:var(--display);font-weight:600;font-size:15.5px;color:var(--ink);margin-bottom:3px}
+.pop p{margin:0 0 7px}
+.pop a{color:var(--focus);font-weight:600;text-underline-offset:2px}
+.tag.up .pop{top:auto;bottom:100%}
+@media (hover:hover) and (min-width:900px){
+  .tag.on{pointer-events:auto;cursor:help}
+  .tag:hover{z-index:6;opacity:1}
+  .tag:hover .pop{display:block}
+}
+.share{padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(234,240,255,.05);color:var(--ink2);font:inherit;font-size:13.5px;cursor:pointer;text-align:center}
+.share:hover{background:rgba(234,240,255,.12);color:var(--ink)}
+.key li[data-cat]{cursor:pointer;border-radius:6px;padding:1px 4px;margin:-1px -4px}
+.key li[data-cat]:hover,.key li[aria-pressed="true"]{color:var(--ink);background:rgba(234,240,255,.09)}
+.key li[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--ink)}
+
 /* In vivo / in vitro switch */
 .mode{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:13px;background:rgba(234,240,255,.06);border:1px solid var(--line)}
 .mode button{display:grid;gap:1px;padding:7px 8px;border-radius:9px;border:0;background:transparent;color:var(--ink2);font:inherit;font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:-.01em;cursor:pointer}
@@ -100,12 +117,12 @@ input.laser::-moz-range-progress{background:#19b8ff}
 .key .wide{grid-column:1/-1;font-size:12.5px;color:var(--ink3);line-height:1.4}
 
 /* The microscope's camera, picture in picture */
-.pip{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));bottom:20px;width:196px;margin:0;padding:10px;display:grid;gap:7px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
+.pip{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));bottom:20px;width:232px;margin:0;padding:10px;display:grid;gap:7px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
 .pip figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
 .pip figcaption b{font-weight:500;color:var(--ink)}
 .pip figcaption span{letter-spacing:.02em;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pipImg{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#000}
-#cam{width:100%;height:100%;display:block;image-rendering:pixelated}
+#cam{width:100%;height:100%;display:block}
 .pipScale{position:absolute;left:8px;right:8px;bottom:7px;display:grid;gap:3px;justify-items:start;pointer-events:none}
 .pipScale i{display:block;height:2px;background:#fff}
 .pipScale em{font-family:var(--mono);font-style:normal;font-size:10px;color:#fff;text-shadow:0 0 3px #000}
@@ -132,7 +149,7 @@ input.laser::-moz-range-progress{background:#19b8ff}
   .moreBtn{display:none}
   .more{display:grid;gap:14px;padding-top:14px;border-top:1px solid var(--line)}
   .hint{left:412px;top:auto;bottom:22px}
-  body.vitro .hint{right:232px}
+  body.vitro .hint{right:268px}
   .scalebar{top:26px;right:26px}
   .tag{font-size:13px}
 }

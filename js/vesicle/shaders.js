@@ -16,6 +16,14 @@ uniform vec2 uCut;       // cutaway wedge: centre angle, half width
 uniform float uTime;
 uniform vec4 uTIR;       // in vitro: glass height, 1 / penetration depth, surface intensity (0 = off), illumination reach
 uniform vec2 uMode;      // in vitro, how far the camera has pulled back (0..1)
+uniform float uHi;       // legend highlight: category to pick out, 0 for none
+// Pick out one category of thing and push everything else back.
+vec3 hilite(vec3 col, float cat){
+  if(uHi < 0.5) return col;
+  if(abs(cat - uHi) < 0.5) return col * 1.2 + 0.10 + 0.08 * sin(uTime * 5.0);
+  return mix(col, vec3(dot(col, vec3(0.3, 0.5, 0.2))), 0.8) * 0.3;
+}
+float lightGain(float cat){ return uHi < 0.5 ? 1.0 : (abs(cat - uHi) < 0.5 ? 1.8 : 0.22); }
 `;
 
 // Signed distance to the nearest face of the cutaway wedge; negative means "sliced away".
@@ -48,9 +56,10 @@ vec3 sky(vec3 d){
 }
 const vec3 EXC = vec3(0.06, 0.56, 0.95);     // 488 nm
 // Laser light landing on whatever sits in the evanescent field.
-vec3 excite(vec3 col, float wy){
-  if(uTIR.z <= 0.0 || wy < uTIR.x) return col;
-  return col + EXC * (0.17 * uTIR.z * exp(-(wy - uTIR.x) * uTIR.y) * uTIR.w);
+float spot(vec2 xz){ return exp(-(xz.x * xz.x * 0.25 + xz.y * xz.y) / (2.0 * uTIR.w * uTIR.w)); }   // the laser's footprint
+vec3 excite(vec3 col, vec3 w){
+  if(uTIR.z <= 0.0 || w.y < uTIR.x) return col;
+  return col + EXC * (0.17 * uTIR.z * exp(-(w.y - uTIR.x) * uTIR.y) * spot(w.xz) * lightGain(11.0));
 }
 vec3 haze(vec3 col, float dist, float fr){
   float f = 1.0 - exp(-max(dist - uFog.x, 0.0) / uFog.y);
@@ -81,7 +90,8 @@ vec4 lookup(int leaf, float a, float Av){
   float sg = leaf == 0 ? 1.0 : -1.0;
   return vec4(sqrt(uRW[leaf] * uRW[leaf] + (b - uGeo.z) / PI), sg * uGeo.x, 0.0, sg);
 }
-void lipid(out vec3 pos, out vec3 nrm, out vec3 col, out float scale){
+void lipid(out vec3 pos, out vec3 nrm, out vec3 col, out float scale, out float cat){
+  cat = 0.0;
   int code = int(aB.y + 0.5), kind = code & 3, leaf = code >> 2;
   float sg = leaf == 0 ? 1.0 : -1.0;
   if(kind == 2){                       // the receiving cell's membrane: a plain sheet
@@ -108,6 +118,7 @@ void lipid(out vec3 pos, out vec3 nrm, out vec3 col, out float scale){
       m = aB.x > 0.5 ? 1.0 : 1.0 - smoothstep(-0.5, 0.5, uSigmaPM[leaf] * length(aA.zw) - length(aA.xy));
     }
     col = mix(uCol[leaf], uCol[2 + leaf], m);
+    cat = m > 0.5 ? 2.0 : 1.0;
   }
   float ph = aB.x * 61.0;
   pos += nrm * (0.09 * sin(uTime * 2.3 + ph)) + vec3(sin(uTime * 1.7 + ph * 1.9), 0.0, cos(uTime * 1.3 + ph * 2.7)) * 0.07;
@@ -117,13 +128,13 @@ void lipid(out vec3 pos, out vec3 nrm, out vec3 col, out float scale){
 `;
 
 const SPHERE_OUT = `
-out vec2 vUv; out vec3 vCenterV; out float vRad; out vec3 vMemN; out vec3 vColor; out vec3 vMisc;
+out vec2 vUv; out vec3 vCenterV; out float vRad; out vec3 vMemN; out vec3 vColor; out vec3 vMisc; out float vCat;
 `;
 
 export const lipidHeadVS = HEAD + CUT + LIPID + SPHERE_OUT + `
 void main(){
   vec3 pos, nrm, col; float scale;
-  lipid(pos, nrm, col, scale);
+  lipid(pos, nrm, col, scale, vCat);
   vec4 vc = uView * vec4(pos, 1.0);
   vRad = uHeadR * scale; vUv = aCorner; vCenterV = vc.xyz; vColor = col;
   vMemN = mat3(uView) * nrm;
@@ -133,7 +144,7 @@ void main(){
 }`;
 
 export const sphereFS = HEAD + SKY + `
-in vec2 vUv; in vec3 vCenterV; in float vRad; in vec3 vMemN; in vec3 vColor; in vec3 vMisc;
+in vec2 vUv; in vec3 vCenterV; in float vRad; in vec3 vMemN; in vec3 vColor; in vec3 vMisc; in float vCat;
 out vec4 o;
 float hash3(vec3 p){ p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
 float vnoise(vec3 x){
@@ -167,7 +178,8 @@ void main(){
     // Headgroups shade each other where they tuck into the sheet.
     if(dot(vMemN, vMemN) > 0.0) col *= mix(0.42, 1.0, smoothstep(-0.75, 0.35, dot(n, vMemN)));
   }
-  if(style < 0.5 || style > 1.5) col = excite(col, uCamPos.y + uCamR.y * pv.x + uCamU.y * pv.y - uCamF.y * pv.z);
+  if(style < 0.5 || style > 1.5) col = excite(col, uCamPos + uCamR * pv.x + uCamU * pv.y - uCamF * pv.z);
+  col = hilite(col, vCat);
   o = vec4(haze(col, length(pv), vMisc.x), alpha);
 }`;
 
@@ -175,8 +187,8 @@ export const tailVS = HEAD + CUT + LIPID + `
 uniform float uBand;
 out vec2 vUv; out vec3 vColor; out vec3 vMisc;
 void main(){
-  vec3 pos, nrm, col; float scale;
-  lipid(pos, nrm, col, scale);
+  vec3 pos, nrm, col; float scale, cat;
+  lipid(pos, nrm, col, scale, cat);
   float cd = cutDist(pos);
   if(cd < 0.0 || cd > uBand || scale < 0.5){ gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   vec3 a = (uView * vec4(pos - nrm * uHeadR * 0.5, 1.0)).xyz;
@@ -186,7 +198,7 @@ void main(){
   vec3 p = mix(a, b, aCorner.y * 0.5 + 0.5);
   p.xy += sd * aCorner.x;
   vUv = vec2(aCorner.x, aCorner.y * 0.5 + 0.5);
-  vColor = mix(col, vec3(0.93, 0.88, 0.74), 0.72);
+  vColor = hilite(mix(col, vec3(0.93, 0.88, 0.74), 0.72), cat);
   vMisc = vec3(length(pos - uFocus), length(p), aB.x);
   gl_Position = uProj * vec4(p, 1.0);
 }`;
@@ -220,15 +232,18 @@ void main(){
   }
   vec4 vc = uView * vec4(pos, 1.0);
   vRad = rad; vUv = aCorner; vCenterV = vc.xyz; vColor = aCS.rgb; vMemN = vec3(0.0);
-  vMisc = vec3(length(pos - uFocus), aCS.a, fract(pos.x * 0.137 + pos.z * 0.071 + pos.y * 0.053));
+  float cat = floor(aCS.a / 8.0 + 0.01), style = aCS.a - 8.0 * cat;
+  bool halo = uBall.x > 1.5, soft = style > 3.5;                  // style 4: glow with no solid core
+  vCat = cat;
+  vMisc = vec3(length(pos - uFocus), soft ? 1.0 : style, fract(pos.x * 0.137 + pos.z * 0.071 + pos.y * 0.053));
   vc.xy += aCorner * rad;
-  bool gone = rad < 0.01 || (uBall.y > 0.5 && cutDist(pos) < 0.0) || (uBall.x > 1.5 && abs(aCS.a - 1.0) > 0.5);
+  bool gone = rad < 0.01 || (uBall.y > 0.5 && cutDist(pos) < 0.0) || (halo ? (abs(style - 1.0) > 0.5 && !soft) : soft);
   gl_Position = gone ? vec4(2.0, 2.0, 2.0, 1.0) : uProj * vc;
 }`;
 
 // Soft additive glow around self-lit particles.
 export const haloFS = HEAD + SKY + `
-in vec2 vUv; in vec3 vCenterV; in float vRad; in vec3 vMemN; in vec3 vColor; in vec3 vMisc;
+in vec2 vUv; in vec3 vCenterV; in float vRad; in vec3 vMemN; in vec3 vColor; in vec3 vMisc; in float vCat;
 uniform float uGlow;
 out vec4 o;
 void main(){
@@ -236,7 +251,7 @@ void main(){
   if(r2 > 1.0 || vMisc.y < 0.5 || vMisc.y > 1.5) discard;
   float f = 1.0 - exp(-max(length(vCenterV) - uFog.x, 0.0) / uFog.y);
   float g = exp(-r2 * 4.5) - exp(-4.5);
-  o = vec4(vColor * g * uGlow * (1.0 - 0.8 * f), 1.0);
+  o = vec4(vColor * g * uGlow * (1.0 - 0.8 * f) * lightGain(vCat), 1.0);
 }`;
 
 // Neurotransmitter: every molecule's whole journey is a function of the progress slider, so it
@@ -276,7 +291,7 @@ void main(){
   float rad = uNT2.w * uNT3.z * fade;
   vec4 vc = uView * vec4(pos, 1.0);
   vRad = rad; vUv = aCorner; vCenterV = vc.xyz; vColor = uNTCol * (0.85 + 0.3 * aSeed.w); vMemN = vec3(0.0);
-  vMisc = vec3(0.0, 1.0, 0.0);
+  vMisc = vec3(0.0, 1.0, 0.0); vCat = 7.0;
   vc.xy += aCorner * rad;
   gl_Position = (rad < 0.01 || cutDist(pos) < -0.2) ? vec4(2.0, 2.0, 2.0, 1.0) : uProj * vc;
 }`;
@@ -292,9 +307,11 @@ export const sheetFS = HEAD + CUT + SKY + `
 in vec3 vW;
 uniform vec3 uSheetCol;
 uniform float uGrain;
+uniform vec4 uFoot;      // in vitro: the cell's footprint on the glass (centre x, z, radius), and this sheet's category
 out vec4 o;
 void main(){
   if(cutDist(vW) < 0.0) discard;
+  if(uFoot.z > 0.0 && length(vW.xz - uFoot.xy) > uFoot.z) discard;
   float dist = length(vW - uCamPos);
   // A hint of headgroups that dissolves with distance.
   vec2 g = vW.xz / uGrain; g.x += 0.5 * floor(g.y);
@@ -304,7 +321,7 @@ void main(){
   vec3 n = mat3(uView) * vec3(0.0, uCamPos.y > vW.y ? 1.0 : -1.0, 0.0);
   float diff = max(dot(n, normalize(vec3(-0.38, 0.58, 0.72))), 0.0);
   vec3 col = uSheetCol * (0.36 + 0.74 * diff) * (0.78 + 0.2 * dots);
-  o = vec4(haze(excite(col, vW.y), dist, length(vW - uFocus)), 1.0);
+  o = vec4(haze(hilite(excite(col, vW), uFoot.w), dist, length(vW - uFocus)), 1.0);
 }`;
 
 export const skyVS = `#version 300 es
@@ -345,7 +362,7 @@ void main(){
   else if(abs(d.y) < 1e-4) len = (t1 - t0) * exp(-ha * k);
   else len = abs(exp(-ha * k) - exp(-hb * k)) / (k * abs(d.y));
   float g = 1.0 - exp(-len * uTIR.z / uGlow.y);
-  o = vec4(EXC * g * uGlow.z, 1.0);
+  o = vec4(EXC * g * uGlow.z * lightGain(11.0), 1.0);
 }`;
 
 // A flat panel carrying the light field: either the top of the glass, or a vertical slice through
@@ -363,7 +380,7 @@ void main(){
 export const fieldFS = HEAD + SKY + `
 in vec3 vW; in vec2 vC;
 uniform vec4 uWave;      // kx, ky in glass, ky in the cell (0 when evanescent), phase shift on reflection
-uniform vec4 uWave2;     // reflection amplitude, slice (1) or glass top (0), strength, spot radius
+uniform vec4 uWave2;     // reflection amplitude, slice (1) or glass top (0), strength, footprint brightness
 out vec4 o;
 void main(){
   float ph = uWave.x * vW.x - uTime * 2.4, dist = length(vW - uCamPos);
@@ -372,12 +389,15 @@ void main(){
     // Top of the coverslip: faint glass, a measuring grid, and the laser's footprint sweeping across.
     float r = length(vW.xz);
     if(r > 1.1e7) discard;
-    float spot = exp(-(vW.x * vW.x * 0.25 + vW.z * vW.z) / (2.0 * uWave2.w * uWave2.w));
+    float sp = spot(vW.xz);
     float crest = 0.5 + 0.5 * cos(ph);
     float fine = exp(-dist / 900.0);
     vec2 g = abs(fract(vW.xz / 100.0 + 0.5) - 0.5) * 100.0;
     float grid = (1.0 - smoothstep(0.0, 1.2 + dist * 0.004, min(g.x, g.y))) * fine;
-    vec3 add = EXC * uTIR.z * spot * (0.07 + 0.16 * mix(0.5, crest, fine)) * uWave2.z + vec3(0.5, 0.7, 0.9) * grid * 0.10;
+    // A coarser grid, one micrometre to the square, takes over as the camera pulls back.
+    vec2 g2 = abs(fract(vW.xz / 1000.0 + 0.5) - 0.5) * 1000.0;
+    float coarse = (1.0 - smoothstep(0.0, 6.0 + dist * 0.003, min(g2.x, g2.y))) * (1.0 - fine) * exp(-dist / 60000.0);
+    vec3 add = EXC * uTIR.z * sp * uWave2.w * (0.07 + 0.16 * mix(0.5, crest, fine)) * uWave2.z * lightGain(11.0) + vec3(0.5, 0.7, 0.9) * (grid * 0.10 + coarse * 0.03);
     float a = 0.10 * (1.0 - f);
     o = vec4(vec3(0.55, 0.72, 0.85) * a * 0.5 + add * (1.0 - f), a);
     return;
@@ -398,10 +418,10 @@ void main(){
   if(y < 0.0){
     // Inside the glass: a pale slab with the incoming and reflected beams crossing in it.
     float a = 0.5 * k;
-    o = vec4(vec3(0.20, 0.27, 0.33) * a + EXC * (mean * 0.30 + 0.16 * e) * k, a);
+    o = vec4(vec3(0.20, 0.27, 0.33) * a + EXC * (mean * 0.30 + 0.16 * e) * k * lightGain(11.0), a);
   } else {
     float surf = 1.0 - smoothstep(0.0, 2.0 * fwidth(y), y);
-    o = vec4((EXC * mean * (0.95 + 0.45 * e) + vec3(0.75, 0.92, 1.0) * (tick * 0.55 + surf * 0.8)) * k, 0.0);
+    o = vec4((EXC * mean * (0.95 + 0.45 * e) * lightGain(11.0) + vec3(0.75, 0.92, 1.0) * (tick * 0.55 + surf * 0.8)) * k, 0.0);
   }
 }`;
 
@@ -424,13 +444,13 @@ out vec4 o;
 void main(){
   vec3 v = normalize(uCamPos - vW), n = normalize(vN);
   if(dot(n, v) < 0.0) n = -n;
-  if(uMesh.z > 0.0){ o = vec4(vCol.rgb * uMesh.z * (0.35 + 0.65 * pow(1.0 - dot(n, v), 2.0)), 0.0); return; }
+  if(uMesh.z > 0.0){ o = vec4(vCol.rgb * uMesh.z * (0.35 + 0.65 * pow(1.0 - dot(n, v), 2.0)) * lightGain(12.0), 0.0); return; }
   vec3 L = normalize(vec3(0.35, 0.8, 0.5));
   float diff = max(dot(n, L), 0.0) * 0.7 + 0.25 * abs(n.y) + 0.22;
   float spec = pow(max(dot(n, normalize(L + v)), 0.0), 40.0) * uMesh.y;
   float rim = pow(1.0 - dot(n, v), 3.0);
   float a = clamp(vCol.a * uMesh.x * (1.0 + 1.2 * rim), 0.0, 1.0);
-  o = vec4((vCol.rgb * diff + spec) * a, a);
+  o = vec4(hilite(vCol.rgb * diff + spec, 0.0) * a, a);
 }`;
 
 // Laser beams as glowing lines that never get thinner than a few pixels.
@@ -454,6 +474,6 @@ void main(){
 export const beamFS = `#version 300 es
 precision highp float;
 in float vS; in vec4 vCol;
-uniform float uBeam;
+uniform float uBeam, uHi;
 out vec4 o;
-void main(){ o = vec4(vCol.rgb * vCol.a * uBeam * exp(-vS * vS * 3.5), 0.0); }`;
+void main(){ o = vec4(vCol.rgb * vCol.a * uBeam * exp(-vS * vS * 3.5) * (uHi < 0.5 ? 1.0 : abs(uHi - 11.0) < 0.5 ? 1.8 : 0.22), 0.0); }`;
