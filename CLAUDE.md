@@ -9,7 +9,7 @@ experience is and where its code lives.
   GitHub Pages (`.github/workflows/pages.yml` publishes `main`).
 - Run it with `python3 -m http.server 8000` from the repository root. ES modules do not load from
   `file://`.
-- Each experience is self-contained: `v1/`, `v2/` and `vesicle/` have their own page, stylesheet
+- Each experience is self-contained: `v2/` (Rainbows) and `vesicle/` have their own page, stylesheet
   (`css/`) and modules (`js/`). Do not change one while working on another.
 - Physics claims must be true. Numbers shown on screen come from the model in code
   (`js/v2/optics.js` for v2), not from text typed into a caption. Where a picture simplifies or
