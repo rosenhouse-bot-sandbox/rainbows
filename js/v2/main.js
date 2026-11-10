@@ -26,7 +26,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());      /
 const S = {
   stage: 0, mode: 'ray', focus: 'both',
   sun: 14, bowpos: 0.5, exag: false, second: false,
-  cross: 'enter', theta: 59.4, pol: 's', lambda: 550,
+  cross: 'enter', theta: 59.4, pol: 's', lambda: 550, tilt: 59.4,
 };
 
 // ---------- address bar ----------
@@ -38,6 +38,7 @@ function readHash() {
   if (['enter', 'back', 'exit', 'tir'].includes(q.get('x'))) { S.cross = q.get('x'); }
   const num = (k, a, b, d) => { const v = parseFloat(q.get(k)); return Number.isFinite(v) ? clamp(v, a, b) : d; };
   S.sun = num('sun', 0, 50, S.sun); S.lambda = num('nm', 250, 700, S.lambda); S.bowpos = num('bow', -0.8, 1.6, S.bowpos);
+  S.tilt = num('tilt', 0, 75, S.tilt);
   S.theta = q.has('a') ? num('a', 0, 85, S.theta) : presetAngle(S);
   if (q.get('p') === 'p') S.pol = 'p';
   S.exag = q.get('wide') === '1'; S.second = q.get('two') === '1';
@@ -48,6 +49,7 @@ function writeHash() {
   hashTimer = setTimeout(() => {
     const q = new URLSearchParams({ s: STAGES[S.stage].id, m: S.mode, f: S.focus, sun: S.sun, nm: S.lambda });
     if (S.stage === 3) { q.set('bow', S.bowpos); if (S.exag) q.set('wide', 1); if (S.second) q.set('two', 1); }
+    if (S.stage === 5) q.set('tilt', S.tilt);
     if (S.stage === 4) { q.set('x', S.cross); q.set('a', S.theta); q.set('p', S.pol); }
     history.replaceState(null, '', '#' + q);
   }, 300);
@@ -84,6 +86,7 @@ function viewFor(i, zoom, pm, time) {
 const inited = new Set();
 function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); } }
 let tr = null;       // {from, to, t}
+const DIVE = 3.2;    // seconds for the move between scales
 function go(to) {
   to = clamp(to, 0, STAGES.length - 1);
   if (tr || to === S.stage) return;
@@ -91,7 +94,7 @@ function go(to) {
   tr = { from: S.stage, to, t: 0 };
   $('labels').classList.add('off');
   $('cap').classList.add('swap');
-  setTimeout(() => { S.stage = to; syncUI(); $('cap').classList.remove('swap'); }, 420);
+  setTimeout(() => { S.stage = to; syncUI(); $('cap').classList.remove('swap'); }, RM.matches ? 300 : DIVE * 450);
 }
 
 // ---------- UI ----------
@@ -113,6 +116,7 @@ const sliders = {
   sun: v => `${v.toFixed(1)}°`,
   bowpos: () => `${(eyeAngle(S) / DEG).toFixed(1)}°`,
   theta: v => `${v.toFixed(1)}°`,
+  tilt: v => `${v.toFixed(1)}°`,
   lambda: v => `${Math.round(v)} nm`,
 };
 for (const id in sliders) $(id).addEventListener('input', e => { S[id] = parseFloat(e.target.value); syncUI(true); });
@@ -236,16 +240,20 @@ function frame(now) {
 
   let mix = 0, labelView;
   if (tr) {
-    const still = RM.matches;         // reduced motion: a short cross-fade in place of the flying zoom
-    tr.t = Math.min(1, tr.t + dt / (still ? 0.4 : 1.5));
-    const e = still ? (tr.to > tr.from ? 0 : 1) : sstep(0, 1, tr.t), deeper = tr.to > tr.from, IN = Math.log(0.07), OUT = Math.log(5);
+    // One continuous dive: the scale you leave keeps growing while the next one arrives from far off,
+    // both at the same steady rate, eased only at the two ends, with a long cross-fade in the middle.
+    const still = RM.matches;         // reduced motion: a plain cross-fade in place of the flight
+    tr.t = Math.min(1, tr.t + dt / (still ? 0.7 : DIVE));
+    const p = tr.t, deeper = tr.to > tr.from, IN = Math.log(0.03), OUT = Math.log(11);
+    const e = still ? (deeper ? 0 : 1) : p * p * p * (p * (p * 6 - 15) + 10);
     const zf = still ? 1 : Math.exp((deeper ? IN : OUT) * e), zt = still ? 1 : Math.exp((deeper ? OUT : IN) * (1 - e));
-    mix = still ? sstep(0, 1, tr.t) : sstep(0.3, 0.72, tr.t);
-    R.begin(0, viewFor(tr.from, zf, deeper ? e : 0, time), 1); STAGES[tr.from].draw(R, S, time, dt);
-    labelView = viewFor(tr.to, zt, deeper ? 0 : 1 - e, time);
+    mix = still ? sstep(0, 1, p) : sstep(0.22, 0.78, e);
+    const rush = still ? 0 : Math.sin(Math.PI * p) ** 2;
+    R.begin(0, viewFor(tr.from, zf, deeper ? sstep(0, 0.6, e) : 0, time), 1); STAGES[tr.from].draw(R, S, time, dt);
+    labelView = viewFor(tr.to, zt, deeper ? 0 : sstep(0, 0.6, 1 - e), time);
     R.begin(1, labelView, 1); STAGES[tr.to].draw(R, S, time, dt);
     const a = STAGES[tr.from], b = STAGES[tr.to];
-    R.present(mix, time, lerp(a.bloom, b.bloom, mix), lerp(a.exposure, b.exposure, mix));
+    R.present(mix, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.5 * rush), lerp(a.exposure, b.exposure, mix), 0.16 * rush);
     if (tr.t >= 1) { tr = null; $('labels').classList.remove('off'); }
   } else {
     labelView = viewFor(S.stage, 1, 0, time);

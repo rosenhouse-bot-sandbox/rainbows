@@ -165,10 +165,16 @@ const POST_MIX = `#version 300 es
 precision highp float; in vec2 v; uniform sampler2D A, B; uniform float uT; layout(location=0) out vec4 o;
 void main(){ vec2 uv = v*0.5+0.5; o = vec4(mix(texture(A,uv).rgb, texture(B,uv).rgb, uT), 1.0); }`;
 const POST_FINAL = `#version 300 es
-precision highp float; in vec2 v; uniform sampler2D T, B1, B2, B3; uniform float uBloom, uTime, uExposure; layout(location=0) out vec4 o;
+precision highp float; in vec2 v; uniform sampler2D T, B1, B2, B3; uniform float uBloom, uTime, uExposure; uniform vec3 uStreak; layout(location=0) out vec4 o;
 float h(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
 void main(){ vec2 uv = v*0.5+0.5;
-  vec3 c = texture(T, uv).rgb + uBloom*(texture(B1, uv).rgb*0.55 + texture(B2, uv).rgb*0.5 + texture(B3, uv).rgb*0.6);
+  vec3 c = texture(T, uv).rgb;
+  if(uStreak.z > 0.001){      // a radial smear toward the point being zoomed into, during the move between scales
+    float j = h(gl_FragCoord.xy + 3.7); c = vec3(0.0);
+    for(int i=0;i<12;i++) c += texture(T, mix(uv, uStreak.xy, (float(i)+j)/12.0*uStreak.z)).rgb;
+    c /= 12.0;
+  }
+  c += uBloom*(texture(B1, uv).rgb*0.55 + texture(B2, uv).rgb*0.5 + texture(B3, uv).rgb*0.6);
   c *= uExposure;
   c *= 1.0 - 0.28*pow(length(v*vec2(0.9,0.8)), 2.4);
   c = clamp((c*(2.51*c+0.03))/(c*(2.43*c+0.59)+0.14), 0.0, 1.0);
@@ -364,7 +370,7 @@ export function createEngine(canvas) {
       gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0);
     },
     // ---- post: (optional cross-fade) → bloom → tone map ----
-    present(mixAmount, time, bloomAmt = 1, exposure = 1) {
+    present(mixAmount, time, bloomAmt = 1, exposure = 1, streak = 0) {
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
       gl.bindVertexArray(emptyVAO);
       let src = scene[0];
@@ -392,6 +398,7 @@ export function createEngine(canvas) {
       bind(0, src); bind(1, bloom[0][0]); bind(2, bloom[1][0]); bind(3, bloom[2][0]);
       gl.uniform1i(pFinal.u.T, 0); gl.uniform1i(pFinal.u.B1, 1); gl.uniform1i(pFinal.u.B2, 2); gl.uniform1i(pFinal.u.B3, 3);
       gl.uniform1f(pFinal.u.uBloom, bloomAmt); gl.uniform1f(pFinal.u.uTime, time); gl.uniform1f(pFinal.u.uExposure, exposure);
+      gl.uniform3f(pFinal.u.uStreak, 0.5 + (R.view ? R.view.ox : 0) * 0.5, 0.5 + (R.view ? R.view.oy : 0) * 0.5, streak);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.activeTexture(gl.TEXTURE0);
     },
