@@ -56,17 +56,22 @@ scene.setQuality(quality);
 // ---- controls ------------------------------------------------------------------------------------
 const zoomToDist = (v) => 38 * Math.pow(22, v / 1000), distToZoom = (d) => 1000 * Math.log(d / 38) / Math.log(22);
 const fill = (el) => el.style.setProperty('--v', ((el.value - el.min) / (el.max - el.min) * 100) + '%');
-let stageIdx = -1;
+let stageIdx = -1; const shown = {};
 function syncUI() {
-  const set = (id, v, text) => { const el = $(id); if (document.activeElement !== el || !el.matches(':active')) el.value = v; fill(el); if (text != null) $(id + 'V').textContent = text; };
+  // Only touch the DOM when a value has actually changed; this runs every frame during playback.
+  const set = (id, v, text) => {
+    if (shown[id] === text + v) return; shown[id] = text + v;
+    const el = $(id); if (document.activeElement !== el || !el.matches(':active')) el.value = v;
+    fill(el); $(id + 'V').textContent = text;
+  };
   set('prog', st.p * 1000, Math.round(st.p * 100) + '%');
   set('size', st.diam, st.diam + ' nm');
   set('cut', st.cut, st.cut ? Math.round(st.cut) + '°' : 'off');
   set('orbit', st.az, Math.round(st.az) + '°');
   set('tilt', st.el, Math.round(st.el) + '°');
   set('zoom', distToZoom(st.dist), Math.round(st.dist) + ' nm');
-  $('play').setAttribute('aria-pressed', st.play);
-  $('play').setAttribute('aria-label', st.play ? 'Pause' : st.p > 0.995 ? 'Replay the fusion' : 'Play the fusion');
+  const pl = st.play ? 'Pause' : st.p > 0.995 ? 'Replay the fusion' : 'Play the fusion';
+  if (shown.play !== pl) { shown.play = pl; $('play').setAttribute('aria-pressed', st.play); $('play').setAttribute('aria-label', pl); }
   let i = 0; while (i < STAGES.length - 1 && st.p >= STAGES[i + 1].at) i++;
   if (i !== stageIdx) {
     const first = stageIdx < 0; stageIdx = i;
@@ -164,17 +169,18 @@ function placeLabels() {
       const vx = V[0] * x + V[4] * y + V[8] * z + V[12], vy = V[1] * x + V[5] * y + V[9] * z + V[13], vz = V[2] * x + V[6] * y + V[10] * z + V[14];
       if (vz < -2) {
         const sx = ((P[0] * vx + P[8] * vz) / -vz * 0.5 + 0.5) * cw, sy = (0.5 - (P[5] * vy + P[9] * vz) / -vz * 0.5) * ch;
-        const wd = t.offsetWidth + 10, hidden = phone.matches ? sy > pr.top - 14 : sx < pr.right + 8;
+        const wd = (t._w || (t._w = t.offsetWidth)) + 10, hidden = phone.matches ? sy > pr.top - 14 : sx < pr.right + 8;
         on = sx > 4 && sx + wd < cw && sy > 64 && sy < ch - 10 && !hidden
           && !taken.some((b) => sx < b[0] + b[2] && sx + wd > b[0] && Math.abs(sy - b[1]) < 19);   // earlier labels win
         if (on) { taken.push([sx - 8, sy, wd + 8]); t.style.transform = `translate(${sx.toFixed(1)}px,${(sy - 9).toFixed(1)}px)`; }
       }
     }
-    t.classList.toggle('on', on);
+    if (t._on !== on) { t._on = on; t.classList.toggle('on', on); }
   }
   const pxPerNm = canvas.clientHeight / 2 * cam.proj[5] / st.dist;
   const nice = [2, 5, 10, 20, 50, 100, 200].find((n) => n * pxPerNm > 56) || 500;
-  $('scaleLine').style.width = (nice * pxPerNm).toFixed(1) + 'px'; $('scaleText').textContent = nice + ' nm';
+  const bar = (nice * pxPerNm).toFixed(0) + 'px';
+  if (shown.bar !== bar + nice) { shown.bar = bar + nice; $('scaleLine').style.width = bar; $('scaleText').textContent = nice + ' nm'; }
 }
 
 // ---- frame loop ----------------------------------------------------------------------------------
