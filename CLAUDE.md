@@ -39,13 +39,16 @@ that add no dependency. No polyfills.
 
 What that guidance has meant here so far, and should keep meaning:
 
-- Honour `prefers-reduced-motion`: no camera drift, no animated zoom between scales, no CSS
-  transitions. Motion that is the subject of the picture (light moving) may stay.
+- Honour `prefers-reduced-motion`: no camera drift, no flying zoom between scales, and the
+  animation starts paused. Anything that moves on its own needs a visible Pause control.
 - Use native controls (`<button>`, `<input type="range">`, `<input type="checkbox">`) with real
   labels. Everything reachable by pointer must be reachable by keyboard.
 - A canvas is opaque to assistive technology. Keep the story, the numbers and the controls in the
   DOM beside it, and announce changes through a live region.
-- Stop the frame loop when the page is hidden, and recover from a lost WebGL context.
+- Drive all animation from `requestAnimationFrame` (it stops in hidden tabs), recover from a lost
+  WebGL context, and keep start-up work in short tasks.
+- Keep the page's `<meta>` Content-Security-Policy tight: no inline scripts or event handlers, and
+  add a host to it only when a page really needs one.
 - Never build HTML from text that came from the URL or the user. Readouts are built from numbers.
 
 ## Checking a change

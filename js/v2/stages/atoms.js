@@ -50,7 +50,7 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
 <line x1="48" y1="48" x2="82" y2="48" stroke="rgba(234,240,255,.45)" stroke-width="2" stroke-dasharray="3 3"/>
 <path d="M ${48 + 20} 48 A 20 20 0 ${lag1000 > 180 ? 1 : 0} 1 ${48 + 20 * Math.cos(a)} ${48 - 20 * Math.sin(a)}" fill="none" stroke="${col}" stroke-width="1.5"/>
 <line x1="48" y1="48" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${col}" stroke-width="3" stroke-linecap="round"/></svg>
-<p>Each layer of molecules, 0.31 nm thick, sets the wave back by <b style="color:var(--ink)">${lag.toFixed(4)}°</b>. After 1000 layers it is <b style="color:var(--ink)">${lag1000.toFixed(0)}°</b> behind where it would have been (dashed). Red: ${(O.lagPerLayerDeg(700) * 1000).toFixed(0)}°. Violet: ${(O.lagPerLayerDeg(400) * 1000).toFixed(0)}°.</p></div>
+<p>Each layer of molecules, 0.31 nm thick, sets the wave back by <b>${lag.toFixed(4)}°</b>. After 1000 layers it is <b>${lag1000.toFixed(0)}°</b> behind where it would have been (dashed). Red: ${(O.lagPerLayerDeg(700) * 1000).toFixed(0)}°. Violet: ${(O.lagPerLayerDeg(400) * 1000).toFixed(0)}°.</p></div>
 <dl><dt>Refractive index</dt><dd>${e.n.toFixed(4)}</dd>
 <dt>Crests travel at</dt><dd>${e.vPhase.toFixed(4)} c</dd>
 <dt>Energy travels at</dt><dd>${e.vEnergy.toFixed(4)} c</dd>

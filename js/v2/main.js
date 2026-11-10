@@ -13,6 +13,16 @@ const $ = id => document.getElementById(id);
 const canvas = $('view');
 const R = createEngine(canvas);
 
+// Fonts load without holding up the 3D view; system fonts show until they arrive.
+document.head.append(Object.assign(document.createElement('link'), { rel: 'stylesheet', referrerPolicy: 'no-referrer',
+  href: 'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap' }));
+
+// People who ask for less motion get no camera drift and no flying zoom, and start paused.
+const RM = matchMedia('(prefers-reduced-motion: reduce)');
+let paused = RM.matches, lost = false;
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); lost = true; });
+canvas.addEventListener('webglcontextrestored', () => location.reload());      // the view is in the address bar, so a reload restores it
+
 const S = {
   stage: 0, mode: 'ray', focus: 'both',
   sun: 14, bowpos: 0.5, exag: false, second: false,
@@ -50,7 +60,7 @@ let cssW = 1, cssH = 1, offX = 0, offY = 0, wide = false;
 function viewFor(i, zoom, pm, time) {
   const st = STAGES[i], c = cams[i];
   const aspectFix = clamp(1.15 * cssH / (cssW * (1 - offX)), 1, 3);   // pull back when the free area is narrow
-  const sway = Math.sin(time * 0.23 + i) * (c.sway ?? 0.035);
+  const sway = RM.matches || paused ? 0 : Math.sin(time * 0.23 + i) * (c.sway ?? 0.035);
   const fov = c.fov * DEG;
   if (c.type === 'look') {
     // stand at a fixed spot and turn your head; "dist" steps back out of your own eyes
@@ -71,10 +81,13 @@ function viewFor(i, zoom, pm, time) {
 }
 
 // ---------- transitions ----------
+const inited = new Set();
+function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); } }
 let tr = null;       // {from, to, t}
 function go(to) {
   to = clamp(to, 0, STAGES.length - 1);
   if (tr || to === S.stage) return;
+  ready(to);
   tr = { from: S.stage, to, t: 0 };
   $('labels').classList.add('off');
   $('cap').classList.add('swap');
@@ -85,8 +98,8 @@ function go(to) {
 const nav = $('stages');
 STAGES.forEach((s, i) => {
   const b = document.createElement('button');
-  b.innerHTML = `<i></i><span>${s.name}</span>`;
-  b.title = `${s.name} · ${s.scale}`;
+  b.type = 'button';
+  b.innerHTML = `<i></i><span>${s.name}<span class="visually-hidden"> · ${s.scale}</span></span>`;
   b.addEventListener('click', () => go(i));
   nav.appendChild(b);
 });
@@ -107,6 +120,8 @@ for (const id of ['exag', 'second']) $(id).addEventListener('change', e => { S[i
 $('prev').addEventListener('click', () => go(S.stage - 1));
 $('next').addEventListener('click', () => go(S.stage + 1));
 $('resetView').addEventListener('click', resetView);
+const setPaused = p => { paused = p; $('pause').textContent = p ? 'Play' : 'Pause'; };
+$('pause').addEventListener('click', () => setPaused(!paused));
 function resetView() { const c = cams[S.stage], st = STAGES[S.stage], d = st.camGoal ? st.camGoal(S) : st.cam; c.gy = d.yaw; c.gp = d.pitch; c.gd = d.dist; }
 
 let lastCap = '';
@@ -118,21 +133,23 @@ function syncUI(light) {
   $('lambda').style.setProperty('--spec', lmin < 400
     ? `linear-gradient(90deg,#3a3350,#8a7cd0 ${(400 - lmin) / (700 - lmin) * 100 - 6}%,#7b2cff ${(400 - lmin) / (700 - lmin) * 100}%,#3b5bff,#00b0d8,#3ccf5a,#f2d41d,#ff7a1a,#e8202b)` : '');
   for (const id in sliders) {
-    const el = $(id); el.value = S[id]; $(id + 'V').textContent = sliders[id](S[id]);
+    const el = $(id), txt = sliders[id](S[id]); el.value = S[id]; $(id + 'V').textContent = txt; el.setAttribute('aria-valuetext', txt);
     el.style.setProperty('--v', ((S[id] - el.min) / (el.max - el.min) * 100) + '%');
   }
   $('exag').checked = S.exag; $('second').checked = S.second;
   for (const key in segs) document.querySelectorAll(`[data-${key}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[key] === S[key])));
   document.querySelectorAll('.ctl').forEach(el => { el.hidden = !st.controls.includes(el.dataset.c); });
   [...nav.children].forEach((b, i) => b.setAttribute('aria-current', String(i === S.stage)));
-  $('prev').disabled = S.stage === 0; $('next').disabled = S.stage === STAGES.length - 1;
-  $('stageNo').textContent = `Scale ${S.stage + 1} of ${STAGES.length}`;
-  $('stageScale').textContent = st.scale; $('scaleText').textContent = st.scaleNote || '';
-  const cap = st.caption(S), ck = cap.title + cap.body;
-  if (ck !== lastCap) { $('capTitle').textContent = cap.title; $('capBody').textContent = cap.body; lastCap = ck; }
+  $('prev').setAttribute('aria-disabled', String(S.stage === 0)); $('next').setAttribute('aria-disabled', String(S.stage === STAGES.length - 1));
+  $('scaleText').textContent = st.scaleNote || '';
+  const cap = st.caption(S), ck = S.stage + cap.title + cap.body;
+  if (ck !== lastCap) {       // the caption is a live region: only touch it when it really changes
+    $('stageNo').textContent = `Scale ${S.stage + 1} of ${STAGES.length}`; $('stageScale').textContent = st.scale;
+    $('capTitle').textContent = cap.title; $('capBody').textContent = cap.body; lastCap = ck;
+    document.title = `${st.name} | Rainbows v2`;
+  }
   $('readout').innerHTML = st.readout ? st.readout(S) : '';
-  $('hint').textContent = wide ? (st.hint || 'Drag to look around · pinch or scroll to zoom') : (st.hintSmall || 'Drag to look around · pinch to zoom');
-  if (!light) layout();
+  $('hint').textContent = wide ? (st.hint || 'Drag to look around · scroll to zoom') + ' · or arrow keys, + and −' : (st.hintSmall || 'Drag to look around · pinch to zoom');
   writeHash();
 }
 
@@ -154,7 +171,7 @@ function nudge(dy, dp, dz) {
   c.gd = c.type === 'look' ? clamp((c.gd + 0.8) * dz - 0.8, l.dist[0], l.dist[1]) : clamp(c.gd * dz, l.dist[0], l.dist[1]);
   if (!touched) { touched = true; $('hint').classList.add('gone'); }
 }
-canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); pinch = 0; });
+canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0) return; canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); pinch = 0; });
 canvas.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId); if (!p) return;
   const dx = e.clientX - p[0], dy = e.clientY - p[1]; p[0] = e.clientX; p[1] = e.clientY;
@@ -166,11 +183,11 @@ canvas.addEventListener('pointermove', e => {
   }
 });
 const up = e => { ptrs.delete(e.pointerId); pinch = 0; };
-canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up); canvas.addEventListener('lostpointercapture', up);
 canvas.addEventListener('wheel', e => { e.preventDefault(); nudge(0, 0, Math.exp(clamp(e.deltaY, -120, 120) * 0.0018)); }, { passive: false });
 canvas.addEventListener('dblclick', resetView);
 window.addEventListener('keydown', e => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;      // leave browser zoom and shortcuts alone
   const k = e.key;
   if (k === 'PageDown' || k === ']') go(S.stage + 1);
   else if (k === 'PageUp' || k === '[') go(S.stage - 1);
@@ -207,8 +224,9 @@ let last = 0, time = 0, scale = 1, slow = 0, fast = 0, readoutClock = 0;
 const dprCap = () => Math.min(window.devicePixelRatio || 1, 2);
 function frame(now) {
   requestAnimationFrame(frame);
+  if (lost) return;
   const dt = Math.min(0.05, (now - last) / 1000 || 0.016), raw = now - last; last = now;
-  time += dt;
+  if (!paused) time += dt;
   // keep the frame rate: draw fewer pixels on slow machines
   if (raw > 30) { if (++slow > 20 && scale > 0.5) { scale = Math.max(0.5, scale * 0.85); slow = 0; } fast = 0; }
   else if (raw < 18) { slow = 0; if (++fast > 240 && scale < 1) { scale = Math.min(1, scale / 0.85); fast = 0; } }
@@ -218,10 +236,11 @@ function frame(now) {
 
   let mix = 0, labelView;
   if (tr) {
-    tr.t = Math.min(1, tr.t + dt / 1.5);
-    const e = sstep(0, 1, tr.t), deeper = tr.to > tr.from, IN = Math.log(0.07), OUT = Math.log(5);
-    const zf = Math.exp((deeper ? IN : OUT) * e), zt = Math.exp((deeper ? OUT : IN) * (1 - e));
-    mix = sstep(0.3, 0.72, tr.t);
+    const still = RM.matches;         // reduced motion: a short cross-fade in place of the flying zoom
+    tr.t = Math.min(1, tr.t + dt / (still ? 0.4 : 1.5));
+    const e = still ? (tr.to > tr.from ? 0 : 1) : sstep(0, 1, tr.t), deeper = tr.to > tr.from, IN = Math.log(0.07), OUT = Math.log(5);
+    const zf = still ? 1 : Math.exp((deeper ? IN : OUT) * e), zt = still ? 1 : Math.exp((deeper ? OUT : IN) * (1 - e));
+    mix = still ? sstep(0, 1, tr.t) : sstep(0.3, 0.72, tr.t);
     R.begin(0, viewFor(tr.from, zf, deeper ? e : 0, time), 1); STAGES[tr.from].draw(R, S, time, dt);
     labelView = viewFor(tr.to, zt, deeper ? 0 : 1 - e, time);
     R.begin(1, labelView, 1); STAGES[tr.to].draw(R, S, time, dt);
@@ -242,11 +261,14 @@ if (!R) { $('fail').hidden = false; }
 else {
   try {
     readHash();
-    for (const s of STAGES) s.init(R, S);
+    ready(S.stage);
     STAGES.forEach((st, i) => { if (st.camGoal) { const g = st.camGoal(S), c = cams[i]; c.yaw = c.gy = g.yaw; c.pitch = c.gp = g.pitch; c.dist = c.gd = g.dist; } });
-    layout(); syncUI(); layout();
+    layout(); syncUI(); setPaused(paused);
     window.addEventListener('hashchange', () => { const was = S.stage; readHash(); const to = S.stage; S.stage = was; syncUI(); go(to); });
     requestAnimationFrame(frame);
+    // compile the other scales one at a time, between frames, so start-up is not one long task
+    const yieldToMain = () => globalThis.scheduler?.yield ? scheduler.yield() : new Promise(r => setTimeout(r, 0));
+    (async () => { for (let i = 0; i < STAGES.length; i++) { await yieldToMain(); ready(i); } })().catch(console.error);
     window.__rainbows = { S, go, syncUI, cams, R, get busy() { return !!tr; } };
   } catch (err) {
     console.error(err);

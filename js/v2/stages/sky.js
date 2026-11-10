@@ -14,7 +14,7 @@ let prog = null;
 export default {
   id: 'sky', name: 'Sky', scale: '1 km', scaleNote: 'rain about 1 km away', modes: false, focus: true,
   controls: ['focus', 'sun'], bloom: 0.55, exposure: 1.05,
-  hint: 'Drag to look around · pinch or scroll to step in and out of your own eyes',
+  hint: 'Drag to look around · scroll to step in and out of your own eyes',
   hintSmall: 'Drag to look · pinch to step into your own eyes',
   cam: { type: 'look', eyePos: EYE, yaw: 0, pitch: 0.27, dist: 7.5, fov: 62, sway: 0.02,
     lim: { yaw: [-0.95, 0.95], pitch: [-0.05, 0.85], dist: [0, 16] } },

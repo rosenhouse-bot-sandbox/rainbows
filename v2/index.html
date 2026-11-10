@@ -3,16 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Rainbows v2</title>
 <meta name="description" content="A rainbow in three dimensions at every scale, from orbit down to the molecules that slow light, with rays, photons and waves.">
+<meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#05070F">
+<meta name="text-scale" content="scale">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="modulepreload" href="../js/v2/gl.js">
+<link rel="modulepreload" href="../js/v2/optics.js">
+<link rel="modulepreload" href="../js/v2/stages/common.js">
+<link rel="modulepreload" href="../js/v2/stages/orbit.js">
+<link rel="modulepreload" href="../js/v2/stages/sky.js">
+<link rel="modulepreload" href="../js/v2/stages/rain.js">
+<link rel="modulepreload" href="../js/v2/stages/drop.js">
+<link rel="modulepreload" href="../js/v2/stages/surface.js">
+<link rel="modulepreload" href="../js/v2/stages/atoms.js">
 <link rel="stylesheet" href="../css/v2.css">
 </head>
 <body>
-<canvas id="view" tabindex="0" aria-label="Three-dimensional view of how a rainbow forms. Drag to look around, pinch or scroll to zoom."></canvas>
+<canvas id="view" tabindex="0" role="application" aria-label="Rainbow 3D view" aria-describedby="hint capBody"></canvas>
 <div id="labels" aria-hidden="true"></div>
 
 <a class="back" href="../" aria-label="Back to all experiences">
@@ -20,11 +32,12 @@
 </a>
 <div class="topright">
   <div class="scalebar" aria-hidden="true"><b id="scaleText"></b></div>
-  <button class="chip" id="resetView" title="Return the camera to where it started">Reset view</button>
+  <button type="button" class="chip" id="pause">Pause</button>
+  <button type="button" class="chip" id="resetView">Reset view</button>
 </div>
 <p class="hint" id="hint">Drag to look around · pinch or scroll to zoom</p>
 
-<aside class="panel" id="panel">
+<main class="panel" id="panel">
   <header class="title">
     <h1>Rainbows v2</h1>
     <span>from orbit down to a single molecule</span>
@@ -39,68 +52,68 @@
   </div>
 
   <div class="step">
-    <button id="prev" class="btn">‹ Zoom out</button>
-    <button id="next" class="btn primary">Zoom in ›</button>
+    <button type="button" id="prev" class="btn">‹ Zoom out</button>
+    <button type="button" id="next" class="btn primary">Zoom in ›</button>
   </div>
 
   <div class="controls">
     <div class="ctl" data-c="focus">
-      <span class="lab">Follow the light</span>
-      <div class="seg" role="group" aria-label="Which light to follow">
-        <button data-focus="sun">From the Sun</button>
-        <button data-focus="both">All of it</button>
-        <button data-focus="eye">To your eye</button>
+      <span class="lab" id="lab-focus">Follow the light</span>
+      <div class="seg" role="group" aria-labelledby="lab-focus">
+        <button type="button" data-focus="sun">From the Sun</button>
+        <button type="button" data-focus="both">All of it</button>
+        <button type="button" data-focus="eye">To your eye</button>
       </div>
     </div>
     <div class="ctl" data-c="mode">
-      <span class="lab">Show light as</span>
-      <div class="seg" role="group" aria-label="How to draw light">
-        <button data-mode="ray">Particles</button>
-        <button data-mode="wave">Waves</button>
+      <span class="lab" id="lab-mode">Show light as</span>
+      <div class="seg" role="group" aria-labelledby="lab-mode">
+        <button type="button" data-mode="ray">Particles</button>
+        <button type="button" data-mode="wave">Waves</button>
       </div>
     </div>
     <div class="ctl" data-c="cross">
-      <span class="lab">Which crossing</span>
-      <div class="seg four" role="group" aria-label="Which crossing of the surface">
-        <button data-cross="enter">Entering</button>
-        <button data-cross="back">Back wall</button>
-        <button data-cross="exit">Leaving</button>
-        <button data-cross="tir">Past critical</button>
+      <span class="lab" id="lab-cross">Which crossing</span>
+      <div class="seg four" role="group" aria-labelledby="lab-cross">
+        <button type="button" data-cross="enter">Entering</button>
+        <button type="button" data-cross="back">Back wall</button>
+        <button type="button" data-cross="exit">Leaving</button>
+        <button type="button" data-cross="tir">Past critical</button>
       </div>
     </div>
     <div class="ctl" data-c="sun">
-      <label for="sun"><span>Height of the Sun</span><b id="sunV"></b></label>
+      <div class="lab"><label for="sun">Height of the Sun</label><b id="sunV" aria-hidden="true"></b></div>
       <input id="sun" type="range" min="0" max="50" step="0.5" value="14">
     </div>
     <div class="ctl" data-c="bowpos">
-      <label for="bowpos"><span>Slide the drop through the bow</span><b id="bowposV"></b></label>
+      <div class="lab"><label for="bowpos">Slide the drop through the bow</label><b id="bowposV" aria-hidden="true"></b></div>
       <input id="bowpos" class="spec" type="range" min="-0.8" max="1.6" step="0.01" value="0.5">
     </div>
     <div class="ctl" data-c="theta">
-      <label for="theta"><span>Angle the light meets the surface</span><b id="thetaV"></b></label>
+      <div class="lab"><label for="theta">Angle the light meets the surface</label><b id="thetaV" aria-hidden="true"></b></div>
       <input id="theta" type="range" min="0" max="85" step="0.1" value="59.4">
     </div>
     <div class="ctl" data-c="lambda">
-      <label for="lambda"><span>Colour of the light</span><b id="lambdaV"></b></label>
+      <div class="lab"><label for="lambda">Colour of the light</label><b id="lambdaV" aria-hidden="true"></b></div>
       <input id="lambda" class="spec" type="range" min="400" max="700" step="1" value="550">
     </div>
     <div class="ctl" data-c="pol">
-      <span class="lab">Electric field points</span>
-      <div class="seg" role="group" aria-label="Polarisation">
-        <button data-pol="s">Along the surface</button>
-        <button data-pol="p">In the plane of the bend</button>
+      <span class="lab" id="lab-pol">Electric field points</span>
+      <div class="seg" role="group" aria-labelledby="lab-pol">
+        <button type="button" data-pol="s">Along the surface</button>
+        <button type="button" data-pol="p">In the plane of the bend</button>
       </div>
     </div>
     <div class="ctl toggles" data-c="exag">
-      <label class="toggle"><input id="exag" type="checkbox"><span>Spread the colours 5× wider than real</span></label>
+      <label class="toggle" for="exag"><input id="exag" type="checkbox"><span>Spread the colours 5× wider than real</span></label>
     </div>
     <div class="ctl toggles" data-c="second">
-      <label class="toggle"><input id="second" type="checkbox"><span>Follow a second reflection (the outer bow)</span></label>
+      <label class="toggle" for="second"><input id="second" type="checkbox"><span>Follow a second reflection (the outer bow)</span></label>
     </div>
   </div>
 
   <div class="readout" id="readout"></div>
-</aside>
+</main>
 
 <div class="fail" id="fail" hidden>
   <h2>This needs WebGL 2</h2>
