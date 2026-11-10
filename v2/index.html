@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; style-src-attr 'unsafe-inline'; font-src https://fonts.gstatic.com; img-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Rainbows v2</title>
+<meta name="description" content="A rainbow in three dimensions at every scale, from orbit down to the molecules that slow light, with rays, photons and waves.">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#05070F">
+<meta name="text-scale" content="scale">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="modulepreload" href="../js/v2/gl.js">
+<link rel="modulepreload" href="../js/v2/optics.js">
+<link rel="modulepreload" href="../js/v2/stages/common.js">
+<link rel="modulepreload" href="../js/v2/stages/orbit.js">
+<link rel="modulepreload" href="../js/v2/stages/sky.js">
+<link rel="modulepreload" href="../js/v2/stages/rain.js">
+<link rel="modulepreload" href="../js/v2/stages/drop.js">
+<link rel="modulepreload" href="../js/v2/stages/surface.js">
+<link rel="modulepreload" href="../js/v2/stages/atoms.js">
+<link rel="stylesheet" href="../css/v2.css">
+</head>
+<body>
+<canvas id="view" tabindex="0" role="application" aria-label="Rainbow 3D view" aria-describedby="hint capBody"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<a class="back" href="../" aria-label="Back to all experiences">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14.5 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</a>
+<div class="topright">
+  <div class="scalebar" aria-hidden="true"><b id="scaleText"></b></div>
+  <button type="button" class="chip" id="pause">Pause</button>
+  <button type="button" class="chip" id="resetView">Reset view</button>
+</div>
+<p class="hint" id="hint">Drag to look around · pinch or scroll to zoom</p>
+
+<main class="panel" id="panel">
+  <header class="title">
+    <h1>Rainbows v2</h1>
+    <span>from orbit down to a single molecule</span>
+  </header>
+
+  <nav class="stages" id="stages" aria-label="Scale"></nav>
+
+  <div class="cap" id="cap" aria-live="polite">
+    <div class="eyebrow"><span id="stageNo"></span> · <span id="stageScale"></span></div>
+    <h2 id="capTitle"></h2>
+    <p id="capBody"></p>
+  </div>
+
+  <div class="step">
+    <button type="button" id="prev" class="btn">‹ Zoom out</button>
+    <button type="button" id="next" class="btn primary">Zoom in ›</button>
+  </div>
+
+  <div class="controls">
+    <div class="ctl" data-c="focus">
+      <span class="lab" id="lab-focus">Follow the light</span>
+      <div class="seg" role="group" aria-labelledby="lab-focus">
+        <button type="button" data-focus="sun">From the Sun</button>
+        <button type="button" data-focus="both">All of it</button>
+        <button type="button" data-focus="eye">To your eye</button>
+      </div>
+    </div>
+    <div class="ctl" data-c="mode">
+      <span class="lab" id="lab-mode">Show light as</span>
+      <div class="seg" role="group" aria-labelledby="lab-mode">
+        <button type="button" data-mode="ray">Particles</button>
+        <button type="button" data-mode="wave">Waves</button>
+      </div>
+    </div>
+    <div class="ctl" data-c="cross">
+      <span class="lab" id="lab-cross">Which crossing</span>
+      <div class="seg four" role="group" aria-labelledby="lab-cross">
+        <button type="button" data-cross="enter">Entering</button>
+        <button type="button" data-cross="back">Back wall</button>
+        <button type="button" data-cross="exit">Leaving</button>
+        <button type="button" data-cross="tir">Past critical</button>
+      </div>
+    </div>
+    <div class="ctl" data-c="sun">
+      <div class="lab"><label for="sun">Height of the Sun</label><b id="sunV" aria-hidden="true"></b></div>
+      <input id="sun" type="range" min="0" max="50" step="0.5" value="14">
+    </div>
+    <div class="ctl" data-c="bowpos">
+      <div class="lab"><label for="bowpos">Slide the drop through the bow</label><b id="bowposV" aria-hidden="true"></b></div>
+      <input id="bowpos" class="spec" type="range" min="-0.8" max="1.6" step="0.01" value="0.5">
+    </div>
+    <div class="ctl" data-c="theta">
+      <div class="lab"><label for="theta">Angle the light meets the surface</label><b id="thetaV" aria-hidden="true"></b></div>
+      <input id="theta" type="range" min="0" max="85" step="0.1" value="59.4">
+    </div>
+    <div class="ctl" data-c="lambda">
+      <div class="lab"><label for="lambda">Colour of the light</label><b id="lambdaV" aria-hidden="true"></b></div>
+      <input id="lambda" class="spec" type="range" min="400" max="700" step="1" value="550">
+    </div>
+    <div class="ctl" data-c="pol">
+      <span class="lab" id="lab-pol">Electric field points</span>
+      <div class="seg" role="group" aria-labelledby="lab-pol">
+        <button type="button" data-pol="s">Along the surface</button>
+        <button type="button" data-pol="p">In the plane of the bend</button>
+      </div>
+    </div>
+    <div class="ctl toggles" data-c="exag">
+      <label class="toggle" for="exag"><input id="exag" type="checkbox"><span>Spread the colours 5× wider than real</span></label>
+    </div>
+    <div class="ctl toggles" data-c="second">
+      <label class="toggle" for="second"><input id="second" type="checkbox"><span>Follow a second reflection (the outer bow)</span></label>
+    </div>
+  </div>
+
+  <div class="readout" id="readout"></div>
+</main>
+
+<div class="fail" id="fail" hidden>
+  <h2>This needs WebGL 2</h2>
+  <p>Your browser could not start the 3D view. A recent version of Chrome, Firefox, Edge or Safari will run it.</p>
+  <p><a href="../v1/">Open Rainbows v1 instead</a></p>
+</div>
+
+<script type="module" src="../js/v2/main.js"></script>
+</body>
+</html>
