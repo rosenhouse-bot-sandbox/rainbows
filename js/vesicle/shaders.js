@@ -14,6 +14,8 @@ uniform vec4 uFog;       // start, length, focus radius near, far
 uniform vec3 uFocus;     // what the camera is looking at
 uniform vec2 uCut;       // cutaway wedge: centre angle, half width
 uniform float uTime;
+uniform vec4 uTIR;       // in vitro: glass height, 1 / penetration depth, surface intensity (0 = off), illumination reach
+uniform vec2 uMode;      // in vitro, how far the camera has pulled back (0..1)
 `;
 
 // Signed distance to the nearest face of the cutaway wedge; negative means "sliced away".
@@ -37,7 +39,18 @@ vec3 sky(vec3 d){
   vec3 c = mix(horizon, vec3(0.022, 0.050, 0.105), smoothstep(0.0, 0.85, d.y));
   c = mix(c, vec3(0.060, 0.030, 0.090), smoothstep(0.0, 0.75, -d.y));
   c += vec3(0.05, 0.07, 0.10) * exp(-abs(d.y) * 9.0);
+  if(uMode.x > 0.5){
+    // On the microscope: glass and darkness below, and a dim room once the camera leaves the cell.
+    c = mix(c * 0.55, vec3(0.010, 0.018, 0.034), smoothstep(0.0, 0.45, -d.y));     // darker, so the laser light reads
+    c = mix(c, vec3(0.020, 0.024, 0.034) + vec3(0.03, 0.04, 0.055) * exp(-abs(d.y) * 5.0), uMode.y);
+  }
   return c;
+}
+const vec3 EXC = vec3(0.06, 0.56, 0.95);     // 488 nm
+// Laser light landing on whatever sits in the evanescent field.
+vec3 excite(vec3 col, float wy){
+  if(uTIR.z <= 0.0 || wy < uTIR.x) return col;
+  return col + EXC * (0.17 * uTIR.z * exp(-(wy - uTIR.x) * uTIR.y) * uTIR.w);
 }
 vec3 haze(vec3 col, float dist, float fr){
   float f = 1.0 - exp(-max(dist - uFog.x, 0.0) / uFog.y);
@@ -154,6 +167,7 @@ void main(){
     // Headgroups shade each other where they tuck into the sheet.
     if(dot(vMemN, vMemN) > 0.0) col *= mix(0.42, 1.0, smoothstep(-0.75, 0.35, dot(n, vMemN)));
   }
+  if(style < 0.5 || style > 1.5) col = excite(col, uCamPos.y + uCamR.y * pv.x + uCamU.y * pv.y - uCamF.y * pv.z);
   o = vec4(haze(col, length(pv), vMisc.x), alpha);
 }`;
 
@@ -290,7 +304,7 @@ void main(){
   vec3 n = mat3(uView) * vec3(0.0, uCamPos.y > vW.y ? 1.0 : -1.0, 0.0);
   float diff = max(dot(n, normalize(vec3(-0.38, 0.58, 0.72))), 0.0);
   vec3 col = uSheetCol * (0.36 + 0.74 * diff) * (0.78 + 0.2 * dots);
-  o = vec4(haze(col, dist, length(vW - uFocus)), 1.0);
+  o = vec4(haze(excite(col, vW.y), dist, length(vW - uFocus)), 1.0);
 }`;
 
 export const skyVS = `#version 300 es
@@ -313,3 +327,133 @@ void main(){
   c += (h2(gl_FragCoord.xy) - 0.5) / 255.0;
   o = vec4(c, 1.0);
 }`;
+
+// ---- in vitro ------------------------------------------------------------------------------------
+// The evanescent field as a glow in the medium: the exact line integral of exp(-height/depth)
+// along each view ray, so it thickens toward the glass and when you look along the surface.
+export const glowFS = HEAD + SKY + `
+uniform vec3 uGlow;      // ray length, brightness scale, strength
+out vec4 o;
+void main(){
+  vec3 d = viewDir();
+  float h0 = uCamPos.y - uTIR.x, t0 = 0.0, t1 = uGlow.x;
+  if(abs(d.y) > 1e-5){ float tg = -h0 / d.y; if(d.y > 0.0) t0 = max(t0, tg); else t1 = min(t1, tg); }
+  else if(h0 < 0.0) discard;
+  if(t1 <= t0) discard;
+  float ha = h0 + d.y * t0, hb = h0 + d.y * t1, k = uTIR.y, len;
+  if(k < 1e-7) len = t1 - t0;
+  else if(abs(d.y) < 1e-4) len = (t1 - t0) * exp(-ha * k);
+  else len = abs(exp(-ha * k) - exp(-hb * k)) / (k * abs(d.y));
+  float g = 1.0 - exp(-len * uTIR.z / uGlow.y);
+  o = vec4(EXC * g * uGlow.z, 1.0);
+}`;
+
+// A flat panel carrying the light field: either the top of the glass, or a vertical slice through
+// glass and cell on the faces of the cutaway. The slice shows the real wave: plane waves arriving
+// and reflecting inside the glass, and above it a wave that only runs sideways and fades upward.
+export const fieldVS = HEAD + `
+uniform vec3 uO, uA, uB;
+out vec3 vW; out vec2 vC;
+void main(){
+  vC = vec2(float(gl_VertexID & 1), float(gl_VertexID >> 1));
+  vW = uO + uA * vC.x + uB * vC.y;
+  gl_Position = uProj * uView * vec4(vW, 1.0);
+}`;
+
+export const fieldFS = HEAD + SKY + `
+in vec3 vW; in vec2 vC;
+uniform vec4 uWave;      // kx, ky in glass, ky in the cell (0 when evanescent), phase shift on reflection
+uniform vec4 uWave2;     // reflection amplitude, slice (1) or glass top (0), strength, spot radius
+out vec4 o;
+void main(){
+  float ph = uWave.x * vW.x - uTime * 2.4, dist = length(vW - uCamPos);
+  float f = 1.0 - exp(-max(dist - uFog.x, 0.0) / uFog.y);
+  if(uWave2.y < 0.5){
+    // Top of the coverslip: faint glass, a measuring grid, and the laser's footprint sweeping across.
+    float r = length(vW.xz);
+    if(r > 1.1e7) discard;
+    float spot = exp(-(vW.x * vW.x * 0.25 + vW.z * vW.z) / (2.0 * uWave2.w * uWave2.w));
+    float crest = 0.5 + 0.5 * cos(ph);
+    float fine = exp(-dist / 900.0);
+    vec2 g = abs(fract(vW.xz / 100.0 + 0.5) - 0.5) * 100.0;
+    float grid = (1.0 - smoothstep(0.0, 1.2 + dist * 0.004, min(g.x, g.y))) * fine;
+    vec3 add = EXC * uTIR.z * spot * (0.07 + 0.16 * mix(0.5, crest, fine)) * uWave2.z + vec3(0.5, 0.7, 0.9) * grid * 0.10;
+    float a = 0.10 * (1.0 - f);
+    o = vec4(vec3(0.55, 0.72, 0.85) * a * 0.5 + add * (1.0 - f), a);
+    return;
+  }
+  float y = vW.y - uTIR.x, e;
+  if(y < 0.0) e = cos(ph + uWave.y * y) + uWave2.x * cos(ph - uWave.y * y - 2.0 * uWave.w);
+  else if(uWave.z > 0.0) e = (1.0 + uWave2.x) * cos(ph + uWave.z * y);
+  else e = 2.0 * cos(uWave.w) * exp(-y * uTIR.y * 0.5) * cos(ph - uWave.w);
+  e *= 0.5;
+  // Time-averaged intensity: fringes inside the glass, pure exponential decay above it.
+  float mean = y < 0.0 ? 0.25 * (1.0 + uWave2.x * uWave2.x + 2.0 * uWave2.x * cos(2.0 * uWave.y * y + 2.0 * uWave.w))
+                       : (uWave.z > 0.0 ? uTIR.z : uTIR.z * exp(-y * uTIR.y));
+  // Ruler: a line at each multiple of the penetration depth.
+  float tick = 0.0;
+  if(y > 0.0 && uTIR.y > 0.0){ float m = y * uTIR.y; float px = fwidth(m); tick = (1.0 - smoothstep(px, 2.5 * px, abs(fract(m + 0.5) - 0.5))) * step(m, 4.5) * step(0.5, m); }
+  float edge = (1.0 - smoothstep(0.55, 1.0, vC.x)) * smoothstep(0.0, 0.1, vC.y) * (1.0 - smoothstep(0.8, 1.0, vC.y));
+  float k = edge * uWave2.z;
+  if(y < 0.0){
+    // Inside the glass: a pale slab with the incoming and reflected beams crossing in it.
+    float a = 0.5 * k;
+    o = vec4(vec3(0.20, 0.27, 0.33) * a + EXC * (mean * 0.30 + 0.16 * e) * k, a);
+  } else {
+    float surf = 1.0 - smoothstep(0.0, 2.0 * fwidth(y), y);
+    o = vec4((EXC * mean * (0.95 + 0.45 * e) + vec3(0.75, 0.92, 1.0) * (tick * 0.55 + surf * 0.8)) * k, 0.0);
+  }
+}`;
+
+// Dish, coverslip, objective and cells.
+export const meshVS = HEAD + `
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec3 aNrm;
+layout(location=2) in vec4 aCol;
+layout(location=3) in vec4 aInst;
+out vec3 vN; out vec3 vW; out vec4 vCol;
+void main(){
+  vW = aPos * aInst.w + aInst.xyz; vN = aNrm; vCol = aCol;
+  gl_Position = uProj * uView * vec4(vW, 1.0);
+}`;
+
+export const meshFS = HEAD + `
+in vec3 vN; in vec3 vW; in vec4 vCol;
+uniform vec3 uMesh;      // alpha scale, shininess, additive glow
+out vec4 o;
+void main(){
+  vec3 v = normalize(uCamPos - vW), n = normalize(vN);
+  if(dot(n, v) < 0.0) n = -n;
+  if(uMesh.z > 0.0){ o = vec4(vCol.rgb * uMesh.z * (0.35 + 0.65 * pow(1.0 - dot(n, v), 2.0)), 0.0); return; }
+  vec3 L = normalize(vec3(0.35, 0.8, 0.5));
+  float diff = max(dot(n, L), 0.0) * 0.7 + 0.25 * abs(n.y) + 0.22;
+  float spec = pow(max(dot(n, normalize(L + v)), 0.0), 40.0) * uMesh.y;
+  float rim = pow(1.0 - dot(n, v), 3.0);
+  float a = clamp(vCol.a * uMesh.x * (1.0 + 1.2 * rim), 0.0, 1.0);
+  o = vec4((vCol.rgb * diff + spec) * a, a);
+}`;
+
+// Laser beams as glowing lines that never get thinner than a few pixels.
+export const beamVS = HEAD + `
+layout(location=0) in vec3 aA;
+layout(location=1) in vec3 aB;
+layout(location=2) in vec4 aP;     // side, end, width, strength
+layout(location=3) in vec3 aC;
+out float vS; out vec4 vCol;
+void main(){
+  vec3 a = (uView * vec4(aA, 1.0)).xyz, b = (uView * vec4(aB, 1.0)).xyz;
+  vec3 p = mix(a, b, aP.y);
+  vec2 dir = normalize(b.xy / max(-b.z, 1.0) - a.xy / max(-a.z, 1.0) + 1e-9);
+  float thin = 0.0035 * abs(p.z), w = max(aP.z, thin);
+  p.xy += vec2(-dir.y, dir.x) * w * aP.x;
+  // Up close the real beam is wider than the screen; let it thin to a faint wash.
+  vS = aP.x; vCol = vec4(aC, aP.w * clamp(thin / aP.z, 0.1, 1.0));
+  gl_Position = uProj * vec4(p, 1.0);
+}`;
+
+export const beamFS = `#version 300 es
+precision highp float;
+in float vS; in vec4 vCol;
+uniform float uBeam;
+out vec4 o;
+void main(){ o = vec4(vCol.rgb * vCol.a * uBeam * exp(-vS * vS * 3.5), 0.0); }`;

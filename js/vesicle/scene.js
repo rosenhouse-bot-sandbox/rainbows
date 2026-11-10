@@ -3,6 +3,7 @@
 import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
 import { compute, surf, D, CLEFT, TABW, BAREA, PH } from './profile.js';
 import * as SH from './shaders.js';
+import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, F_OBJ, N_GLASS } from './vitro.js';
 
 const PI = Math.PI, TAU = 2 * PI;
 export const PATCH = 120;            // radius of membrane drawn lipid by lipid
@@ -17,6 +18,7 @@ export const COLORS = {
   post: [0.52, 0.47, 0.70], postIn: [0.44, 0.39, 0.61],
   syntaxin: [0.92, 0.26, 0.28], snap25: [0.33, 0.80, 0.42], synaptobrevin: [0.36, 0.33, 1.0],
   synaptotagmin: [0.72, 0.48, 0.96], calcium: [1.0, 0.90, 0.28], glutamate: [1.0, 0.36, 0.74],
+  phluorin: [0.30, 1.0, 0.40], emission: [0.45, 1.0, 0.35],
   channel: [0.86, 0.70, 0.34], ampa: [0.20, 0.72, 0.66], nmda: [0.86, 0.50, 0.30],
   sodium: [0.62, 0.92, 1.0], adhesion: [0.62, 0.62, 0.74],
 };
@@ -28,6 +30,16 @@ const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] 
 const erfc = (x) => { const t = 1 / (1 + 0.3275911 * x); return t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429)))) * Math.exp(-x * x); };
 const shade = (c, k) => [c[0] * k, c[1] * k, c[2] * k];
 
+// Where a free synaptobrevin sits: fixed on the vesicle until the pore opens, then wandering
+// outward across the merged membrane. Returns [area coordinate, azimuth].
+function freeSite(S, fr, p) {
+  const uv = Math.sqrt(S.Av[0] / PI), sg = 150 * Math.pow(sstep(PH.PORE + 0.02, 1, p), 0.8);
+  const ux = fr.u * uv * Math.cos(fr.phi) + sg * fr.g1, uz = fr.u * uv * Math.sin(fr.phi) + sg * fr.g2;
+  let a = PI * (ux * ux + uz * uz);
+  if (!S.fused[1]) a = Math.min(a, S.Av[0] * 0.985);
+  return [a, Math.atan2(uz, ux)];
+}
+
 export class Scene {
   constructor(gl) {
     this.gl = gl;
@@ -36,6 +48,8 @@ export class Scene {
       ball: program(gl, SH.ballVS, SH.sphereFS), ballHalo: program(gl, SH.ballVS, SH.haloFS),
       nt: program(gl, SH.transmitterVS, SH.sphereFS), ntHalo: program(gl, SH.transmitterVS, SH.haloFS),
       sheet: program(gl, SH.sheetVS, SH.sheetFS), sky: program(gl, SH.skyVS, SH.skyFS),
+      glow: program(gl, SH.skyVS, SH.glowFS), field: program(gl, SH.fieldVS, SH.fieldFS),
+      mesh: program(gl, SH.meshVS, SH.meshFS), beam: program(gl, SH.beamVS, SH.beamFS),
     };
     this.corners = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.corners);
@@ -52,6 +66,16 @@ export class Scene {
     this.emptyVAO = gl.createVertexArray();
     this.S = null; this.key = ''; this.labels = [];
     this.buildProteins(); this.buildScenery(); this.buildSheets(); this.buildTransmitter();
+    // In vitro: the bench under the cell, cell nuclei, and the laser beam.
+    this.bench = buildBench(gl);
+    this.nuclei = mk([4, 4], 8);
+    const nd = []; for (const q of this.bench.nuclei) nd.push(q[0], q[1], q[2], q[3], 0.34, 0.38, 0.62, 3);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.nuclei.b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nd), gl.STATIC_DRAW); this.nuclei.n = nd.length / 8;
+    this.beamBuf = gl.createBuffer(); this.beamVAO = gl.createVertexArray();
+    gl.bindVertexArray(this.beamVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.beamBuf);
+    [[0, 3, 0], [1, 3, 12], [2, 4, 24], [3, 3, 40]].forEach(([loc, size, off]) => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 52, off); });
+    gl.bindVertexArray(null);
+    this.opt = optics(68); this.emit = []; this.fluor = 0; this.labelText = {};
   }
 
   // ---- static geometry -------------------------------------------------------------------------
@@ -71,6 +95,7 @@ export class Scene {
       }
     };
     hex(1, 0, this.spacing, PATCH + 3, 1); hex(1, 1, this.spacing, PATCH + 3, 1);
+    this.nPM = out.length / 7;
     const coarse = 1.3;                 // the far membrane is drawn with fewer, larger headgroups
     hex(2, 0, this.spacing * coarse, PATCH, coarse); hex(2, 1, this.spacing * coarse, PATCH, coarse);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.sheetLipids.b);
@@ -128,6 +153,9 @@ export class Scene {
       this.snares.push({ phi: CUT_CENTRE + PI / 6 + k * PI / 3 + (r() - 0.5) * 0.16, dphi: (r() - 0.5) * 2.2, rOut: 22 + r() * 46, yaw: (r() - 0.5) * 4.5 });
       this.syts.push({ phi: CUT_CENTRE + k * PI / 3 + (r() - 0.5) * 0.2 + PI / 3, dphi: (r() - 0.5) * 2, rOut: 12 + r() * 40 });
     }
+    // Synaptobrevin copies not engaged in a SNARE complex (a vesicle carries about seventy).
+    this.free = [];
+    for (let i = 0; i < 30; i++) this.free.push({ u: Math.sqrt(0.03 + 0.9 * (i + r()) / 30), phi: i * 2.39996 + r(), g1: r.gauss(), g2: r.gauss() });
     this.channels = [{ phi: 3.55, r: 30 }, { phi: 5.9, r: 37 }, { phi: 1.75, r: 44 }];
     this.receptors = [];
     let guard = 0;
@@ -145,7 +173,7 @@ export class Scene {
     const ball = (x, y, z, rad, c, style) => out.push(x, y, z, rad, c[0], c[1], c[2], style);
     const amber = [0.80, 0.58, 0.30];
     // Reserve pool of vesicles, and a few more docked along the active zone.
-    const ves = []; this.reserve = null;
+    const ves = []; this.reserve = null; this.docked = [];
     let guard = 0;
     while (ves.length < 230 && guard++ < 40000) {
       const a = r() * TAU, rr = 520 * Math.sqrt(r()), y = 62 + 480 * Math.pow(r(), 1.25), rad = 19 + r() * 5;
@@ -157,6 +185,7 @@ export class Scene {
     }
     for (const [a, rr] of [[0.5, 104], [2.5, 150], [4.3, 118], [5.6, 205], [3.4, 255], [1.3, 290]]) {
       const rad = 20 + r() * 3; ves.push([rr * Math.cos(a), rad + D + 3.5, rr * Math.sin(a), rad]);
+      this.docked.push([rr * Math.cos(a), rr * Math.sin(a), rad]);
     }
     for (const v of ves) ball(v[0], v[1], v[2], v[3], shade(amber, 0.85 + 0.3 * r()), 2);
     this.reserve = this.reserve || [ves[0][0], ves[0][1] + ves[0][3], ves[0][2]];
@@ -176,6 +205,7 @@ export class Scene {
       const dir = norm([r() - 0.5, (r() - 0.5) * 0.8, r() - 0.5]), len = 140 + r() * 220;
       chain(p, add(p, dir, len), 3.6, 4.2, [0.78, 0.44, 0.46], 0, 3);
     }
+    this.sceneryCell = out.length / 8;
     // Postsynaptic density: the scaffold that holds receptors under the release site.
     for (let i = 0; i < 1100; i++) {
       const a = r() * TAU, rr = 190 * Math.sqrt(r()), dep = Math.pow(r(), 1.6);
@@ -200,7 +230,7 @@ export class Scene {
     S.hV = S.h + (S.fused[0] ? 0 : S.extra);
     S.Rin = R - D - 0.9;
     this.glutamate = Math.round(GLU_PER_NM3 * 4 / 3 * PI * Math.pow(S.Rin, 3));
-    const half = st.cut * PI / 360;
+    const cut = this.cutNow(st), half = cut * PI / 360;
     const kept = (x, z) => half < 0.002 || Math.abs(((Math.atan2(z, x) - CUT_CENTRE + PI) % TAU + TAU) % TAU - PI) >= half;
 
     const d = this.dynData; let n = 0;
@@ -210,6 +240,22 @@ export class Scene {
     const strand = (a, b, steps, rad, c) => { for (let i = 0; i <= steps; i++) ball(mixv(a, b, i / steps), rad, c); };
     const Av = S.Av[0], C = COLORS;
     const anchors = {};
+    const vitro = !!st.vitro, opt = this.opt = optics(st.angle);
+    this.emit = [];
+    // Superecliptic pHluorin: a pH-sensitive GFP fused to the end of synaptobrevin that faces the
+    // vesicle interior. At the vesicle's pH 5.5 it is dark; once the pore lets the acid out it
+    // shines, in proportion to the laser intensity at its height above the glass.
+    const unq = sstep(PH.PORE, PH.PORE + 0.04, p);
+    const tag = (A, draw) => {
+      const base = add(A.p, A.n, -2 * D), c = add(base, A.n, -3.6);
+      const b = opt.at(c[1] + GAP) * (0.04 + 0.96 * unq), lit = b > 0.05;
+      this.emit.push([c[0], c[2], b, c[1]]);
+      if (!draw) return c;
+      const col = lit ? shade(C.phluorin, Math.min(1.25, 0.3 + 1.5 * b)) : [0.30, 0.40, 0.34];
+      ball(add(base, A.n, -0.9), 0.34, shade(C.synaptobrevin, 0.9));
+      for (const t of [-2.3, -3.6, -4.9]) ball(add(base, A.n, t), 1.15, col, lit ? 1 : 0);
+      return c;
+    };
 
     // SNARE complexes. Syntaxin (red) and SNAP-25 (green) belong to the plasma membrane,
     // synaptobrevin (blue) to the vesicle. Zipping the four helices from their far ends toward
@@ -222,7 +268,9 @@ export class Scene {
       const sb = lerp(10, 5.5, sstep(0, PH.STALK, p));
       const aS = Av + PI * rs * rs, dphi = 0.9 / Math.max(rs, 3);
       const Sx = at(0, aS, phi + dphi * wJoin), B = at(0, lerp(Av - PI * sb * sb, aS, wJoin), phi - dphi * wJoin);
-      if (!kept(Sx.p[0], Sx.p[2])) return;
+      const shown = kept(Sx.p[0], Sx.p[2]);
+      if (vitro) tag(B, shown);
+      if (!shown) return;
       const er = [Math.cos(phi), 0, Math.sin(phi)], et = [-Math.sin(phi), 0, Math.cos(phi)];
       // Before fusion the bundle lies in the wedge between the membranes; afterwards it rests on one.
       const M = mixv(Sx.p, B.p, 0.5), rM = Math.hypot(M[0], M[2]), r2 = rM + 7;
@@ -259,6 +307,27 @@ export class Scene {
       for (let i = 1; i < 12; i++) { const u = i / 12; ball(mixv(mixv(tips[1], ctrl, u), mixv(ctrl, heads[3], u), u), 0.3, lc); }
       if (!anchors.snare || sn.phi % TAU > 2.9 && sn.phi % TAU < 3.6) anchors.snare = add(C0, dir, Lb * 0.6);
     });
+
+    if (vitro) {
+      this.free.forEach((fr) => {
+        const site = freeSite(S, fr, p), A = at(0, site[0], site[1]), draw = kept(A.p[0], A.p[2]);
+        if (draw) {
+          for (let t = 0.5; t <= 2 * D + 0.3; t += 0.55) ball(add(A.p, A.n, -t), 0.55, shade(C.synaptobrevin, 0.82));
+          for (let t = 0.6; t < 3.4; t += 0.62) ball(add(add(A.p, A.n, t), [Math.sin(fr.phi * 7), 0, Math.cos(fr.phi * 5)], t * 0.3), 0.36, C.synaptobrevin);
+        }
+        const c = tag(A, draw);
+        if (draw && !anchors.phl) anchors.phl = c;
+      });
+      // Fluorescence leaves in every direction; the objective below catches about half of it.
+      const lit = this.emit.filter((e) => e[2] > 0.12), hash = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); };
+      if (lit.length) for (let j = 0; j < 80; j++) {
+        const cyc = time * 0.5 + j * 0.6180339, ph = cyc % 1, id = Math.abs(Math.floor(cyc)) * 131 + j * 17, e = lit[id % lit.length];
+        const dy = 1 - 2 * hash(id + 0.3), a = hash(id + 0.7) * TAU, dr = Math.sqrt(1 - dy * dy), L = 170 * ph;
+        ball([e[0] + dr * Math.cos(a) * L, e[3] + dy * L, e[1] + dr * Math.sin(a) * L], 0.62 * (1 - ph) * Math.min(1, e[2] * 1.6), C.emission, 1);
+      }
+      this.fluor = this.emit.reduce((t, e) => t + e[2], 0) / 36;
+      if (st.dist > 4000) ball([0, -6, 0], 0.005 * st.dist, shade(C.emission, Math.min(1, 0.08 + this.fluor * 1.6)), 1);
+    }
 
     // Synaptotagmin, the calcium sensor: anchored in the vesicle, with two C2 domains that
     // plunge into the plasma membrane when calcium binds.
@@ -312,7 +381,7 @@ export class Scene {
 
     // Adhesion molecules stitch the two cells together and set the width of the cleft.
     const AvT = S.Av[1];
-    this.links.forEach((ln) => {
+    if (!vitro) this.links.forEach((ln) => {
       const top = at(1, AvT + PI * ln.r * ln.r, ln.a).p;
       if (!kept(top[0], top[2]) || Math.hypot(top[0], top[2]) > PATCH - 8) return;
       const bot = [top[0], -CLEFT + D, top[2]];
@@ -326,7 +395,7 @@ export class Scene {
     // Glutamate receptors in the receiving cell. Each opens once transmitter has had time to reach it.
     const yTop = -CLEFT + D;
     let nearest = null;
-    this.receptors.forEach((rc, ri) => {
+    if (!vitro) this.receptors.forEach((rc, ri) => {
       if (!kept(rc.x, rc.z)) return;
       const open = sstep(0, 0.035, p - (0.415 + rc.r * 0.0019 + (rc.nmda ? 0.05 : 0)));
       const base = rc.nmda ? C.nmda : C.ampa, lit = mixv(base, [1, 1, 0.9], 0.3 * open), k = rc.nmda ? 1.12 : 1;
@@ -353,26 +422,49 @@ export class Scene {
 
     // Where the on-screen labels point.
     const top = S.hV + S.Rc + D, face = CUT_CENTRE + half + 0.25, fx = Math.cos(face), fz = Math.sin(face);
-    this.labels = [
+    const here = [
       { id: 'vesicle', q: p < 0.8 ? [0, Math.min(top, S.hV + S.Rc + D), 0] : null },
       { id: 'stalk', q: p >= PH.STALK - 0.02 && p < PH.PORE ? [0, S.rho, 0] : null },
       { id: 'pore', q: p >= PH.PORE && p < 0.66 ? [0, S.rho, 0] : null },
-      { id: 'glutamate', q: p < 0.4 ? (st.cut > 25 ? [-S.Rin * 0.45, S.hV + S.Rin * 0.2, 0] : null) : [-14 - 30 * sstep(0.45, 0.9, p), -CLEFT / 2, -6] },
+      { id: 'glutamate', q: p < 0.4 ? (cut > 25 ? [-S.Rin * 0.45, S.hV + S.Rin * 0.2, 0] : null) : [-14 - 30 * sstep(0.45, 0.9, p), -CLEFT / 2, -6] },
       { id: 'snare', q: anchors.snare }, { id: 'syt', q: p < 0.62 ? anchors.syt : null }, { id: 'channel', q: anchors.channel },
+    ];
+    const cellSide = [{ id: 'reserve', q: this.reserve }, { id: 'mito', q: this.mito }];
+    if (!vitro) this.labels = [...here,
       { id: 'receptor', q: nearest && nearest.q },
       { id: 'pre', q: [fx * 84, D, fz * 84] }, { id: 'cleft', q: [fx * 62, -CLEFT / 2, fz * 62] }, { id: 'post', q: [fx * 96, -CLEFT - D, fz * 96] },
-      { id: 'psd', q: [fx * 30, -CLEFT - 16, fz * 30] },
-      { id: 'reserve', q: this.reserve }, { id: 'mito', q: this.mito },
-    ];
+      { id: 'psd', q: [fx * 30, -CLEFT - 16, fz * 30] }, ...cellSide];
+    else {
+      const x2 = F_OBJ * N_GLASS * Math.sin(opt.th), far = (id, q, min, max) => ({ id, q, min, max: max || 1e12, free: true });
+      this.labels = [...here,
+        { id: 'phl', q: anchors.phl, max: 1500 },
+        { id: 'field', q: [fx * 46, GLASS_TOP + (opt.tir ? Math.min(opt.depth, 150) : 60), fz * 46], max: 3000 },
+        { id: 'membrane', q: [fx * 84, D, fz * 84] }, { id: 'gap', q: [fx * 66, -GAP / 2, fz * 66] },
+        { id: 'glass', q: [fx * 100, GLASS_TOP, fz * 100], max: 3e4, free: true }, ...cellSide,
+        far('cell', [3400 + 6000, 4200, -2100], 9e3, 6e5), far('coverslip', [6 * MM, GLASS_BOT / 2, 0], 1.5e5, 4e7),
+        far('oil', [2.9 * MM, (GLASS_BOT + LENS_Y) / 2, 0], 6e5, 4e7), far('objective', [12.6 * MM, LENS_Y - 18 * MM, 0], 4e6),
+        far('laser', [-x2, LENS_Y - 34 * MM, 0], 4e6), far('emission', [0, LENS_Y - 56 * MM, 0], 4e6),
+        far('medium', [-9 * MM, 3.6 * MM, 0], 8e6), far('dish', [17.5 * MM, 7 * MM, 0], 8e6),
+      ];
+      this.labelText = {
+        phl: unq > 0.5 ? 'pHluorin, fluorescing' : 'pHluorin, quenched at pH 5.5',
+        field: opt.tir ? `Evanescent field, 1/e at ${Math.round(opt.depth)} nm` : 'Refracted beam, no evanescent field',
+      };
+    }
+    this.gapBottom = vitro ? -GAP + 1.4 : -CLEFT + D + 1.4;
+    this.vitro = vitro;
     this.focusY = Math.max(-3, Math.min(13, 0.3 * top - 2));
     this.kept = kept;
   }
+
+  // The cutaway is a close-up device; it closes as the camera pulls back to cell scale.
+  cutNow(st) { return st.cut * (1 - sstep(3.4, 3.9, Math.log10(st.dist))); }
 
   // Rough line-of-sight test for labels: is q hidden behind a membrane or the vesicle?
   visible(q, eye) {
     const S = this.S, d = [q[0] - eye[0], q[1] - eye[1], q[2] - eye[2]];
     const blocked = (t) => t > 0.02 && t < 0.97 && this.kept(eye[0] + d[0] * t, eye[2] + d[2] * t);
-    for (const y of [0, -CLEFT]) if (Math.abs(d[1]) > 1e-6 && blocked((y - eye[1]) / d[1])) {
+    for (const y of this.vitro ? [0] : [0, -CLEFT]) if (Math.abs(d[1]) > 1e-6 && blocked((y - eye[1]) / d[1])) {
       const t = (y - eye[1]) / d[1];
       if (y < 0 || Math.hypot(eye[0] + d[0] * t, eye[2] + d[2] * t) > S.Rc * 0.9 || S.p < PH.DILATE) return false;
     }
@@ -388,6 +480,7 @@ export class Scene {
   // ---- drawing ---------------------------------------------------------------------------------
   draw(cam, st, time) {
     const gl = this.gl, S = this.S, P = this.P, C = COLORS;
+    const vitro = !!st.vitro, opt = this.opt, lg = Math.log10(cam.dist), nano = cam.dist < 2e4, cut = this.cutNow(st);
     const common = (pr) => {
       gl.useProgram(pr.p); const u = pr.u;
       gl.uniformMatrix4fv(u.uView, false, cam.view); gl.uniformMatrix4fv(u.uProj, false, cam.proj);
@@ -395,20 +488,27 @@ export class Scene {
       gl.uniform4f(u.uLens, cam.proj[0], cam.proj[5], cam.ox, cam.oy);
       gl.uniform2f(u.uViewport, cam.w, cam.h);
       gl.uniform4f(u.uFog, cam.dist * 0.9, 150 + cam.dist * 0.9, 45 + 0.45 * cam.dist, 190 + 1.5 * cam.dist);
-      gl.uniform3fv(u.uFocus, cam.target); gl.uniform2f(u.uCut, CUT_CENTRE, st.cut * PI / 360);
+      gl.uniform3fv(u.uFocus, cam.target); gl.uniform2f(u.uCut, CUT_CENTRE, cut * PI / 360);
       gl.uniform1f(u.uTime, time);
+      if (vitro) gl.uniform4f(u.uTIR, GLASS_TOP, opt.tir ? 1 / opt.depth : 0, opt.I0 / 4, 1); else gl.uniform4f(u.uTIR, 0, 0, 0, 0);
+      gl.uniform2f(u.uMode, vitro ? 1 : 0, sstep(3.6, 4.5, lg));
       return u;
     };
     gl.viewport(0, 0, cam.w, cam.h);
     gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
     common(P.sky); gl.bindVertexArray(this.emptyVAO); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (vitro) {
+      const g = common(P.glow);
+      gl.uniform3f(g.uGlow, 3 * cam.dist + 800, 500 + cam.dist * 1.2, 0.17 * (1 - sstep(3.6, 4.3, lg)));
+      gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.disable(gl.BLEND);
+    }
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.clear(gl.DEPTH_BUFFER_BIT);
 
     // Distant membranes.
     let u = common(P.sheet);
     gl.uniform1f(u.uGrain, this.spacing * 1.4);
     gl.bindVertexArray(this.sheetVAO);
-    for (const [y, c] of [[D, C.plasma], [-D, C.plasmaOut], [-CLEFT + D, C.post], [-CLEFT - D, C.postIn]]) {
+    for (const [y, c] of [[D, C.plasma], [-D, C.plasmaOut], [-CLEFT + D, C.post], [-CLEFT - D, C.postIn]].slice(0, vitro ? 2 : 4)) {
       gl.uniform1f(u.uY, y); gl.uniform3fv(u.uSheetCol, c); gl.drawArrays(gl.TRIANGLES, 0, this.sheetN);
     }
 
@@ -433,14 +533,14 @@ export class Scene {
       gl.uniform1f(v.uHeadR, this.headR);
       return v;
     };
-    const both = () => { for (const b of [this.ves, this.sheetLipids]) { gl.bindVertexArray(b.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, b.n); } };
-    lipidU(P.head); both();
-    if (st.cut > 1) { u = lipidU(P.tail); gl.uniform1f(u.uBand, Math.max(2.0, this.spacing * 1.9)); both(); }
+    const both = () => { for (const b of [this.ves, this.sheetLipids]) { gl.bindVertexArray(b.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, vitro && b === this.sheetLipids ? this.nPM : b.n); } };
+    if (nano) { lipidU(P.head); both(); }
+    if (nano && cut > 1) { u = lipidU(P.tail); gl.uniform1f(u.uBand, Math.max(2.0, this.spacing * 1.9)); both(); }
 
     // Proteins and scenery.
     u = common(P.ball);
     gl.uniform3f(u.uBall, 1, 0, 0); gl.bindVertexArray(this.dyn.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.dyn.n);
-    gl.uniform3f(u.uBall, 1, 1, 1); gl.bindVertexArray(this.scenery.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.scenery.n);
+    gl.uniform3f(u.uBall, 1, 1, 1); gl.bindVertexArray(this.scenery.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, cam.dist > 1e5 ? 0 : vitro ? this.sceneryCell : this.scenery.n);
 
     // Transmitter.
     const full = this.glutamate, shown = Math.min(NT_MAX, Math.round(full * (this.q < 0.6 ? 0.55 : 1)));
@@ -448,19 +548,87 @@ export class Scene {
     const ntU = (pr, scale) => {
       const v = common(pr);
       gl.uniform4f(v.uNT, S.p, S.hV, S.Rin - 0.6, S.rho);
-      gl.uniform4f(v.uNT2, Math.max(0.15, S.neck - D - 0.6), -D - 1.4, -CLEFT + D + 1.4, 0.36);
+      gl.uniform4f(v.uNT2, Math.max(0.15, S.neck - D - 0.6), -D - 1.4, this.gapBottom, 0.36);
       gl.uniform4f(v.uNT3, PH.PORE + 0.012, 0.30, scale, 0);
       gl.uniform3fv(v.uNTCol, C.glutamate);
       return v;
     };
-    ntU(P.nt, grow); gl.bindVertexArray(this.nt.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, shown);
+    ntU(P.nt, grow); gl.bindVertexArray(this.nt.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, nano ? shown : 0);
+    const mesh = (m, alpha, shiny, glow = 0) => { gl.uniform3f(P.mesh.u.uMesh, alpha, shiny, glow); gl.bindVertexArray(m.vao); gl.drawArraysInstanced(gl.TRIANGLES, 0, m.n, m.inst); };
+    if (vitro) {
+      // Solid parts of the bench: the objective, and the nuclei of the cells in the dish.
+      u = common(P.ball); gl.uniform3f(u.uBall, 1, 0, 0);
+      gl.bindVertexArray(this.nuclei.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, cam.dist > 3000 ? this.nuclei.n : 0);
+      u = common(P.mesh); mesh(this.bench.objective, 1, 0.7);
+    }
     gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
 
     // Glow.
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
-    u = ntU(P.ntHalo, grow * 3.4); gl.uniform1f(u.uGlow, 0.30); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, shown);
+    u = ntU(P.ntHalo, grow * 3.4); gl.uniform1f(u.uGlow, 0.30); gl.bindVertexArray(this.nt.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, nano ? shown : 0);
     u = common(P.ballHalo); gl.uniform3f(u.uBall, 4.2, 0, 0); gl.uniform1f(u.uGlow, 0.55);
     gl.bindVertexArray(this.dyn.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.dyn.n);
+    if (vitro) this.drawBench(cam, st, common, mesh);
     gl.disable(gl.BLEND); gl.depthMask(true); gl.bindVertexArray(null);
+  }
+
+  // Everything see-through or glowing in the in vitro set-up, drawn after the solid scene.
+  drawBench(cam, st, common, mesh) {
+    const gl = this.gl, P = this.P, B = this.bench, opt = this.opt, lg = Math.log10(cam.dist);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);           // premultiplied, so tint and glow share one pass
+    const glassTop = () => {
+      const u = common(P.field), H = Math.min(1.1e7, 40 * cam.dist + 2000);
+      gl.uniform4f(u.uWave, opt.kx, opt.ky, opt.kyMed, opt.delta);
+      gl.uniform4f(u.uWave2, opt.r, 0, 1, 15000);
+      gl.uniform3f(u.uO, -H, GLASS_TOP, -H); gl.uniform3f(u.uA, 2 * H, 0, 0); gl.uniform3f(u.uB, 0, 0, 2 * H);
+      gl.bindVertexArray(this.emptyVAO); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      // The same field in cross-section, painted on the two faces of the cutaway.
+      const k = 1 - sstep(3.3, 3.9, lg);
+      const cut = this.cutNow(st);
+      if (cut > 1 && k > 0) {
+        gl.uniform4f(u.uWave2, opt.r, 1, k, 0);
+        const y0 = GLASS_TOP - 0.9 * cam.dist - 80, y1 = GLASS_TOP + 1.3 * cam.dist + 120;
+        for (const sgn of [-1, 1]) {
+          const a = CUT_CENTRE + sgn * cut * PI / 360, len = 2.4 * cam.dist + 200;
+          gl.uniform3f(u.uO, 0, y0, 0); gl.uniform3f(u.uA, Math.cos(a) * len, 0, Math.sin(a) * len); gl.uniform3f(u.uB, 0, y1 - y0, 0);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        }
+      }
+    };
+    const layers = [
+      () => { common(P.mesh); mesh(B.oil, 1, 0.2); mesh(B.coverslip, 1, 0.12); },
+      glassTop,
+      () => { common(P.mesh); mesh(B.cells, sstep(3.3, 4.0, lg), 0.15); },
+      () => { common(P.mesh); mesh(B.medium, 1, 0.12); mesh(B.dish, 1, 0.3); },
+    ];
+    if (cam.eye[1] < GLASS_TOP) layers.reverse();
+    for (const f of layers) f();
+    // Light paths, drawn through everything so they can be followed inside the objective.
+    gl.disable(gl.DEPTH_TEST); gl.blendFunc(gl.ONE, gl.ONE);
+    const fade = sstep(4.7, 5.4, lg);
+    if (fade > 0) {
+      const v = [];
+      for (const sg of beamPath(opt)) for (const [side, end] of [[-1, 0], [1, 0], [1, 1], [-1, 0], [1, 1], [-1, 1]]) v.push(...sg.a, ...sg.b, side, end, sg.w, sg.k, ...sg.c);
+      const u = common(P.beam); gl.uniform1f(u.uBeam, 0.85 * fade);
+      gl.bindVertexArray(this.beamVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.beamBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW); gl.drawArrays(gl.TRIANGLES, 0, v.length / 13);
+    }
+    const em = (0.035 + 0.3 * Math.min(1, this.fluor)) * sstep(5.7, 6.5, lg);
+    if (em > 0) { common(P.mesh); mesh(B.emission, 1, 0, em); }
+    gl.enable(gl.DEPTH_TEST);
+  }
+
+  // Fluorescence at the fusion site across the whole event, for the camera's trace. The slow
+  // part (where every tag is at each moment) is cached until the vesicle size changes.
+  fluorCurve(R, n = 72) {
+    if (!this.curveCache || this.curveCache.R !== R) {
+      const pts = [], tmp = new Float64Array(6); let tab = null;
+      for (let i = 0; i < n; i++) {
+        const p = i / (n - 1), S = compute(p, R, tab); tab = S.tab;
+        pts.push({ unq: sstep(PH.PORE, PH.PORE + 0.04, p), sites: this.free.map((fr) => { const s = freeSite(S, fr, p); surf(S, 0, s[0], s[1], tmp); return [Math.hypot(tmp[0] - tmp[3] * 7.4, tmp[2] - tmp[5] * 7.4), tmp[1] - tmp[4] * 7.4]; }) });
+      }
+      this.curveCache = { R, pts };
+    }
+    return this.curveCache.pts.map((pt) => pt.sites.reduce((t, s) => t + this.opt.at(s[1] + GAP) * (0.04 + 0.96 * pt.unq) * Math.exp(-s[0] * s[0] / (2 * 130 * 130)), 0) / 30);
   }
 }

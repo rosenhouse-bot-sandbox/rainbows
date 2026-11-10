@@ -26,6 +26,23 @@ presynaptic membrane, drawn lipid by lipid and to scale in nanometres.
 - Lipids keep the colour of the membrane they started in, so you can watch the two mix: the
   facing leaflets from hemifusion onward, the far leaflets only once the pore is open.
 
+An **In vivo / In vitro** switch changes the setting. In vitro, the cell sits on a glass-bottom
+dish over a TIRF microscope, and synaptobrevin carries superecliptic pHluorin on its lumenal end:
+
+- A 488 nm laser hits the glass at an adjustable angle. Past the critical angle it reflects
+  totally and leaves an evanescent field that decays exponentially with height
+  (`d = λ / 4π√(n₁² sin²θ − n₂²)`); below it, the beam refracts into the cell and lights all of it.
+  The field is drawn as a glow, as light falling on the molecules, and in cross-section on the
+  cutaway faces with a ruler line at each multiple of the penetration depth.
+- pHluorin is quenched at the vesicle's pH 5.5 and lights up when the pore opens. 510 nm
+  emission leaves in all directions.
+- The distance slider runs from 40 nm out to 160 mm, so you can pull back through the cell, the
+  0.17 mm coverslip and the immersion oil to the dish and the 100×, NA 1.49 objective, all to scale.
+- A picture-in-picture camera view shows what the microscope records: each tag blurred to the
+  175 nm diffraction limit, 65 nm pixels, shot noise, and a trace of brightness over the event.
+
+Optics, bench geometry and the camera simulation are in `js/vesicle/vitro.js`.
+
 The membrane is a surface of revolution (sphere, toroidal neck, plane) whose two leaflets are
 offset copies; clipping those offsets at the axis yields the stalk and the pore without special
 cases. Lipids are placed by conserved area, so the vesicle's membrane flows out through the neck
@@ -62,5 +79,6 @@ for previews.
 - `js/stages/*.js`: one module per stage, each with a `draw` and a `box`
   (the region of its picture that becomes the next stage's full frame).
 - `vesicle/index.html`, `css/vesicle.css`, `js/vesicle/*.js`: the vesicle fusion experience
-  (`profile.js` geometry, `scene.js` molecules and drawing, `shaders.js` GLSL, `main.js` controls).
+  (`profile.js` geometry, `scene.js` molecules and drawing, `vitro.js` microscope, `shaders.js` GLSL,
+  `main.js` controls).
 - `drafts/`: review boards from each design round.
