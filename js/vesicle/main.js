@@ -3,7 +3,7 @@ import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
 import { PH } from './profile.js';
 import { INFO } from './info.js';
-import { Experiment, Sampler, PARAMS, T_TOTAL, toValue } from './infer.js';
+import { Experiment, Sampler, T_TOTAL, quantiles } from './infer.js';
 import { Dashboard } from './inferui.js';
 import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
 
@@ -42,7 +42,7 @@ LABELS.dish = 'Glass-bottom dish, 35 mm'; LABELS.neigh = 'Other vesicles, some f
 // The story the inference view tells, keyed to milliseconds since the (hidden) moment of fusion.
 const INF_STAGES = [
   { at: -1e9, name: 'Before', title: 'Nothing has happened yet',
-    body: 'Only a dim, quenched spot. The beliefs on the right are still the priors: what the literature would let us assume before seeing this video. Each outline in the scene is one guess.' },
+    body: 'Only a dim, quenched spot. The beliefs on the right are still the priors: what the literature would let us assume before seeing this video. The gold band in the scene is where the membrane could be.' },
   { at: 0, name: 'The flash', title: 'The flash pins the moment',
     body: 'Brightness jumps when the pore opens. Within two frames the moment of fusion is known to a few milliseconds, and the number of tags follows from how bright the flash is.' },
   { at: 25, name: 'Settling', title: 'The shape of the rise',
@@ -367,36 +367,55 @@ function truthOf(seed) {
   return [110 + 90 * r(1), Math.log(st.diam), Math.log(30) + 0.4 * g(2), Math.log(30) + 0.7 * g(3), Math.log(0.2) + 0.7 * g(4)];
 }
 const dash = new Dashboard({ obs: $('obs'), exp: $('expect'), fan: $('fan'), strips: $('strips'), pair: $('pair') });
-let exper = null, sampler = null, expKey = '', viewDiam = 42, diamAt = 0, infTick = 0;
-const med = (a) => { const b = Float64Array.from(a).sort(); return b[b.length >> 1]; };
-function runInference(now) {
+let exper = null, sampler = null, expKey = '', viewDiam = 42, diamAt = 0, infTick = 0, goal = null;
+const belief = { p: [0.2, 0.2, 0.2, 0.2, 0.2], R: [20, 20, 20, 20, 20], sp: [80, 80, 80, 80, 80], fused: 0, ready: false };
+const rowBuf = new Float32Array(1300 * 5), qP = new Float32Array(1300), qR = new Float32Array(1300), qS = new Float32Array(1300);
+function runInference(now, dt) {
   const key = [st.dt, st.power, st.angle, st.prior, st.seed, st.diam].join('|');
   if (key !== expKey) {
     expKey = key;
     exper = new Experiment({ dt: st.dt, power: st.power, angle: st.angle, prior: st.prior });
     exper.simulate(truthOf(st.seed), st.seed * 7 + 3);
     if (sampler) sampler.reset(exper); else sampler = new Sampler(exper);
+    belief.ready = false; goal = null;
   }
   sampler.observe(Math.min(exper.nf, Math.floor(st.t / st.dt + 1e-6)));
   sampler.run(phone.matches ? 5 : 7);
-  // What each walker thinks the vesicle looks like right now.
-  const s = new Float64Array(3);
-  const ghosts = sampler.x.map((u) => {
-    exper.state(u, st.t, s);
-    const fused = st.t > u[0];
-    return { R: Math.exp(u[1]) / 2 - 2.4, fused, p: fused ? PH.PORE + 0.02 + (0.98 - PH.PORE) * s[2] : 0.2, spread: Math.sqrt(s[1]) * CAM.nm };
-  });
-  // The solid scene shows the middle guess. The vesicle is rebuilt only now and then, as resizing it is not free.
-  const d = Math.round(med(sampler.x.map((u) => Math.exp(u[1]))));
-  if (d !== viewDiam && now - diamAt > 350) { viewDiam = Math.min(90, Math.max(30, d)); diamAt = now; }
-  if (++infTick % 2 === 0) {
+  // Summarise the posterior from the sampler's long memory rather than from where the walkers
+  // happen to be this instant, and ease everything on screen toward that summary. The picture
+  // then moves when the evidence moves, not with every step of the sampler.
+  if (infTick % 3 === 0 || !belief.ready) {
+    const n = sampler.rows(rowBuf, 1200), s3 = new Float64Array(3);
+    if (n >= 40) {
+      let fused = 0;
+      for (let s = 0; s < n; s++) {
+        const u = rowBuf.subarray(s * 5, s * 5 + 5); exper.state(u, st.t, s3);
+        const f = st.t > u[0]; fused += f;
+        qP[s] = f ? PH.PORE + 0.02 + (0.98 - PH.PORE) * s3[2] : 0.2; qR[s] = Math.exp(u[1]) / 2 - 2.4; qS[s] = Math.sqrt(s3[1]) * CAM.nm;
+      }
+      const Q = [0.05, 0.25, 0.5, 0.75, 0.95];
+      goal = { p: quantiles(qP, n, Q), R: quantiles(qR, n, Q), sp: quantiles(qS, n, Q), fused: fused / n };
+    }
+  }
+  if (goal) {
+    const k = belief.ready ? 1 - Math.exp(-dt / 0.5) : 1;
+    for (const key of ['p', 'R', 'sp']) for (let i = 0; i < 5; i++) belief[key][i] += (goal[key][i] - belief[key][i]) * k;
+    belief.fused += (goal.fused - belief.fused) * k; belief.ready = true;
+  }
+  // The solid vesicle is the middle estimate. Resizing it rebuilds its lipids, so only do that for a real, settled change.
+  const d = 2 * (belief.R[2] + 2.4);
+  if (Math.abs(d - viewDiam) >= 2 && now - diamAt > 800) { viewDiam = Math.min(90, Math.max(30, Math.round(d))); diamAt = now; }
+  if (++infTick % 3 === 0) {
     dash.draw(exper, sampler, st.t, st.truth);
     const fr = `frame ${sampler.upto} of ${exper.nf}`;
     if (shown.fr !== fr) { shown.fr = fr; $('infFrames').textContent = fr; }
     if (dash.pairText && shown.pt !== dash.pairText) { shown.pt = dash.pairText; $('pairNote').textContent = dash.pairText; }
     if (infTick % 40 === 0) pipRect = $('inf').getBoundingClientRect();
   }
-  return Object.assign({}, st, { p: med(ghosts.map((g) => g.p)), diam: viewDiam, ghosts });
+  const B = belief;
+  return Object.assign({}, st, { p: B.p[2], diam: viewDiam, belief: {
+    tall: { p: B.p[0], R: B.R[4] }, low: { p: B.p[4], R: B.R[0] }, tall2: { p: B.p[1], R: B.R[3] }, low2: { p: B.p[3], R: B.R[1] },
+    mid: { p: B.p[2], R: B.R[2] }, sp: B.sp, fused: B.fused } });
 }
 
 // ---- frame loop ----------------------------------------------------------------------------------
@@ -411,7 +430,7 @@ function frame(now) {
     syncUI();
   }
   if (st.spin && !pointers.size && !hoverTag) { st.az = (st.az + dt * 3.2) % 360; syncUI(); }
-  const view = st.infer ? runInference(now) : st;
+  const view = st.infer ? runInference(now, dt) : st;
   scene.update(view, clock);
   if (scene.glutamate !== shownGlu) {
     shownGlu = scene.glutamate;

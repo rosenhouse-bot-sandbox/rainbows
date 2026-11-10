@@ -530,8 +530,8 @@ export class Scene {
       };
     }
     this.gapBottom = vitro ? -GAP + 1.4 : -CLEFT + D + 1.4;
-    this.vitro = vitro; this.ghosts = st.ghosts || null;
-    if (this.ghosts) this.labels.push({ id: 'ghost', q: [-(Math.min(S.Rc, 60) + D + 4) * 0.72, Math.max(6, Math.min(top * 0.72, 70)), 0], max: 2500, free: true });
+    this.vitro = vitro; this.belief = st.belief || null;
+    if (this.belief) this.labels.push({ id: 'ghost', q: [-(Math.min(S.Rc, 60) + D + 4) * 0.72, Math.max(6, Math.min(top * 0.72, 70)), 0], max: 2500, free: true });
     this.focusY = Math.max(-3, Math.min(13, 0.3 * top - 2));
     this.kept = kept;
   }
@@ -650,7 +650,7 @@ export class Scene {
     u = common(P.ballHalo); gl.uniform3f(u.uBall, 4.2, 0, 0); gl.uniform1f(u.uGlow, 0.55);
     gl.bindVertexArray(this.dyn.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, this.dyn.n);
     if (vitro) this.drawBench(cam, st, common, mesh);
-    if (this.ghosts && cam.dist < 6000) this.drawGhosts(common);
+    if (this.belief && cam.dist < 6000) this.drawBelief(common);
     gl.disable(gl.BLEND); gl.depthMask(true); gl.bindVertexArray(null);
   }
 
@@ -700,25 +700,34 @@ export class Scene {
     gl.enable(gl.DEPTH_TEST);
   }
 
-  // Inference view: one faint outline per sampled guess. Where the guesses agree the lines pile
-  // up into a bright edge; where they disagree they smear into a haze, so blur means doubt.
-  drawGhosts(common) {
-    const gl = this.gl, v = [], n = this.ghosts.length, a = 3.2 / n, AZ = 6;
-    const seg = (x0, y0, z0, x1, y1, z1, c) => v.push(x0, y0, z0, c[0], c[1], c[2], a, x1, y1, z1, c[0], c[1], c[2], a);
-    for (const g of this.ghosts) {
-      const pts = outline(g.p, g.R);
-      for (let k = 0; k < AZ; k++) {
-        const az = CUT_CENTRE + PI / AZ + k * TAU / AZ, cs = Math.cos(az), sn = Math.sin(az);
-        for (let i = 0; i + 3 < pts.length; i += 2) if (pts[i] === pts[i] && pts[i + 2] === pts[i + 2]) seg(pts[i] * cs, pts[i + 1], pts[i] * sn, pts[i + 2] * cs, pts[i + 3], pts[i + 2] * sn, [1.0, 0.78, 0.42]);
-      }
-      // How far the tags are believed to have spread: a ring at two standard deviations.
-      const r = 2 * g.spread;
-      if (g.fused) for (let i = 0; i < 48; i++) { const a0 = i / 48 * TAU, a1 = (i + 1) / 48 * TAU; seg(r * Math.cos(a0), -D - 7, r * Math.sin(a0), r * Math.cos(a1), -D - 7, r * Math.sin(a1), [0.35, 1.0, 0.45]); }
-    }
+  // Inference view: where the membrane probably is. The gold band between the tallest and the
+  // flattest plausible shapes holds 90% of the belief, its brighter core holds half, and the
+  // line is the middle estimate. A thin band means the video has pinned the shape down.
+  drawBelief(common) {
+    const gl = this.gl, B = this.belief, tri = [], lin = [], AZ = 6, gold = [1.0, 0.78, 0.42], green = [0.35, 1.0, 0.45];
+    const put = (arr, x, y, z, c, a) => arr.push(x, y, z, c[0], c[1], c[2], a);
+    const planes = []; for (let k = 0; k < AZ; k++) { const az = CUT_CENTRE + PI / AZ + k * TAU / AZ; planes.push([Math.cos(az), Math.sin(az)]); }
+    const O = (g) => outline(g.p, g.R);
+    const band = (P, Q, a) => { for (const [cs, sn] of planes) for (let i = 0; i + 3 < P.length; i += 2) {
+      const q = [[P[i], P[i + 1]], [P[i + 2], P[i + 3]], [Q[i + 2], Q[i + 3]], [Q[i], Q[i + 1]]];
+      for (const k of [0, 1, 2, 0, 2, 3]) put(tri, q[k][0] * cs, q[k][1], q[k][0] * sn, gold, a);
+    } };
+    const edge = (P, a) => { for (const [cs, sn] of planes) for (let i = 0; i + 3 < P.length; i += 2) { put(lin, P[i] * cs, P[i + 1], P[i] * sn, gold, a); put(lin, P[i + 2] * cs, P[i + 3], P[i + 2] * sn, gold, a); } };
+    const tall = O(B.tall), low = O(B.low);
+    band(tall, low, 0.085); band(O(B.tall2), O(B.low2), 0.11);
+    edge(tall, 0.22); edge(low, 0.22); edge(O(B.mid), 0.9);
+    // How far the tags have probably spread: the same kind of band, as a ring on the membrane.
+    const y = -D - 7, f = B.fused, ring = (r0, r1, a) => { for (let i = 0; i < 56; i++) {
+      const a0 = i / 56 * TAU, a1 = (i + 1) / 56 * TAU, c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const q = [[r0 * c0, r0 * s0], [r0 * c1, r0 * s1], [r1 * c1, r1 * s1], [r1 * c0, r1 * s0]];
+      for (const k of [0, 1, 2, 0, 2, 3]) put(tri, q[k][0], y, q[k][1], green, a * f);
+    } };
+    if (f > 0.02) { ring(2 * B.sp[0], 2 * B.sp[4], 0.10); ring(2 * B.sp[1], 2 * B.sp[3], 0.14); }
     common(this.P.line);
     gl.disable(gl.DEPTH_TEST); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
     gl.bindVertexArray(this.lineVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.lineBuf);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW); gl.drawArrays(gl.LINES, 0, v.length / 7);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tri), gl.DYNAMIC_DRAW); gl.drawArrays(gl.TRIANGLES, 0, tri.length / 7);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(lin), gl.DYNAMIC_DRAW); gl.drawArrays(gl.LINES, 0, lin.length / 7);
     gl.enable(gl.DEPTH_TEST);
   }
 

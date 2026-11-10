@@ -59,7 +59,9 @@ of one fusion event from hidden parameters, then infers them back with Bayes' ru
   gives diffusion. Vesicle size stays vague, because it trades off against copy number.
 - Uncertainty is drawn three ways: density strips (prior in grey, posterior in gold, with a 90%
   range and the bits learned), a fan chart that turns into a forecast past the last frame seen,
-  and in the 3D scene one faint outline per walker, so a blurred membrane means doubt.
+  and in the 3D scene a gold band around the best-estimate vesicle that holds 90% of the plausible
+  membrane shapes (brighter core: 50%). Everything shown is a running summary, eased over time,
+  so it moves when the evidence changes and not with each step of the sampler.
 - Laser power, frame time, laser angle and prior width are adjustable; "New event" draws a new
   hidden truth and "Show the true values" reveals it.
 

@@ -119,7 +119,7 @@ export class Experiment {
 
 // Affine-invariant ensemble sampler (Goodman & Weare's stretch move), with an occasional fresh
 // draw from the prior mixed in so the ensemble can widen again when evidence is taken away.
-export const WALKERS = 40, KEEP = 60;
+export const WALKERS = 40, KEEP = 300;
 export class Sampler {
   constructor(exp, seed = 7) {
     this.r = rng(seed); this.x = []; this.lp = new Float64Array(WALKERS); this.ll = new Float64Array(WALKERS);
@@ -134,7 +134,7 @@ export class Sampler {
     if (upto === this.upto) return;
     this.upto = upto;
     for (let k = 0; k < WALKERS; k++) { this.ll[k] = this.exp.logLike(this.x[k], upto); this.lp[k] = this.exp.logPrior(this.x[k]); }
-    this.count = Math.min(this.count, WALKERS * 6);      // forget most of the old posterior quickly
+    this.count = Math.min(this.count, WALKERS * 4);      // forget most of the old posterior quickly
   }
   sweep() {
     const { r, x, exp } = this, y = this._y || (this._y = new Float64Array(NP));
@@ -155,13 +155,27 @@ export class Sampler {
       this.tried++;
       if (LN(r() + 1e-300) < logq) { x[k].set(y); this.lp[k] = lpy; this.ll[k] = lly; this.accepted++; }
     }
-    for (let k = 0; k < WALKERS; k++) { this.hist.set(x[k], this.head * NP); this.head = (this.head + 1) % (WALKERS * KEEP); }
-    this.count = Math.min(WALKERS * KEEP, this.count + WALKERS); this.sweeps++;
+    // Remember every fourth sweep: successive sweeps are much alike, and a longer memory gives steadier summaries.
+    if (++this.sweeps % 4 === 0 || this.count < WALKERS * 8) {
+      for (let k = 0; k < WALKERS; k++) { this.hist.set(x[k], this.head * NP); this.head = (this.head + 1) % (WALKERS * KEEP); }
+      this.count = Math.min(WALKERS * KEEP, this.count + WALKERS);
+    }
   }
   // Run for a time budget; returns sweeps done.
   run(ms) { const t0 = performance.now(); let n = 0; do { this.sweep(); n++; } while (performance.now() - t0 < ms && n < 40); return n; }
   // Recent samples of parameter i, newest last-agnostic (order does not matter for summaries).
-  column(i, out) { const n = this.count, N = WALKERS * KEEP; for (let s = 0; s < n; s++) out[s] = this.hist[((this.head - 1 - s + N) % N) * NP + i]; return n; }
+  // Summaries are taken over a long memory (thinned to at most `max` samples), which is what keeps them steady.
+  column(i, out, max = 3000) {
+    const N = WALKERS * KEEP, step = Math.max(1, Math.ceil(this.count / max)); let n = 0;
+    for (let s = 0; s < this.count; s += step) out[n++] = this.hist[((this.head - 1 - s + N) % N) * NP + i];
+    return n;
+  }
+  // Whole samples (all parameters together), thinned the same way. Returns how many were written.
+  rows(out, max) {
+    const N = WALKERS * KEEP, step = Math.max(1, Math.ceil(this.count / max)); let n = 0;
+    for (let s = 0; s < this.count; s += step) { const o = ((this.head - 1 - s + N) % N) * NP; for (let i = 0; i < NP; i++) out[n * NP + i] = this.hist[o + i]; n++; }
+    return n;
+  }
 }
 
 export function quantiles(arr, n, qs) {
