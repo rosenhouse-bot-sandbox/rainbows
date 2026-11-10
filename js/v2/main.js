@@ -169,7 +169,7 @@ function syncUI(light) {
   if (ck !== lastCap) {       // the caption is a live region: only touch it when it really changes
     $('stageNo').textContent = `Scale ${S.stage + 1} of ${STAGES.length}`; $('stageScale').textContent = st.scale;
     $('capTitle').textContent = cap.title; $('capBody').textContent = cap.body; lastCap = ck;
-    document.title = `${st.name} | Rainbows v2`;
+    document.title = `${st.name} | Rainbows`;
   }
   $('readout').innerHTML = st.readout ? st.readout(S) : '';
   $('hint').textContent = wide ? (st.hint || 'Drag to look around · scroll to zoom') + ' · or arrow keys, + and −' : (st.hintSmall || 'Drag to look around · pinch to zoom');
