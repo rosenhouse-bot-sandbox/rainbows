@@ -30,6 +30,7 @@ const I = {
   laser: ['488 nm laser', 'Focused off-centre at the back of the objective, the beam leaves the front lens tilted. Moving it further off-centre steepens the angle.', 'Total_internal_reflection_fluorescence_microscope'],
   emission: ['510 nm fluorescence', 'Light given off by the tags, collected by the same objective and separated from the laser light by a filter on its way to the camera.', 'Fluorescence'],
   medium: ['Culture medium', 'Buffered salt solution with nutrients that keeps the cells alive on the microscope.', 'Growth_medium'],
+  ghost: ['Plausible vesicles', 'Each faint outline is one guess at the vesicle that still fits the video. A crisp edge means the guesses agree; a smeared one means the data cannot yet tell them apart.', 'Bayesian_inference'],
   dish: ['Glass-bottom dish', 'A 35 mm plastic dish with a coverslip sealed across a hole in its base, so an oil-immersion objective can get close enough.', 'Petri_dish'],
 };
 export const INFO = Object.fromEntries(Object.entries(I).map(([k, v]) => [k, { label: v[0], detail: v[1], url: W + v[2] }]));

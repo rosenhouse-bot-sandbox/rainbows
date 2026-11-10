@@ -477,3 +477,14 @@ in float vS; in vec4 vCol;
 uniform float uBeam, uHi;
 out vec4 o;
 void main(){ o = vec4(vCol.rgb * vCol.a * uBeam * exp(-vS * vS * 3.5) * (uHi < 0.5 ? 1.0 : abs(uHi - 11.0) < 0.5 ? 1.8 : 0.22), 0.0); }`;
+
+// Thin additive lines, for the ensemble of outlines in the inference view.
+export const lineVS = HEAD + `
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec4 aCol;
+out vec4 vCol;
+void main(){ vCol = aCol; gl_Position = uProj * uView * vec4(aPos, 1.0); }`;
+export const lineFS = `#version 300 es
+precision highp float;
+in vec4 vCol; out vec4 o;
+void main(){ o = vec4(vCol.rgb * vCol.a, 0.0); }`;

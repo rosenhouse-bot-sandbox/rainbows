@@ -106,7 +106,7 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 .key li[aria-pressed="true"] i{box-shadow:0 0 0 2px var(--ink)}
 
 /* In vivo / in vitro switch */
-.mode{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;border-radius:13px;background:rgba(234,240,255,.06);border:1px solid var(--line)}
+.mode{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px;border-radius:13px;background:rgba(234,240,255,.06);border:1px solid var(--line)}
 .mode button{display:grid;gap:1px;padding:7px 8px;border-radius:9px;border:0;background:transparent;color:var(--ink2);font:inherit;font-family:var(--display);font-weight:600;font-size:15px;letter-spacing:-.01em;cursor:pointer}
 .mode small{font-family:var(--body);font-weight:400;font-size:11.5px;letter-spacing:0;color:var(--ink3)}
 .mode button[aria-pressed="true"]{background:rgba(234,240,255,.16);color:var(--ink)}
@@ -115,6 +115,22 @@ input.laser::-webkit-slider-runnable-track{background:linear-gradient(90deg,#19b
 input.laser::-moz-range-progress{background:#19b8ff}
 .key.plain{border-top:0;padding-top:0;margin-top:-7px}
 .key .wide{grid-column:1/-1;font-size:12.5px;color:var(--ink3);line-height:1.4}
+
+/* Inference view: evidence and beliefs */
+.inf{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));top:64px;bottom:20px;width:330px;margin:0;padding:12px 14px;display:grid;gap:8px;align-content:start;overflow-y:auto;scrollbar-width:thin;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
+.inf header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
+.inf header b{font-weight:500;color:var(--ink)}
+.inf header span{letter-spacing:.02em;text-transform:none}
+.infTop{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.infTop figure{margin:0;display:grid;gap:3px}
+.infTop figure canvas{width:100%;max-width:118px;margin:0 auto;aspect-ratio:1;display:block;border-radius:6px;background:#000;image-rendering:pixelated}
+.infTop figcaption{font-size:11.5px;color:var(--ink3);text-align:center}
+#fan{grid-column:1/-1;width:100%;height:104px;display:block}
+#strips{width:100%;height:250px;display:block}
+#pair{width:100%;height:128px;display:block}
+.inf p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
+body.infer .scalebar{right:calc(362px + env(safe-area-inset-right))}
+body.infer #sizeNote{display:none}
 
 /* The microscope's camera, picture in picture */
 .pip{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));bottom:20px;width:232px;margin:0;padding:10px;display:grid;gap:7px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
@@ -130,6 +146,13 @@ input.laser::-moz-range-progress{background:#19b8ff}
 .pip p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
 
 @media (max-width:899px){
+  .inf{top:calc(54px + env(safe-area-inset-top));left:8px;right:8px;bottom:auto;width:auto;padding:8px 10px;gap:5px;grid-template-columns:1fr}
+  .infTop{grid-template-columns:62px 62px 1fr;align-items:start}
+  .infTop figcaption{font-size:10px}
+  #fan{grid-column:auto;height:78px}
+  #strips{height:150px}
+  #pair,.inf p,.inf header span{display:none}
+  body.infer .scalebar,body.infer .hint{display:none}
   .pip{top:calc(92px + env(safe-area-inset-top));bottom:auto;width:124px;padding:7px;gap:5px;border-radius:13px}
   .pip p,.pip figcaption span{display:none}
   #trace{height:30px}
@@ -150,6 +173,7 @@ input.laser::-moz-range-progress{background:#19b8ff}
   .more{display:grid;gap:14px;padding-top:14px;border-top:1px solid var(--line)}
   .hint{left:412px;top:auto;bottom:22px}
   body.vitro .hint{right:268px}
+  body.infer .hint{right:362px}
   .scalebar{top:26px;right:26px}
   .tag{font-size:13px}
 }

@@ -28,8 +28,9 @@
   </header>
 
   <div class="mode" role="group" aria-label="Setting">
-    <button id="modeVivo" aria-pressed="true">In vivo<small>inside a synapse</small></button>
-    <button id="modeVitro" aria-pressed="false">In vitro<small>on a TIRF microscope</small></button>
+    <button id="modeVivo" aria-pressed="true">In vivo<small>in a synapse</small></button>
+    <button id="modeVitro" aria-pressed="false">In vitro<small>under TIRF</small></button>
+    <button id="modeInfer" aria-pressed="false">Inference<small>from the video</small></button>
   </div>
 
   <div class="cap" id="cap" aria-live="polite">
@@ -44,7 +45,7 @@
       <svg class="i-pause" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 4.5h4v15H6zM14 4.5h4v15h-4z" fill="currentColor"/></svg>
     </button>
     <div class="prog">
-      <label for="prog"><span>Fusion progress</span><b id="progV">0%</b></label>
+      <label for="prog"><span id="progL">Fusion progress</span><b id="progV">0%</b></label>
       <input id="prog" class="big" type="range" min="0" max="1000" step="1" value="0">
       <div class="ticks" id="ticks"></div>
     </div>
@@ -57,9 +58,29 @@
 
   <div class="more" id="more">
     <div class="ctl">
-      <label for="size"><span>Vesicle diameter</span><b id="sizeV">42 nm</b></label>
+      <label for="size"><span id="sizeL">Vesicle diameter</span><b id="sizeV">42 nm</b></label>
       <input id="size" type="range" min="30" max="90" step="1" value="42">
       <small id="sizeNote"></small>
+    </div>
+    <div class="group" id="ctl-infer" hidden>
+      <div class="ctl">
+        <label for="power"><span>Laser power</span><b id="powerV">1.5 photons/ms</b></label>
+        <input id="power" type="range" min="0.1" max="5" step="0.1" value="1.5">
+        <small>Photons collected from each lit tag. More light, less noise.</small>
+      </div>
+      <div class="ctl">
+        <label for="frameT"><span>Frame time</span><b id="frameTV">10 ms</b></label>
+        <input id="frameT" type="range" min="5" max="40" step="5" value="10">
+      </div>
+      <div class="ctl">
+        <label for="prior"><span>Prior assumptions</span><b id="priorV">textbook</b></label>
+        <input id="prior" type="range" min="0.5" max="2" step="0.05" value="1">
+        <small>How tightly we trust the literature before seeing the video.</small>
+      </div>
+      <div class="toggles">
+        <button class="share" id="newEvent">New event</button>
+        <label class="toggle"><input id="truth" type="checkbox"><span>Show the true values</span></label>
+      </div>
     </div>
     <div class="ctl" id="ctl-angle" hidden>
       <label for="angle"><span>Laser angle of incidence</span><b id="angleV">68.0°</b></label>
@@ -89,6 +110,13 @@
       <label class="toggle"><input id="lab" type="checkbox" checked><span>Labels</span></label>
     </div>
     <button class="share" id="share">Copy link to this view</button>
+    <ul class="key" id="keyInfer" aria-label="Key for the inference view" hidden>
+      <li><i style="--c:#a0acd0"></i>Prior: assumed beforehand</li>
+      <li><i style="--c:#ffcf6b"></i>Posterior: believed now</li>
+      <li><i style="--c:#78beff"></i>Forecast of unseen frames</li>
+      <li><i style="--c:#ffffff"></i>True value (hidden)</li>
+      <li class="wide">The posterior is sampled live by an ensemble of 40 walkers, each scoring a guess against every photon recorded so far. Bits count how many times the video has halved the uncertainty.</li>
+    </ul>
     <ul class="key" id="keyVitro" aria-label="Colour key for light" hidden>
       <li data-cat="11" tabindex="0" role="button" aria-pressed="false"><i style="--c:#19b8ff"></i>488 nm laser light</li>
       <li data-cat="12" tabindex="0" role="button" aria-pressed="false"><i style="--c:#73ff5a"></i>510 nm fluorescence</li>
@@ -123,6 +151,19 @@
   <canvas id="trace" width="336" height="84" aria-label="Fluorescence at the fusion site over the course of fusion"></canvas>
   <p id="pipNote"></p>
 </figure>
+
+<section class="inf" id="inf" aria-label="Inference from the video" hidden>
+  <header><b>Evidence</b><span id="infFrames">frame 0 of 40</span></header>
+  <div class="infTop">
+    <figure><canvas id="obs" width="24" height="24" aria-label="The frame the camera recorded"></canvas><figcaption>Recorded</figcaption></figure>
+    <figure><canvas id="expect" width="24" height="24" aria-label="The frame the model expects"></canvas><figcaption>Model expects</figcaption></figure>
+    <canvas id="fan" aria-label="Brightness over time with belief and forecast bands"></canvas>
+  </div>
+  <header><b>Beliefs</b><span>estimate · 90% range · learned</span></header>
+  <canvas id="strips" aria-label="Prior and posterior for each unknown"></canvas>
+  <canvas id="pair" aria-label="Joint belief about the two most entangled unknowns"></canvas>
+  <p id="pairNote"></p>
+</section>
 
 <div class="fail" id="fail" hidden>
   <h2>This view needs WebGL 2</h2>
