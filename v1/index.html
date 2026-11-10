@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How a Rainbow Forms</title>
+<meta name="description" content="Zoom from orbit to a single wave of light and see why a rainbow appears where it does, and why each colour bends by its own amount.">
+<meta name="theme-color" content="#05070F">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&family=Fraunces:ital,opsz,wght@1,9..144,400&display=swap">
+<link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+<canvas id="view" aria-hidden="true"></canvas>
+
+<header class="brand">
+  <span class="wordmark">How a rainbow forms</span>
+  <span class="sub">from orbit to a single wave of light</span>
+</header>
+
+<aside class="panel" id="panel">
+  <div class="cap" id="cap" aria-live="polite">
+    <div class="eyebrow"><span id="stageNo">Stage 1 of 5</span> · <span id="stageName">Orbit</span></div>
+    <h2 id="capTitle">Sunlight arrives in parallel</h2>
+    <p id="capBody"></p>
+  </div>
+  <div class="ctl" id="ctl-sun">
+    <label for="sun"><span>Height of the Sun</span><b id="sunV">12°</b></label>
+    <input id="sun" type="range" min="0" max="45" step="0.5" value="12">
+  </div>
+  <div class="ctl" id="ctl-lambda" hidden>
+    <label for="lambda"><span>Colour to follow</span><b id="lambdaV">580 nm</b></label>
+    <div class="spectrum"></div>
+    <input id="lambda" type="range" min="400" max="700" step="1" value="580">
+  </div>
+  <div class="ctl" id="ctl-split" hidden>
+    <label class="toggle"><input id="split" type="checkbox" checked><span>Exaggerate the colour split ×10 so it is easy to see</span></label>
+  </div>
+</aside>
+
+<footer class="dock">
+  <button class="play" id="play" aria-label="Play the descent" title="Play the descent">
+    <svg class="i-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+    <svg class="i-pause" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 4.5h4v15H6zM14 4.5h4v15h-4z" fill="currentColor"/></svg>
+  </button>
+  <div class="scrub" id="scrub">
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <div class="ticks">
+      <span><i></i><b>Orbit</b></span><span><i></i><b>Sky</b></span><span><i></i><b>Rain</b></span><span><i></i><b>Drop</b></span><span><i></i><b>Wave</b></span>
+    </div>
+    <button class="thumb" id="thumb" role="slider" aria-label="Zoom from orbit down to a wave of light" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="Orbit"></button>
+  </div>
+  <div class="scale" id="scale">100 000 km</div>
+</footer>
+
+<script type="module" src="../js/main.js"></script>
+</body>
+</html>

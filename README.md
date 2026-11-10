@@ -16,7 +16,7 @@ Five stages, one continuous descent:
 
 ## Running it
 
-It is a static site with no build step. Open `index.html` through any local
+It is a static site with no build step. Open `index.html` (the landing page; the zoom experience is `v1/index.html`) through any local
 web server (ES modules will not load from `file://`), for example:
 
 ```
@@ -37,7 +37,8 @@ for previews.
 
 ## Layout
 
-- `index.html`, `css/app.css`: the shell, captions, scrubber, and controls.
+- `index.html`: the landing page with a button per experience.
+- `v1/index.html`, `css/app.css`: the shell, captions, scrubber, and controls.
 - `js/main.js`: state, the camera that cross-zooms between stages, and input.
 - `js/physics.js`: refractive index of water, spectral colours, ray tracing.
 - `js/stages/*.js`: one module per stage, each with a `draw` and a `box`
