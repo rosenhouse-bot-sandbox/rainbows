@@ -146,6 +146,13 @@ python3 -m http.server 8000
 The wave stage needs WebGL2 with float render targets. Without it, the page
 falls back to an animated 2D drawing of the wavefronts.
 
+## Developing
+
+`CLAUDE.md` holds the working rules for this repository. The main one: before changing any HTML,
+CSS or client-side JavaScript, consult
+[Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance) and follow it where it
+applies.
+
 ## Deploying
 
 `.github/workflows/pages.yml` publishes the repository root to GitHub Pages on
