@@ -31,6 +31,9 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
 - **Show light as** switches between particles (rays and photons) and waves (crests), where both make sense.
 - The camera at each scale turns and zooms only within fixed limits, and "Reset view" (or a double click) returns it.
 - The address bar tracks the scale and settings after `#`, so a view can be bookmarked or shared.
+- The scales are one connected world. Each deeper scene sits inside the one above at its true place,
+  size and orientation (the sky where you stand on the globe, the drop in the rain, a patch of surface
+  tangent to the drop where the ray crosses it), and moving between scales is a single camera flight.
 
 The physics, all in `js/v2/optics.js`:
 

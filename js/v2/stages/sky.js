@@ -1,6 +1,6 @@
 // Stage 2: standing in a field with the Sun behind you and rain ahead. Units are metres.
 // You face −z; sunlight travels along sunDir (which is also the direction of the antisolar point).
-import { V, DEG, clamp } from '../gl.js';
+import { V, DEG, clamp, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { WARM, bowTexture, drawFigure, coneDir } from './common.js';
 
@@ -18,6 +18,9 @@ export default {
   hintSmall: 'Drag to look · pinch to step into your own eyes',
   cam: { type: 'look', eyePos: EYE, yaw: 0, pitch: 0.27, dist: 7.5, fov: 62, sway: 0.02,
     lim: { yaw: [-0.95, 0.95], pitch: [-0.05, 0.85], dist: [0, 16] } },
+  extent: 3500,        // how much of this scene matters, in metres: the rain and the bow in it
+  // The Rain scene is the same place in the same metres, seen from a different spot.
+  embed: () => ({ o: [0, 0, 0], s: 1, X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] }),
   portalLook: S => [0, clamp(B1 - S.sun * DEG, 0.03, 0.8)],
 
   caption(S) {
@@ -90,13 +93,15 @@ void main(){
 
   draw(R, S, T) {
     const gl = R.gl, s = sunDir(S), toSun = V.mul(s, -1), sc = sunColour(S), f = S.focus, bt = bowTexture(R);
+    // a bow belongs to one pair of eyes: from far away (arriving from orbit) this one is not yours to see
+    const back = V.len(V.sub(R.view.eye, EYE)), near = 1 - sstep(250, 2500, back);
     gl.useProgram(prog.p); R.setRayUniforms(prog, T);
-    gl.uniform3fv(prog.u.uSun, s); gl.uniform3fv(prog.u.uSunCol, sc); gl.uniform1f(prog.u.uBow, 0.62);
+    gl.uniform3fv(prog.u.uSun, s); gl.uniform3fv(prog.u.uSunCol, sc); gl.uniform1f(prog.u.uBow, 0.62 * near);
     gl.uniform2f(prog.u.uLutRange, bt.tab.deg0, bt.tab.deg1);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bt.tex); gl.uniform1i(prog.u.uLUT, 0);
     R.fullscreen(prog, 'opaque');
 
-    const back = V.len(V.sub(R.view.eye, EYE)), out = clamp((back - 0.8) / 2, 0, 1);
+    const out = clamp((back - 0.8) / 2, 0, 1) * near;
     if (back > 0.9) drawFigure(R, [0, 0, 0], toSun, sc.map(x => x * 0.9));
     if (out <= 0) return;
 

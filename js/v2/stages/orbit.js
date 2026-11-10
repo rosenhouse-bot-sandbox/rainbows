@@ -14,6 +14,11 @@ export default {
   cam: { type: 'orbit', target: [0, 0, 0], yaw: 0.3, pitch: 0.22, dist: 5.6, fov: 34, sway: 0.05,
     lim: { yaw: [-0.9, 1.15], pitch: [-0.45, 0.8], dist: [3.0, 8.5] } },
   portal: place,
+  // The Sky scene (metres, y up, facing away from the Sun) stands on the globe where you are.
+  embed(S) {
+    const Y = place(S), Hz = V.norm(V.mad([1, 0, 0], Y, -Y[0])), Z = V.mul(Hz, -1);
+    return { o: Y, s: 1 / 6.371e6, X: V.cross(Y, Z), Y, Z };
+  },
 
   caption(S) {
     if (S.focus === 'eye') return { title: 'One thin bundle is yours',

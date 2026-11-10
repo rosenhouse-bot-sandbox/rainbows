@@ -1,5 +1,5 @@
 // Rainbows v2: state, the fenced-in camera, the zoom between scales, and the controls.
-import { createEngine, makeView, project, V, DEG, clamp, lerp, sstep } from './gl.js';
+import { createEngine, makeView, project, slerp, V, DEG, clamp, lerp, sstep } from './gl.js';
 import * as O from './optics.js';
 import orbit from './stages/orbit.js';
 import sky from './stages/sky.js';
@@ -59,36 +59,43 @@ function writeHash() {
 const cams = STAGES.map(s => ({ ...s.cam, gy: s.cam.yaw, gp: s.cam.pitch, gd: s.cam.dist }));
 let cssW = 1, cssH = 1, offX = 0, offY = 0, wide = false;
 
-// zoom scales the camera's distance; pm (0..1) turns it toward the stage's portal, the spot the next
-// scale lives at; centre, when given, moves the optical centre (in NDC) away from its usual place.
-function viewFor(i, zoom, pm, time, centre) {
+// The resting camera of a stage, in that stage's own coordinates. Besides the usual view it carries
+// the point it is looking at (tgt) and how far away that is (d).
+function viewFor(i, time) {
   const st = STAGES[i], c = cams[i];
   const aspectFix = clamp(1.15 * cssH / (cssW * (1 - offX)), 1, 3);   // pull back when the free area is narrow
   const sway = RM.matches || paused ? 0 : Math.sin(time * 0.23 + i) * (c.sway ?? 0.035);
-  const fov = c.fov * DEG, ox = centre ? centre[0] : offX, oy = centre ? centre[1] : offY;
+  const fov = c.fov * DEG;
+  let v;
   if (c.type === 'look') {
     // stand at a fixed spot and turn your head; "dist" steps back out of your own eyes
-    const tgt = st.portalLook ? st.portalLook(S) : [0, 0.3];
-    const yaw = lerp(c.yaw + sway, tgt[0], pm), pitch = lerp(c.pitch, tgt[1], pm);
+    const yaw = c.yaw + sway, pitch = c.pitch, back = c.dist;
     const f = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
-    const back = c.dist * clamp(zoom, 1, 2.5);
     const eye = V.add(c.eyePos, [-f[0] * back + 0.2 * back, 0.1 * back, -f[2] * back]);
-    const fz = 2 * Math.atan(Math.tan(fov / 2) * clamp(zoom, 0.004, 1) * aspectFix ** 0.5);
-    return makeView(eye, f, Math.min(fz, 2.3), R.W, R.H, 0.05, 20000, ox, oy);
+    const fz = Math.min(2 * Math.atan(Math.tan(fov / 2) * aspectFix ** 0.5), 2.3);
+    v = makeView(eye, f, fz, R.W, R.H, 0.05, 20000, offX, offY);
+    v.d = 12; v.tgt = V.mad(eye, f, 12);
+  } else {
+    const tgt = typeof c.target === 'function' ? c.target(S) : c.target;
+    const yaw = c.yaw + sway, d = c.dist * aspectFix;
+    const dir = [Math.sin(yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(yaw) * Math.cos(c.pitch)];
+    v = makeView(V.mad(tgt, dir, d), V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, offX, offY);
+    v.d = d; v.tgt = tgt;
   }
-  const tgt0 = typeof c.target === 'function' ? c.target(S) : c.target;
-  const tgt = pm > 0 && st.portal ? V.lerp(tgt0, st.portal(S), pm) : tgt0;
-  const yaw = c.yaw + sway, d = c.dist * zoom * aspectFix;
-  const dir = [Math.sin(yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(yaw) * Math.cos(c.pitch)];
-  const eye = V.mad(tgt, dir, d);
-  return makeView(eye, V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, ox, oy);
+  v.fov = 2 * Math.atan(1 / v.p11);
+  return v;
+}
+// A camera at any pose, for stage i, looking at something about d away.
+function poseView(i, eye, f, up, fov, d) {
+  const look = cams[i].type === 'look';
+  return makeView(eye, f, fov, R.W, R.H, look ? Math.max(0.05, d * 0.004) : d * 0.02, look ? Math.max(20000, d * 60) : d * 60 + 50, offX, offY, up);
 }
 
 // ---------- transitions ----------
 const inited = new Set();
 function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); } }
 let tr = null, queued = null, hopping = false;       // tr: {from, to, t}
-const DIVE = 5.5;    // seconds for the move between scales
+const DIVE = 4.5;    // seconds for the move between scales
 function go(to) {
   to = clamp(to, 0, STAGES.length - 1);
   if (tr) { queued = to; return; }      // remember a press made mid-flight and go there next
@@ -97,7 +104,12 @@ function go(to) {
   const far = Math.abs(to - S.stage) > 1;
   if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
   ready(to);
-  tr = { from: S.stage, to, t: 0, dur: RM.matches ? 0.7 : far || hopping ? 2.6 : DIVE };
+  // going deeper, set the next scene to match the thing being entered
+  if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; }
+  if (to === 5 && S.stage === 4 && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
+  // a bigger change of scale takes longer
+  const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
+  tr = { from: S.stage, to, t: 0, dur: RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5) };
   hopping = far;
   $('labels').classList.add('off');
   $('cap').classList.add('swap');
@@ -248,30 +260,35 @@ function frame(now) {
 
   let mix = 0, labelView;
   if (tr) {
-    // The move between two scales is one shot, played forward to go deeper and backward to come out.
-    // The shallower scene turns toward its portal (the spot the deeper scale lives at) and grows.
-    // The deeper scene is seen through a round opening that starts as a dot on that spot and grows at
-    // exactly the same rate, so it arrives as a miniature of itself swelling out of the right place.
+    // The move between two scales is one camera flight through one world, played forward to go deeper
+    // and backward to come out. The deeper scene sits inside the shallower one at its true place, size
+    // and orientation (each stage's embed), so both are drawn from the same camera and line up. The
+    // camera's distance to where it is going shrinks at a steady rate; the deeper scene shows through
+    // a soft round opening exactly as big as it appears from that distance.
     const still = RM.matches;         // reduced motion: a plain cross-fade in place of the flight
     tr.t = Math.min(1, tr.t + dt / tr.dur);
     const p = dbg.hold ?? tr.t, deeper = tr.to > tr.from, hi = Math.min(tr.from, tr.to), lo = hi + 1;
     const q = deeper ? p : 1 - p, E = q * q * q * (q * (q * 6 - 15) + 10);      // progress toward the deeper scale
-    let hole, vHi, vLo;
-    if (still) {
-      vHi = viewFor(hi, 1, 0, time); vLo = viewFor(lo, 1, 0, time);
-      hole = { c: [0.5, 0.5], r: 9, alpha: 1, floor: sstep(0, 1, q), soft: 0.3 };
-    } else {
-      const SPAN = Math.log(90), DOT = 0.024;
-      vHi = viewFor(hi, Math.exp(-SPAN * E), sstep(0, 0.45, E), time);
-      // where the portal is on screen right now
-      const st = STAGES[hi];
-      let pt;
-      if (st.portalLook) { const a = st.portalLook(S); pt = V.mad(vHi.eye, [Math.sin(a[0]) * Math.cos(a[1]), Math.sin(a[1]), -Math.cos(a[0]) * Math.cos(a[1])], 5000); }
-      else pt = st.portal(S);
-      const sp = project(vHi, pt, 1, 1) || [0.5 + offX / 2, 0.5 - offY / 2];
-      const settle = sstep(0.75, 1, E), cx = lerp(sp[0], 0.5 + offX / 2, settle), cy = lerp(1 - sp[1], 0.5 + offY / 2, settle);
-      vLo = viewFor(lo, Math.exp(SPAN * (1 - E)), 0, time, [cx * 2 - 1, cy * 2 - 1]);
-      hole = { c: [cx, cy], r: DOT * Math.exp(SPAN * E), alpha: sstep(0.02, 0.2, E), floor: sstep(0.86, 1, E), soft: 0.6 };
+    const vA = viewFor(hi, time), vB = viewFor(lo, time);
+    let hole, vHi = vA, vLo = vB;
+    if (still) hole = { c: [0.5, 0.5], r: 9, alpha: 1, floor: sstep(0, 1, q), soft: 0.3 };
+    else {
+      const M = tr.M = STAGES[hi].embed(S);
+      const out = a => V.add(M.o, V.mul(turn(M, a), M.s)), turn = (m, a) => [m.X[0] * a[0] + m.Y[0] * a[1] + m.Z[0] * a[2], m.X[1] * a[0] + m.Y[1] * a[1] + m.Z[1] * a[2], m.X[2] * a[0] + m.Y[2] * a[1] + m.Z[2] * a[2]];
+      const back = a => [V.dot(a, M.X), V.dot(a, M.Y), V.dot(a, M.Z)];
+      // where the deeper camera rests, in the shallower scene's coordinates
+      const tB = out(vB.tgt), eyeB = out(vB.eye), dB = vB.d * M.s, rhoA = V.len(V.sub(vA.eye, tB));
+      const rho = Math.exp(lerp(Math.log(rhoA), Math.log(dB), E));
+      tr.rushy = clamp(Math.abs(Math.log(rhoA / dB)) / 4 - 0.25, 0, 1);      // no speed smear when the scale hardly changes
+      const eye = V.mad(tB, slerp(V.norm(V.sub(vA.eye, tB)), V.norm(V.sub(eyeB, tB)), E), rho);
+      const f = slerp(vA.f, V.norm(V.sub(tB, eye)), sstep(0, 0.4, E));
+      const up = V.norm(V.lerp(vA.u, turn(M, vB.u), sstep(0.15, 0.85, E)));
+      const fov = 2 * Math.atan(lerp(Math.tan(vA.fov / 2), Math.tan(vB.fov / 2), E));
+      vHi = poseView(hi, eye, f, up, fov, rho);
+      vLo = poseView(lo, V.mul(back(V.sub(eye, M.o)), 1 / M.s), back(f), back(up), fov, rho / M.s);
+      const sp = project(vHi, tB, 1, 1) || [0.5 + offX / 2, 0.5 - offY / 2];
+      const size = (STAGES[lo].extent ? STAGES[lo].extent * M.s : dB) / rho;      // 1 when the deeper scene fills its usual frame
+      hole = { c: [sp[0], 1 - sp[1]], r: Math.min(9, 1.25 * size), alpha: sstep(0.03, 0.45, E), floor: sstep(0.82, 1, E), soft: 0.6 };
     }
     mix = sstep(0.3, 0.8, E);
     const rush = still ? 0 : Math.sin(Math.PI * p) ** 2;
@@ -279,13 +296,13 @@ function frame(now) {
     R.begin(1, vLo, 1); STAGES[lo].draw(R, S, time, dt);
     labelView = deeper ? vLo : vHi;
     const a = STAGES[hi], b = STAGES[lo];
-    R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.3 * rush), lerp(a.exposure, b.exposure, mix), 0.07 * rush);
+    R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
     if (tr.t >= 1) {
       const done = tr.to; tr = null; S.stage = done;
       if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }
   } else {
-    labelView = viewFor(S.stage, 1, 0, time);
+    labelView = viewFor(S.stage, time);
     R.begin(0, labelView, 1); STAGES[S.stage].draw(R, S, time, dt);
     R.present(null, time, STAGES[S.stage].bloom, STAGES[S.stage].exposure);
   }

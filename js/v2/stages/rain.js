@@ -42,6 +42,13 @@ export default {
     return lastHeroes[lock] ? lastHeroes[lock].P : [0, 5, -7];
   },
 
+  // The Drop scene is one of the marked drops: sunlight along its +x, and its eye direction toward the figure.
+  embed(S) {
+    const P = this.portal(S), X = sunDir(S), v = V.norm(V.sub(EYE, P));
+    const Y = V.mul(V.norm(V.mad(v, X, -V.dot(v, X))), -1);
+    return { o: P, s: 0.01, X, Y, Z: V.cross(X, Y), theta: Math.acos(clamp(-V.dot(v, X), -1, 1)) };
+  },
+
   caption(S) {
     if (S.focus === 'eye') return { title: 'Only some drops are aimed at you',
       body: 'A drop sends you colour only while it sits on the cone 42° from your antisolar line. As each drop falls through that cone it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };

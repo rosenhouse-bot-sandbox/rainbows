@@ -135,6 +135,15 @@ export default {
   // the crossing the next scale is set to show: where the rainbow ray enters, meets the back, or leaves
   portal: S => { const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1]; return [h[0], h[1], 0]; },
 
+  // The Surface scene is a patch of this drop's skin, a thousandth of its radius across, tangent to the
+  // sphere where the rainbow ray crosses it, with the light arriving from the right direction.
+  embed(S) {
+    const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits, i = S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1;
+    const Y = [h[i][0], h[i][1], 0], d = i === 0 ? [1, 0, 0] : V.norm([h[i][0] - h[i - 1][0], h[i][1] - h[i - 1][1], 0]);
+    const X = V.norm(V.mad(d, Y, -V.dot(d, Y)));
+    return { o: Y, s: 1e-3, X, Y, Z: V.cross(X, Y) };
+  },
+
   caption(S) {
     if (S.focus === 'eye') return { title: 'The few rays that reach you',
       body: 'Only light leaving in exactly your direction counts. Rays that enter near one particular height all leave at almost the same angle, so they pile up there: that crowding is the bow. Slide the drop through the bow and a different colour piles up toward you.' };

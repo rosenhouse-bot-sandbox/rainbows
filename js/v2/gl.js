@@ -26,6 +26,13 @@ export const V = {
   norm: a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; },
   lerp: (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t],
 };
+// turn unit vector a toward unit vector b by a fraction t of the angle between them
+export function slerp(a, b, t) {
+  const c = clamp(V.dot(a, b), -1, 1), w = Math.acos(c);
+  if (w < 1e-4) return V.norm(V.lerp(a, b, t));
+  const s = Math.sin(w);
+  return V.norm(V.add(V.mul(a, Math.sin((1 - t) * w) / s), V.mul(b, Math.sin(t * w) / s)));
+}
 export const IDENT = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 export function matMul(a, b) {
   const o = new Float32Array(16);
@@ -41,9 +48,9 @@ export function modelTRS(t, s = 1, rotX = 0, sy = s, sz = s) {
 
 // Build everything a shader needs to know about the camera.
 // ox, oy shift the optical centre (in NDC) so the subject clears the UI panel.
-export function makeView(eye, fwd, fovY, w, h, near, far, ox = 0, oy = 0) {
+export function makeView(eye, fwd, fovY, w, h, near, far, ox = 0, oy = 0, up = [0, 1, 0]) {
   const f = V.norm(fwd);
-  let r = V.cross(f, [0, 1, 0]);
+  let r = V.cross(f, up);
   if (V.len(r) < 1e-4) r = [1, 0, 0];
   r = V.norm(r);
   const u = V.cross(r, f);
