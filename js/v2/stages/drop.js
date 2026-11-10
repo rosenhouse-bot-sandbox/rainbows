@@ -132,7 +132,8 @@ export default {
   bloom: 1.0, exposure: 1.0,
   cam: { type: 'orbit', target: [-0.5, -0.95, 0], yaw: 0.2, pitch: 0.15, dist: 13.5, fov: 34,
     lim: { yaw: [-1.25, 1.25], pitch: [-0.6, 1.0], dist: [4.5, 17] } },
-  portal: S => { const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[0]; return [h[0], h[1], 0]; },
+  // the crossing the next scale is set to show: where the rainbow ray enters, meets the back, or leaves
+  portal: S => { const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1]; return [h[0], h[1], 0]; },
 
   caption(S) {
     if (S.focus === 'eye') return { title: 'The few rays that reach you',

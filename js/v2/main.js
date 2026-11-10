@@ -59,43 +59,49 @@ function writeHash() {
 const cams = STAGES.map(s => ({ ...s.cam, gy: s.cam.yaw, gp: s.cam.pitch, gd: s.cam.dist }));
 let cssW = 1, cssH = 1, offX = 0, offY = 0, wide = false;
 
-function viewFor(i, zoom, pm, time) {
+// zoom scales the camera's distance; pm (0..1) turns it toward the stage's portal, the spot the next
+// scale lives at; centre, when given, moves the optical centre (in NDC) away from its usual place.
+function viewFor(i, zoom, pm, time, centre) {
   const st = STAGES[i], c = cams[i];
   const aspectFix = clamp(1.15 * cssH / (cssW * (1 - offX)), 1, 3);   // pull back when the free area is narrow
   const sway = RM.matches || paused ? 0 : Math.sin(time * 0.23 + i) * (c.sway ?? 0.035);
-  const fov = c.fov * DEG;
+  const fov = c.fov * DEG, ox = centre ? centre[0] : offX, oy = centre ? centre[1] : offY;
   if (c.type === 'look') {
     // stand at a fixed spot and turn your head; "dist" steps back out of your own eyes
     const tgt = st.portalLook ? st.portalLook(S) : [0, 0.3];
     const yaw = lerp(c.yaw + sway, tgt[0], pm), pitch = lerp(c.pitch, tgt[1], pm);
     const f = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
-    const back = c.dist * (zoom > 1 ? zoom : 1);
+    const back = c.dist * clamp(zoom, 1, 2.5);
     const eye = V.add(c.eyePos, [-f[0] * back + 0.2 * back, 0.1 * back, -f[2] * back]);
-    const fz = 2 * Math.atan(Math.tan(fov / 2) * clamp(zoom, 0.1, 1) * aspectFix ** 0.5);
-    return makeView(eye, f, Math.min(fz, 2.3), R.W, R.H, 0.05, 20000, offX, offY);
+    const fz = 2 * Math.atan(Math.tan(fov / 2) * clamp(zoom, 0.004, 1) * aspectFix ** 0.5);
+    return makeView(eye, f, Math.min(fz, 2.3), R.W, R.H, 0.05, 20000, ox, oy);
   }
   const tgt0 = typeof c.target === 'function' ? c.target(S) : c.target;
   const tgt = pm > 0 && st.portal ? V.lerp(tgt0, st.portal(S), pm) : tgt0;
   const yaw = c.yaw + sway, d = c.dist * zoom * aspectFix;
   const dir = [Math.sin(yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(yaw) * Math.cos(c.pitch)];
   const eye = V.mad(tgt, dir, d);
-  return makeView(eye, V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, offX, offY);
+  return makeView(eye, V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, ox, oy);
 }
 
 // ---------- transitions ----------
 const inited = new Set();
 function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); } }
-let tr = null, queued = null;       // tr: {from, to, t}
-const DIVE = 3.2;    // seconds for the move between scales
+let tr = null, queued = null, hopping = false;       // tr: {from, to, t}
+const DIVE = 5.5;    // seconds for the move between scales
 function go(to) {
   to = clamp(to, 0, STAGES.length - 1);
   if (tr) { queued = to; return; }      // remember a press made mid-flight and go there next
   if (to === S.stage) return;
+  // a jump of several scales passes through each one in turn, more briskly
+  const far = Math.abs(to - S.stage) > 1;
+  if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
   ready(to);
-  tr = { from: S.stage, to, t: 0 };
+  tr = { from: S.stage, to, t: 0, dur: RM.matches ? 0.7 : far || hopping ? 2.6 : DIVE };
+  hopping = far;
   $('labels').classList.add('off');
   $('cap').classList.add('swap');
-  setTimeout(() => { S.stage = to; syncUI(); $('cap').classList.remove('swap'); }, RM.matches ? 300 : DIVE * 450);
+  setTimeout(() => { S.stage = to; syncUI(); $('cap').classList.remove('swap'); }, tr.dur * 450);
 }
 
 // ---------- UI ----------
@@ -225,6 +231,7 @@ function drawLabels(list, view) {
 }
 
 // ---------- frame loop ----------
+const dbg = {};       // test hook: dbg.hold freezes a transition at a given point
 let last = 0, time = 0, scale = 1, slow = 0, fast = 0, readoutClock = 0;
 const dprCap = () => Math.min(window.devicePixelRatio || 1, 2);
 function frame(now) {
@@ -241,28 +248,46 @@ function frame(now) {
 
   let mix = 0, labelView;
   if (tr) {
-    // One continuous dive: the scale you leave keeps growing while the next one arrives from far off,
-    // both at the same steady rate, eased only at the two ends, with a long cross-fade in the middle.
+    // The move between two scales is one shot, played forward to go deeper and backward to come out.
+    // The shallower scene turns toward its portal (the spot the deeper scale lives at) and grows.
+    // The deeper scene is seen through a round opening that starts as a dot on that spot and grows at
+    // exactly the same rate, so it arrives as a miniature of itself swelling out of the right place.
     const still = RM.matches;         // reduced motion: a plain cross-fade in place of the flight
-    tr.t = Math.min(1, tr.t + dt / (still ? 0.7 : DIVE));
-    const p = tr.t, deeper = tr.to > tr.from, IN = Math.log(0.03), OUT = Math.log(11);
-    const e = still ? (deeper ? 0 : 1) : p * p * p * (p * (p * 6 - 15) + 10);
-    const zf = still ? 1 : Math.exp((deeper ? IN : OUT) * e), zt = still ? 1 : Math.exp((deeper ? OUT : IN) * (1 - e));
-    mix = still ? sstep(0, 1, p) : sstep(0.22, 0.78, e);
+    tr.t = Math.min(1, tr.t + dt / tr.dur);
+    const p = dbg.hold ?? tr.t, deeper = tr.to > tr.from, hi = Math.min(tr.from, tr.to), lo = hi + 1;
+    const q = deeper ? p : 1 - p, E = q * q * q * (q * (q * 6 - 15) + 10);      // progress toward the deeper scale
+    let hole, vHi, vLo;
+    if (still) {
+      vHi = viewFor(hi, 1, 0, time); vLo = viewFor(lo, 1, 0, time);
+      hole = { c: [0.5, 0.5], r: 9, alpha: 1, floor: sstep(0, 1, q), soft: 0.3 };
+    } else {
+      const SPAN = Math.log(90), DOT = 0.024;
+      vHi = viewFor(hi, Math.exp(-SPAN * E), sstep(0, 0.45, E), time);
+      // where the portal is on screen right now
+      const st = STAGES[hi];
+      let pt;
+      if (st.portalLook) { const a = st.portalLook(S); pt = V.mad(vHi.eye, [Math.sin(a[0]) * Math.cos(a[1]), Math.sin(a[1]), -Math.cos(a[0]) * Math.cos(a[1])], 5000); }
+      else pt = st.portal(S);
+      const sp = project(vHi, pt, 1, 1) || [0.5 + offX / 2, 0.5 - offY / 2];
+      const settle = sstep(0.75, 1, E), cx = lerp(sp[0], 0.5 + offX / 2, settle), cy = lerp(1 - sp[1], 0.5 + offY / 2, settle);
+      vLo = viewFor(lo, Math.exp(SPAN * (1 - E)), 0, time, [cx * 2 - 1, cy * 2 - 1]);
+      hole = { c: [cx, cy], r: DOT * Math.exp(SPAN * E), alpha: sstep(0.02, 0.2, E), floor: sstep(0.86, 1, E), soft: 0.6 };
+    }
+    mix = sstep(0.3, 0.8, E);
     const rush = still ? 0 : Math.sin(Math.PI * p) ** 2;
-    R.begin(0, viewFor(tr.from, zf, deeper ? sstep(0, 0.6, e) : 0, time), 1); STAGES[tr.from].draw(R, S, time, dt);
-    labelView = viewFor(tr.to, zt, deeper ? 0 : sstep(0, 0.6, 1 - e), time);
-    R.begin(1, labelView, 1); STAGES[tr.to].draw(R, S, time, dt);
-    const a = STAGES[tr.from], b = STAGES[tr.to];
-    R.present(mix, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.5 * rush), lerp(a.exposure, b.exposure, mix), 0.16 * rush);
+    R.begin(0, vHi, 1); STAGES[hi].draw(R, S, time, dt);
+    R.begin(1, vLo, 1); STAGES[lo].draw(R, S, time, dt);
+    labelView = deeper ? vLo : vHi;
+    const a = STAGES[hi], b = STAGES[lo];
+    R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.3 * rush), lerp(a.exposure, b.exposure, mix), 0.07 * rush);
     if (tr.t >= 1) {
       const done = tr.to; tr = null; S.stage = done;
-      if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; $('labels').classList.remove('off'); }
+      if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }
   } else {
     labelView = viewFor(S.stage, 1, 0, time);
     R.begin(0, labelView, 1); STAGES[S.stage].draw(R, S, time, dt);
-    R.present(0, time, STAGES[S.stage].bloom, STAGES[S.stage].exposure);
+    R.present(null, time, STAGES[S.stage].bloom, STAGES[S.stage].exposure);
   }
   const st = STAGES[tr ? tr.to : S.stage];
   drawLabels(st.labels ? st.labels(S, labelView) : [], labelView);
@@ -281,7 +306,7 @@ else {
     // compile the other scales one at a time, between frames, so start-up is not one long task
     const yieldToMain = () => globalThis.scheduler?.yield ? scheduler.yield() : new Promise(r => setTimeout(r, 0));
     (async () => { for (let i = 0; i < STAGES.length; i++) { await yieldToMain(); ready(i); } })().catch(console.error);
-    window.__rainbows = { S, go, syncUI, cams, R, get busy() { return !!tr; } };
+    window.__rainbows = { S, go, syncUI, cams, R, dbg, get busy() { return !!tr; } };
   } catch (err) {
     console.error(err);
     $('fail').hidden = false;
