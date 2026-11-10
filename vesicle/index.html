@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Vesicle Fusion</title>
+<meta name="description" content="Fly around a synaptic vesicle as SNARE proteins pull it into the cell membrane, the fusion pore opens, and glutamate floods the synaptic cleft.">
+<meta name="theme-color" content="#05070F">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="../css/vesicle.css">
+</head>
+<body>
+<canvas id="view" aria-label="Three-dimensional view of a synaptic vesicle fusing with the cell membrane. Drag to orbit, pinch or scroll to zoom."></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<a class="back" href="../" aria-label="Back to all experiences">
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14.5 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</a>
+<div class="scalebar" id="scalebar" aria-hidden="true"><i id="scaleLine"></i><b id="scaleText">10 nm</b></div>
+<p class="hint" id="hint">Drag to orbit · pinch or scroll to zoom</p>
+
+<aside class="panel" id="panel">
+  <header class="title">
+    <h1>Vesicle fusion</h1>
+    <span>how a synapse releases its signal</span>
+  </header>
+
+  <div class="cap" id="cap" aria-live="polite">
+    <div class="eyebrow"><span id="stageNo">Stage 1 of 7</span> · <span id="stageTime"></span></div>
+    <h2 id="capTitle"></h2>
+    <p id="capBody"></p>
+  </div>
+
+  <div class="transport">
+    <button class="play" id="play" aria-label="Play the fusion" aria-pressed="false">
+      <svg class="i-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 4.5h4v15H6zM14 4.5h4v15h-4z" fill="currentColor"/></svg>
+    </button>
+    <div class="prog">
+      <label for="prog"><span>Fusion progress</span><b id="progV">0%</b></label>
+      <input id="prog" class="big" type="range" min="0" max="1000" step="1" value="0">
+      <div class="ticks" id="ticks"></div>
+    </div>
+  </div>
+
+  <button class="moreBtn" id="moreBtn" aria-expanded="false" aria-controls="more">
+    <span>Size, camera and key</span>
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 15l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+
+  <div class="more" id="more">
+    <div class="ctl">
+      <label for="size"><span>Vesicle diameter</span><b id="sizeV">42 nm</b></label>
+      <input id="size" type="range" min="30" max="90" step="1" value="42">
+      <small id="sizeNote"></small>
+    </div>
+    <div class="ctl">
+      <label for="cut"><span>Cutaway</span><b id="cutV">110°</b></label>
+      <input id="cut" type="range" min="0" max="180" step="1" value="110">
+    </div>
+    <div class="group">
+      <div class="ctl">
+        <label for="orbit"><span>Orbit</span><b id="orbitV">0°</b></label>
+        <input id="orbit" type="range" min="0" max="360" step="0.5" value="24">
+      </div>
+      <div class="ctl">
+        <label for="tilt"><span>Tilt</span><b id="tiltV">0°</b></label>
+        <input id="tilt" type="range" min="-85" max="88" step="0.5" value="9">
+      </div>
+      <div class="ctl">
+        <label for="zoom"><span>Distance</span><b id="zoomV">150 nm</b></label>
+        <input id="zoom" type="range" min="0" max="1000" step="1" value="450">
+      </div>
+    </div>
+    <div class="toggles">
+      <label class="toggle"><input id="spin" type="checkbox" checked><span>Slow orbit</span></label>
+      <label class="toggle"><input id="lab" type="checkbox" checked><span>Labels</span></label>
+    </div>
+    <ul class="key" aria-label="Colour key">
+      <li><i style="--c:#f7b04d"></i>Vesicle lipids</li>
+      <li><i style="--c:#5791e0"></i>Cell membrane lipids</li>
+      <li><i style="--c:#eb4247"></i>Syntaxin</li>
+      <li><i style="--c:#54cc6b"></i>SNAP-25</li>
+      <li><i style="--c:#5c54ff"></i>Synaptobrevin</li>
+      <li><i style="--c:#b87af5"></i>Synaptotagmin</li>
+      <li><i style="--c:#ff5cbd"></i>Glutamate</li>
+      <li><i style="--c:#ffe647"></i>Calcium ions</li>
+      <li><i style="--c:#33b8a8"></i>AMPA receptor</li>
+      <li><i style="--c:#db804d"></i>NMDA receptor</li>
+    </ul>
+    <p class="note">Shapes follow the stalk-and-pore model of membrane fusion, drawn to scale in nanometres. Every lipid keeps the colour of the membrane it started in. The whole event takes under a millisecond; here you set the pace.</p>
+  </div>
+</aside>
+
+<div class="fail" id="fail" hidden>
+  <h2>This view needs WebGL 2</h2>
+  <p>Your browser or device could not start 3D graphics. Try a current version of Chrome, Safari, Firefox or Edge.</p>
+</div>
+
+<script type="module" src="../js/vesicle/main.js"></script>
+</body>
+</html>
