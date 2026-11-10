@@ -24,8 +24,13 @@
 <aside class="panel" id="panel">
   <header class="title">
     <h1>Vesicle fusion</h1>
-    <span>how a synapse releases its signal</span>
+    <span id="sub">how a synapse releases its signal</span>
   </header>
+
+  <div class="mode" role="group" aria-label="Setting">
+    <button id="modeVivo" aria-pressed="true">In vivo<small>inside a synapse</small></button>
+    <button id="modeVitro" aria-pressed="false">In vitro<small>on a TIRF microscope</small></button>
+  </div>
 
   <div class="cap" id="cap" aria-live="polite">
     <div class="eyebrow"><span id="stageNo">Stage 1 of 7</span> · <span id="stageTime"></span></div>
@@ -56,6 +61,11 @@
       <input id="size" type="range" min="30" max="90" step="1" value="42">
       <small id="sizeNote"></small>
     </div>
+    <div class="ctl" id="ctl-angle" hidden>
+      <label for="angle"><span>Laser angle of incidence</span><b id="angleV">68.0°</b></label>
+      <input id="angle" class="laser" type="range" min="50" max="79" step="0.1" value="68">
+      <small id="angleNote"></small>
+    </div>
     <div class="ctl">
       <label for="cut"><span>Cutaway</span><b id="cutV">110°</b></label>
       <input id="cut" type="range" min="0" max="180" step="1" value="110">
@@ -78,6 +88,13 @@
       <label class="toggle"><input id="spin" type="checkbox" checked><span>Slow orbit</span></label>
       <label class="toggle"><input id="lab" type="checkbox" checked><span>Labels</span></label>
     </div>
+    <ul class="key" id="keyVitro" aria-label="Colour key for light" hidden>
+      <li><i style="--c:#19b8ff"></i>488 nm laser light</li>
+      <li><i style="--c:#73ff5a"></i>510 nm fluorescence</li>
+      <li><i style="--c:#4dff66"></i>pHluorin, lit</li>
+      <li><i style="--c:#4d6657"></i>pHluorin, quenched</li>
+      <li class="wide" id="energy"></li>
+    </ul>
     <ul class="key" aria-label="Colour key">
       <li><i style="--c:#f7b04d"></i>Vesicle lipids</li>
       <li><i style="--c:#5791e0"></i>Cell membrane lipids</li>
@@ -87,12 +104,24 @@
       <li><i style="--c:#b87af5"></i>Synaptotagmin</li>
       <li><i style="--c:#ff5cbd"></i>Glutamate</li>
       <li><i style="--c:#ffe647"></i>Calcium ions</li>
+    </ul>
+    <ul class="key plain" id="keyVivo" aria-label="Colour key for receptors">
       <li><i style="--c:#33b8a8"></i>AMPA receptor</li>
       <li><i style="--c:#db804d"></i>NMDA receptor</li>
     </ul>
     <p class="note">Shapes follow the stalk-and-pore model of membrane fusion, drawn to scale in nanometres. Every lipid keeps the colour of the membrane it started in. The whole event takes under a millisecond; here you set the pace.</p>
   </div>
 </aside>
+
+<figure class="pip" id="pip" hidden>
+  <figcaption><b>Camera</b><span id="pipInfo">TIRF</span></figcaption>
+  <div class="pipImg">
+    <canvas id="cam" width="48" height="48" aria-label="Simulated microscope image of the fusion site"></canvas>
+    <div class="pipScale"><i id="pipBar"></i><em>500 nm</em></div>
+  </div>
+  <canvas id="trace" width="336" height="84" aria-label="Fluorescence at the fusion site over the course of fusion"></canvas>
+  <p id="pipNote"></p>
+</figure>
 
 <div class="fail" id="fail" hidden>
   <h2>This view needs WebGL 2</h2>
