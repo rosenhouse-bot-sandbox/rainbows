@@ -14,6 +14,56 @@ Five stages, one continuous descent:
 | Drop | 1 mm | Ray tracing through one drop, colour by colour |
 | Wave | 1 µm | A real 2D wave simulation of light entering water |
 
+## Rainbows v2
+
+A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added at the end.
+
+| Scale | Size | What you see |
+| --- | --- | --- |
+| Orbit | 10 000 km | The Earth in parallel sunlight, where you stand, and the cone of your bow |
+| Sky | 1 km | A field with the Sun behind you; primary and secondary bows and the dark band between |
+| Rain | 1 m | 30 000 falling drops, each coloured by what it sends to your eye |
+| Drop | 1 mm | One drop traced in 3D: every route the light takes, with its share of the energy |
+| Surface | 1 µm | The exact field where light crosses the water's surface, including the evanescent field |
+| Molecules | 1 nm | Why each colour is slowed by a different amount, in terms of where the wave's energy sits |
+
+- **Follow the light** picks out what comes from the Sun, or only what ends up in your eye.
+- **Show light as** switches between particles (rays and photons) and waves (crests), where both make sense.
+- The camera at each scale turns and zooms only within fixed limits, and "Reset view" (or a double click) returns it.
+- The address bar tracks the scale and settings after `#`, so a view can be bookmarked or shared.
+
+The physics, all in `js/v2/optics.js`:
+
+- Water is one Lorentz oscillator (bound electrons with a resonance near 101 nm), fitted to measured
+  indices: `n² = 1 + Aλ²/(λ² − λ0²)`. It gives 1.3327 at 589 nm against a measured 1.3330. The same
+  model sets the bending in the drop, the colours in the sky and the energy stored in the molecules.
+- Rays through the drop carry Fresnel reflection and transmission for both polarisations. Of the
+  sunlight on a typical rainbow ray, about 6% reflects off the front, 89% leaves through the back,
+  4.6% makes the primary bow (96% polarised) and 0.5% the secondary.
+- The sky's brightness against angle is computed, not painted: rays over the whole face of the drop,
+  for the outside reflection and one and two internal reflections, summed over the spectrum with
+  CIE colour matching and blurred by the Sun's half-degree disc. The dark band and the brighter sky
+  inside the bow fall out of it. Interference (supernumerary bows) is not modelled.
+- At the surface the field is the exact plane-wave solution at a flat boundary, in a beam of finite
+  width. Past the critical angle the transmitted wave becomes evanescent, with the right decay
+  length and phase shift.
+- The rainbow ray meets the back of the drop at 40°, below the 48.6° critical angle. A ray inside a
+  sphere always meets the wall at the angle it was refracted to on entry, so sunlight in a drop is
+  never totally reflected and the back of the drop has no evanescent field. The Surface scale says
+  so, and lets you steer the light past the critical angle to see one anyway.
+- In the last scale the wave's energy is split into electric field, magnetic field, stretched
+  molecules and moving electrons. Energy held in matter does not travel, which gives the energy
+  velocity; nearer the ultraviolet resonance more is held, so violet is slower than red.
+
+Simplifications: drops are spheres, air's index is taken as 1, and brightness is compressed so that
+the 5% of light in the bow can be seen beside the 89% that escapes. A toggle spreads the colours 5×
+for visibility; it is off by default.
+
+Code: `js/v2/gl.js` is a small WebGL2 engine (HDR targets, bloom, glowing lines and points,
+full-screen ray shaders), `js/v2/main.js` holds state, cameras and controls, and each scale is a
+module in `js/v2/stages/`. It needs WebGL2 and has no dependencies. On slow machines it draws
+fewer pixels to keep the frame rate.
+
 ## Vesicle fusion
 
 A second experience, at `vesicle/`: a real-time 3D model of a synaptic vesicle fusing with the
@@ -108,6 +158,7 @@ for previews.
 ## Layout
 
 - `index.html`: the landing page with a button per experience.
+- `v2/index.html`, `css/v2.css`, `js/v2/`: Rainbows v2 (`gl.js` engine, `optics.js` physics, `main.js` controls, `stages/*.js` one module per scale).
 - `v1/index.html`, `css/app.css`: the shell, captions, scrubber, and controls.
 - `js/main.js`: state, the camera that cross-zooms between stages, and input.
 - `js/physics.js`: refractive index of water, spectral colours, ray tracing.
