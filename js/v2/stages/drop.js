@@ -210,7 +210,7 @@ export default {
       ? { title: 'One wave, folded by a sphere',
         body: 'Each line is a crest. In water the crests travel at three-quarters of their speed in air, so they bunch up and the front bends. After one reflection the front folds over on itself; the fold is where light is concentrated, and it leaves the drop 42° from the way back to the Sun.' }
       : { title: 'Bent, reflected, and bent again',
-        body: 'Light bends as it enters, reflects off the back, and bends again as it leaves toward you. The back is not a perfect mirror: the light meets it at 40°, short of the 49° needed for total reflection, so most of it escapes there. Each colour bends by a slightly different amount.' };
+        body: 'Light bends as it enters, reflects off the back, and bends again as it leaves toward you. The back is not a perfect mirror: the light meets it at 40°, short of the 49° needed for total reflection, so most of it escapes there. Each wavelength bends by a slightly different amount.' };
   },
 
   readout(S) {

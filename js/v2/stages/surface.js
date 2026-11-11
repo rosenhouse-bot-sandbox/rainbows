@@ -52,7 +52,7 @@ export default {
     if (S.cross === 'back') return { title: 'The back wall is a leaky mirror',
       body: `The rainbow ray meets the back of the drop at about 40°, short of the ${(c.crit / DEG).toFixed(1)}° critical angle. So this is ordinary partial reflection: most of the light escapes into the air, and only about one part in twenty of sunlight reflects to carry on toward the bow. A ray inside a sphere meets the wall at the same angle it was bent to on the way in, which is always below critical.` };
     return { title: 'Out again, bending toward you',
-      body: 'Leaving the water, the crests speed up, spread apart and swing away from the perpendicular. This last bend is the mirror image of the first, and it sets the direction in which each colour finally travels to your eye.' };
+      body: 'Leaving the water, the crests speed up, spread apart and swing away from the perpendicular. This last bend is the mirror image of the first, and it sets the direction in which each wavelength finally travels to your eye.' };
   },
   readout(S) {
     const c = setup(S), d = x => (x / DEG).toFixed(1) + '°';
