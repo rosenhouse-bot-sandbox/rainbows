@@ -49,7 +49,9 @@ The physics, all in `js/v2/optics.js`:
   width. The surface around it is the drop's own, a sphere of 1 mm radius drawn to scale: it runs to
   a horizon about 90 µm away and curves out of sight. Across the beam it is flat to about 20 nm.
 - Changing which crossing the Surface scale shows flies the camera out until the drop is in view,
-  round the drop to the new crossing and back in, keeping the angle you were looking from.
+  round the drop to the new crossing and back in. The camera stays upright in the drop's frame
+  throughout, so each crossing is seen tilted the way it lies on the drop: the back wall with water
+  on the left and air on the right, the leaving point from inside with air below.
 - The rainbow ray meets the back of the drop at 40°, below the 48.6° critical angle. A ray inside a
   sphere always meets the wall at the angle it was refracted to on entry, so sunlight in a drop is
   never totally reflected. The Surface scale says so, and its angle slider stops short of the

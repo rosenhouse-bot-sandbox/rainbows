@@ -6,6 +6,7 @@
 import { V, DEG, rng, sstep, clamp } from '../gl.js';
 import * as O from '../optics.js';
 import { backdrop } from './common.js';
+import { crossAngle } from './drop.js';
 
 const WAIST = 1.25, BOX = [6.2, 4.4, 2.3], RD = 1000;      // RD: the drop's radius
 let prog = null, photons = [], photonKey = '', omegaT = 0, lastT = null;
@@ -35,8 +36,16 @@ export default {
   id: 'surface', name: 'Surface', scale: '1 µm', scaleNote: 'about 12 µm across', modes: true, focus: true,
   controls: ['cross', 'focus', 'mode', 'theta', 'lambda', 'pol'], bloom: 0.9, exposure: 1.0,
   overlay: true,      // light on a dark ground: laid over the scale above during the flight in
-  cam: { type: 'orbit', target: [0, 0, 0], yaw: 0.42, pitch: 0.2, dist: 19, fov: 34,
+  cam: { type: 'orbit', target: [0, 0, 0], yaw: -0.3, pitch: 0.2, dist: 19, fov: 34,
     lim: { yaw: [-1.1, 1.1], pitch: [-0.35, 0.8], dist: [6, 25] } },
+  // The camera stays upright in the drop's world, as it is at the Drop scale, so the surface is seen
+  // tilted the way it really lies at each crossing: on the drop's upper side where the light enters,
+  // nearly on end at the back, and underneath where it leaves. This turns a direction given in the
+  // drop's axes into this scene's, whose y is the outward normal there (see the Drop scale's embed).
+  camFrame(S) {
+    const a = S.crossPhi ?? crossAngle(S.cross), s = Math.sin(a), c = Math.cos(a);
+    return v => [v[0] * s - v[1] * c, v[0] * c + v[1] * s, v[2]];
+  },
   // The Molecules scene is the same surface where the beam meets it: its +x runs down into the water,
   // and one of its units is 0.17 µm, so its wavelengths are this scene's wavelengths.
   embed: () => ({ o: [0, 0, 0], s: 550 / 3200, X: [0, -1, 0], Y: [0, 0, 1], Z: [-1, 0, 0] }),
@@ -105,13 +114,13 @@ vec3 field(vec3 p){
   return vec3(g*cos(uB.x*(uB.y*q.x - uB.z*q.y) - uC.w), g*g, uW.z);
 }
 // The drop's surface along a ray: x is how far to it (negative if the ray misses), y how far the ray
-// then runs through water. The sphere's centre is RD below the origin; the forms used keep their
+// runs through water, z whether the camera is itself under water. The sphere's centre is RD below the origin; the forms used keep their
 // precision though the camera is a few units from a sphere a thousand across.
-vec2 dropHit(vec3 ro, vec3 rd){
+vec3 dropHit(vec3 ro, vec3 rd){
   float c = dot(ro,ro) + 2.0*RD*ro.y, b = dot(ro,rd) + RD*rd.y, h = b*b - c;
-  if(c <= 0.0){ float t = sqrt(max(h,0.0)) - b; return vec2(t, t); }          // the camera is under water
-  if(h <= 0.0 || b >= 0.0) return vec2(-1.0, 0.0);
-  h = sqrt(h); return vec2(c/(h - b), 2.0*h);
+  if(c <= 0.0){ float t = sqrt(max(h,0.0)) - b; return vec3(t, t, 1.0); }          // the camera is under water
+  if(h <= 0.0 || b >= 0.0) return vec3(-1.0, 0.0, 0.0);
+  h = sqrt(h); return vec3(c/(h - b), 2.0*h, 0.0);
 }
 // lines of a square net with cells "cell" across, kept about a pixel wide and faded out before they blur together
 float net(vec2 g, float cell){
@@ -142,14 +151,15 @@ void main(){
   }
   // The drop itself, to scale: its skin carries a net of 2 µm squares near the beam, 20 µm and 200 µm
   // ones further off, and shines where it is seen edge-on, at the horizon.
-  vec2 hit = dropHit(ro, rd);
+  vec3 hit = dropHit(ro, rd);
   if(hit.x > 0.0){
     vec3 P = ro + rd*hit.x, nrm = vec3(P.x, P.y + RD, P.z)/RD;
     vec2 g = RD*vec2(atan(P.x, P.y + RD), atan(P.z, P.y + RD));
     float line = max(net(g, 2.0), max(net(g, 20.0), net(g, 200.0)));
     float graze = pow(1.0 - abs(dot(nrm, rd)), 4.0);
     col += vec3(0.16,0.34,0.7)*(0.05 + 0.11*line + 0.45*graze)*uOwn;
-    col += vec3(0.010,0.028,0.070)*1.5*(1.0 - exp(-hit.y/7.0))*uOwn;
+    // from inside the drop the skin is a window on the dark air beyond: the water in between is kept faint
+    col += vec3(0.010,0.028,0.070)*mix(1.5, 0.45, hit.z)*(1.0 - exp(-hit.y/7.0))*uOwn;
   }
   o = vec4(col*uFade, 0.0); }`);
   },

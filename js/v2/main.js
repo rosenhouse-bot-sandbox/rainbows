@@ -82,8 +82,11 @@ function viewFor(i, time) {
   } else {
     const tgt = typeof c.target === 'function' ? c.target(S) : c.target;
     const yaw = c.yaw + sway, d = c.dist * aspectFix;
-    const dir = [Math.sin(yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(yaw) * Math.cos(c.pitch)];
-    v = makeView(V.mad(tgt, dir, d), V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, offX, offY);
+    // A stage may be drawn in axes that are tilted in the world (the Surface scale's follow the drop's
+    // skin): its camera is still set in the world's, so it stays upright, and is then turned into them.
+    const turn = st.camFrame ? st.camFrame(S) : a => a;
+    const dir = turn([Math.sin(yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(yaw) * Math.cos(c.pitch)]);
+    v = makeView(V.mad(tgt, dir, d), V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, offX, offY, turn([0, 1, 0]));
     v.d = d; v.tgt = tgt;
   }
   v.fov = 2 * Math.atan(1 / v.p11);
