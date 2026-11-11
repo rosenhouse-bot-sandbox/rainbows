@@ -29,7 +29,7 @@ let D = null;
 const S = {
   stage: 0, mode: 'ray', focus: 'both',
   sun: 14, bowpos: 0.5, exag: false, second: false,
-  cross: 'enter', theta: 59.4, pol: 's', lambda: 550, tilt: 59.4,
+  cross: 'enter', theta: 59.4, pol: 's', lambda: 550, tilt: 59.4, bfield: false,
 };
 
 // ---------- address bar ----------
@@ -44,7 +44,7 @@ function readHash() {
   S.tilt = num('tilt', 0, 75, S.tilt);
   S.theta = q.has('a') ? num('a', 0, maxAngle(S), presetAngle(S)) : presetAngle(S);
   if (q.get('p') === 'p') S.pol = 'p';
-  S.exag = q.get('wide') === '1'; S.second = q.get('two') === '1';
+  S.exag = q.get('wide') === '1'; S.second = q.get('two') === '1'; S.bfield = q.get('b') === '1';
 }
 let hashTimer = 0;
 function writeHash() {
@@ -52,7 +52,7 @@ function writeHash() {
   hashTimer = setTimeout(() => {
     const q = new URLSearchParams({ s: STAGES[S.stage].id, m: S.mode, f: S.focus, sun: S.sun, nm: S.lambda });
     if (S.stage === 3) { q.set('bow', S.bowpos); if (S.exag) q.set('wide', 1); if (S.second) q.set('two', 1); }
-    if (S.stage === 5) q.set('tilt', S.tilt);
+    if (S.stage === 5) { q.set('tilt', S.tilt); if (S.bfield) q.set('b', 1); }
     if (S.stage === 4) { q.set('x', S.cross); q.set('a', S.theta); q.set('p', S.pol); }
     history.replaceState(null, '', '#' + q);
   }, 300);
@@ -171,7 +171,13 @@ const sliders = {
 };
 $('bowpos').style.setProperty('--spec', bowTrack(+$('bowpos').min, +$('bowpos').max));
 for (const id in sliders) $(id).addEventListener('input', e => { S[id] = parseFloat(e.target.value); syncUI(true); });
-for (const id of ['exag', 'second']) $(id).addEventListener('change', e => { S[id] = e.target.checked; syncUI(); });
+// While a slider is held, the words above it stay as they are: a caption that changed length mid-drag
+// would move the slider out from under the pointer. They catch up on release. (The keyboard is not a hold.)
+let held = false;
+const letGo = () => { if (held) { held = false; syncUI(); } };
+for (const id in sliders) { $(id).addEventListener('pointerdown', () => { held = true; }); $(id).addEventListener('change', letGo); }
+window.addEventListener('pointerup', letGo); window.addEventListener('pointercancel', letGo);
+for (const id of ['exag', 'second', 'bfield']) $(id).addEventListener('change', e => { S[id] = e.target.checked; syncUI(); });
 $('prev').addEventListener('click', () => step(-1));
 $('next').addEventListener('click', () => step(1));
 $('resetView').addEventListener('click', resetView);
@@ -192,19 +198,21 @@ function syncUI(light) {
     const el = $(id), txt = sliders[id](S[id]); el.value = S[id]; $(id + 'V').textContent = txt; el.setAttribute('aria-valuetext', txt);
     el.style.setProperty('--v', ((S[id] - el.min) / (el.max - el.min) * 100) + '%');
   }
-  $('exag').checked = S.exag; $('second').checked = S.second;
+  $('exag').checked = S.exag; $('second').checked = S.second; $('bfield').checked = S.bfield;
   for (const key in segs) document.querySelectorAll(`[data-${key}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[key] === S[key])));
   document.querySelectorAll('.ctl').forEach(el => { el.hidden = !st.controls.includes(el.dataset.c); });
   [...nav.children].forEach((b, i) => b.setAttribute('aria-current', String(i === S.stage)));
   syncNav();
   $('scaleText').textContent = st.scaleNote || '';
   const cap = st.caption(S), ck = S.stage + cap.title + cap.body;
-  if (ck !== lastCap) {       // the caption is a live region: only touch it when it really changes
+  if (ck !== lastCap && !held) {       // the caption is a live region: only touch it when it really changes
     $('stageNo').textContent = `Scale ${S.stage + 1} of ${STAGES.length}`; $('stageScale').textContent = st.scale;
     $('capTitle').textContent = cap.title; $('capBody').textContent = cap.body; lastCap = ck;
     document.title = `${st.name} | Rainbows`;
   }
+  const open = [...$('readout').querySelectorAll('details[open]')].map(d => d.dataset.k);      // rebuilt below: keep what was opened
   $('readout').innerHTML = st.readout ? st.readout(S) : '';
+  for (const d of $('readout').querySelectorAll('details')) d.open = open.includes(d.dataset.k);
   $('hint').textContent = wide ? (st.hint || 'Drag to look around · scroll to zoom') + ' · or arrow keys, + and −' : (st.hintSmall || 'Drag to look around · pinch to zoom');
   writeHash();
 }
@@ -272,6 +280,7 @@ function drawLabels(list, view) {
     const cls = 'tag ' + (L.cls || '');
     if (el.className !== cls) el.className = cls;
     if (el.firstChild.textContent !== L.text) el.firstChild.textContent = L.text;
+    if (L.color && el.dataset.c !== L.color) { el.dataset.c = L.color; el.style.setProperty('--c', L.color); }
     el.style.transform = `translate(${s[0].toFixed(1)}px,${s[1].toFixed(1)}px) translate(0,-50%)`;
     el.style.display = ''; n++;
   }

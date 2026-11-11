@@ -13,7 +13,7 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
 | Rain | 1 m | 30 000 falling drops, each coloured by what it sends to your eye |
 | Drop | 1 mm | One drop traced in 3D: every route the light takes, with its share of the energy |
 | Surface | 1 µm | The exact field where light crosses the water's surface, on the drop's own curving skin |
-| Molecules | 1 nm | Light arriving at an angle you set: why each wavelength is slowed, and so bent, by a different amount |
+| Molecules | 1 nm | One wave crossing into water at an angle you set, and the electron clouds it shakes: why each wavelength is slowed, and so bent, by a different amount |
 
 - **Follow the light** picks out what comes from the Sun, or only what ends up in your eye.
 - **Show light as** switches between particles (rays and photons) and waves (crests), where both make sense.
@@ -54,6 +54,11 @@ The physics, all in `js/v2/optics.js`:
   sphere always meets the wall at the angle it was refracted to on entry, so sunlight in a drop is
   never totally reflected. The Surface scale says so, and its angle slider stops short of the
   critical angle for light inside the water.
+- The last scale draws one thing: the light's electric field entering the water, with two rows of
+  water molecules beside it whose electron clouds swing against the field. The magnetic field is a
+  toggle, the energy split is folded away under "Where the wave's energy is", and the few percent
+  of light that reflects is left out, which the panel says. Each molecule drawn stands for over a
+  hundred layers of real ones.
 - In the last scale the wave's energy is split into electric field, magnetic field, stretched
   molecules and moving electrons. Energy held in matter does not travel, which gives the energy
   velocity; nearer the ultraviolet resonance more is held, so violet is slower than red.
