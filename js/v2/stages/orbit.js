@@ -78,7 +78,7 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
     surf = mix(surf, vec3(0.92), cl*0.9);
     col = surf*sunc*max(mu,0.0)*1.5 + surf*sunc*day*0.05;
     col += sunc*pow(max(dot(reflect(rd,n),toSun),0.0),50.0)*(1.0-land)*(1.0-cl)*0.9;
-    float rim = pow(1.0-max(dot(n,-rd),0.0), 2.6);
+    float rim = pow(clamp(1.0-dot(n,-rd), 0.0, 1.0), 2.6);   // clamped: a negative base is NaN, which bloom turns into a flashing dot
     col += vec3(0.20,0.45,1.0)*rim*day*1.1 + vec3(0.004,0.006,0.012)*(1.0-day);
     depth = depthOf(n);
   } else if(b < 0.0){

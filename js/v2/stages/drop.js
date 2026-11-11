@@ -217,7 +217,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
   if(h < 0.0){ o = vec4(0.0); return; }
   h = sqrt(h); vec3 n1 = ro + rd*(-b-h), n2 = ro + rd*(-b+h);
   vec3 sun = vec3(-1.0, 0.0, 0.0);
-  float f1 = pow(1.0-max(dot(n1,-rd),0.0), 3.0);
+  float f1 = pow(clamp(1.0-dot(n1,-rd), 0.0, 1.0), 3.0);
   vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1);
   col += vec3(1.0,0.95,0.85)*pow(max(dot(reflect(rd,n1), sun),0.0), 90.0)*2.5;          // the Sun's glint
   col += vec3(0.5,0.7,1.0)*pow(max(dot(reflect(rd,-n2), -sun),0.0), 30.0)*0.25;         // light gathered at the back

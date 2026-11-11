@@ -149,7 +149,7 @@ precision highp float; in vec3 vN, vW; uniform vec3 uEye, uColor, uLight, uLight
 void main(){
   vec3 n = normalize(vN), vd = normalize(uEye-vW);
   float d = max(dot(n,uLight),0.0);
-  float rim = pow(1.0-max(dot(n,vd),0.0), 3.0);
+  float rim = pow(clamp(1.0-dot(n,vd), 0.0, 1.0), 3.0);
   vec3 c = uColor*(uAmb + uLightCol*d) + uLightCol*rim*max(dot(n,uLight)*0.5+0.5,0.0)*0.35;
   o = vec4(c*uFade, 1.0);
 }`;
