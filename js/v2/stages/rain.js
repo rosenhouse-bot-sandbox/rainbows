@@ -85,19 +85,6 @@ export default {
 ${rows}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd></dl>`;
   },
   liveReadout: true,
-  labels(S, view) {
-    const s = sunDir(S), { close } = dress(view.eye), wide = close < 0.5;
-    const L = [{ p: [0, 1.95, 0], text: 'You', cls: 'strong' }];
-    // the bow on the sky: a direction from your eye, marked far out along it
-    const at = (th, psi) => V.mad(EYE, coneDir(s, th, psi), 900);
-    if (B1 / DEG - S.sun > 2) L.push({ p: at(B1, 0), text: `Main bow · ${(B1 / DEG).toFixed(0)}°`, cls: 'strong' });
-    if (wide && B2 / DEG - S.sun > 2) L.push({ p: at(B2 + 0.01, S.sun > 30 ? 0 : -0.28), text: `Outer bow · ${(B2 / DEG).toFixed(0)}°`, cls: 'far' });
-    if (wide && S.sun > 1.5) { const t = EYE[1] / Math.sin(S.sun * DEG); if (t < 60) L.push({ p: V.mad(EYE, s, t), text: 'Shadow of your head: the centre of the bow', cls: 'note' }); }
-    L.push({ p: V.mad([2.5, 6.5, 0], s, -3), text: 'Sunlight', cls: 'far' });
-    L.push({ p: [6.2, 8.2, -9], text: 'Raindrops, falling', cls: 'far' });
-    return L;
-  },
-
   init(R) {
     const gl = R.gl; bowTexture(R); initEnv(R);
     drops = R.compile(`#version 300 es

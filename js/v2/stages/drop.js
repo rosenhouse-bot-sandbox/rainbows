@@ -241,17 +241,7 @@ export default {
 
   labels(S) {
     const c = cache; if (!c) return [];
-    const e = [-Math.cos(c.thetaE), -Math.sin(c.thetaE), 0], h = c.desc.hits;
-    const L = [
-      { p: [X0 + 0.6, 1.25, 0], text: 'Sunlight' },
-      { p: V.mad(eyeAt(c), e, 0.6), text: 'To your eye, far away', cls: 'strong' },
-      { p: V.mad([0, 0, 0], V.norm([-Math.cos(c.thetaE / 2), -Math.sin(c.thetaE / 2), 0]), 2.5), text: (c.thetaE / DEG).toFixed(1) + '°', cls: 'num' },
-      { p: [-3.9, 0.12, 0], text: 'Straight back toward the Sun', cls: 'far' },
-    ];
-    if (S.focus !== 'eye') L.push({ p: [h[1][0] + 0.9, h[1][1] - 0.5, 0], text: 'About 89% leaves here', cls: 'far' });
-    L.push({ p: [h[1][0] + 0.05, h[1][1], 0], text: `Meets the back at ${(c.desc.refr / DEG).toFixed(0)}°, under the ${(O.criticalAngle(N_MID) / DEG).toFixed(0)}° critical angle: a partial mirror`, cls: 'note' });
-    if (S.second && S.focus !== 'eye') { const o = c.desc.outs[3], q = h[3]; L.push({ p: [q[0] + o.dir[0] * 2.6, q[1] + o.dir[1] * 2.6, 0], text: 'Second reflection: the outer bow', cls: 'far' }); }
-    return L;
+    return [{ p: V.mad([0, 0, 0], V.norm([-Math.cos(c.thetaE / 2), -Math.sin(c.thetaE / 2), 0]), 2.5), text: (c.thetaE / DEG).toFixed(1) + '°', cls: 'num' }];
   },
 
   init(R) {

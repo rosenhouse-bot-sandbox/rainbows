@@ -71,25 +71,11 @@ export default {
 <dt>Red would leave at</dt><dd>${d(bend(nr))}</dd><dt>Violet would leave at</dt><dd>${d(bend(nv))}</dd>`;
     return `<dl>${rows}</dl>` + (S.pol === 'p' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
   },
-  labels(S, view) {
-    const c = setup(S), si = Math.sin(c.th), ci = Math.cos(c.th), L = [];
+  labels(S) {
+    const c = setup(S), L = [];
     L.push({ p: [-5.4, 3.6, 0], text: 'Air', cls: 'big' }, { p: [-5.4, -3.6, 0], text: 'Water', cls: 'big' });
-    L.push({ p: toScene([-si * 5.6, ci * 5.6, 0], c), text: 'Arriving', cls: 'far' });
-    L.push({ p: toScene([si * 5.6, ci * 5.6, 0], c), text: `Reflected ${(c.F.R * 100).toFixed(c.F.R > 0.1 ? 0 : 1)}%`, cls: 'far' });
-    L.push({ p: toScene([Math.sin(c.F.thetaT) * 5.0, -Math.cos(c.F.thetaT) * 5.0, 0], c), text: `Transmitted ${((1 - c.F.R) * 100).toFixed(c.F.R > 0.1 ? 0 : 1)}%`, cls: 'far' });
     L.push({ p: toScene([-Math.sin(c.th / 2) * 2.3, Math.cos(c.th / 2) * 2.3, 0], c), text: (c.th / DEG).toFixed(1) + '°', cls: 'num' });
     L.push({ p: toScene([Math.sin(c.F.thetaT / 2) * 2.3, -Math.cos(c.F.thetaT / 2) * 2.3, 0], c), text: (c.F.thetaT / DEG).toFixed(1) + '°', cls: 'num' });
-    // how far the drop's skin can be seen before it curves out of sight, from where the camera is
-    if (view) {
-      const e = view.eye, h = Math.hypot(e[0], e[1] + RD, e[2]) - RD;
-      if (h > 0.05) {
-        const dist = Math.sqrt(h * (2 * RD + h)), a = Math.asin(RD / (RD + h)), f = V.norm([view.f[0], 0, view.f[2]]);
-        // the point of the horizon straight ahead: down from the camera by the angle a from the vertical
-        const dn = V.norm([e[0], e[1] + RD, e[2]]), t = V.norm(V.mad(f, dn, -V.dot(f, dn)));
-        const p = V.add(e, V.mul(V.add(V.mul(dn, -Math.cos(a)), V.mul(t, Math.sin(a))), dist));
-        L.push({ p: V.add(p, [0, dist * 0.035, 0]), text: `The drop curves out of sight ${Math.round(dist)} µm away`, cls: 'far' });
-      }
-    }
     return L;
   },
 

@@ -79,13 +79,10 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
   },
   labels(S) {
     const c = setup(S), at = (d, k, up = 0, b = null, kb = 0) => { const p = V.mul(d, k); if (b) { p[0] += b[0] * kb; p[2] += b[2] * kb; } p[1] += up; return p; };
-    const m = molPos(mols[LABELLED], c);
     const mid = (a, b) => V.norm(V.add(a, b));
     const L = [
       { p: [-4.5, 4.3, 2.0], text: 'Air', cls: 'big' }, { p: [3.0, 4.3, -5.6], text: 'Water', cls: 'big' },
       { p: at(c.di, -5.6, AMP + 0.75), text: 'Electric field E', cls: 'key', color: css(O.wlRGB(c.l)) },
-      { p: [m[0], YM + 0.75, m[2]], text: 'Water molecules: the field pushes their electron clouds up and down', cls: 'note' },
-      { p: at(c.dt, ST * 0.86, YF, c.bt, W * 0.75), text: 'Crests, drawn on the floor', cls: 'far' },
       { p: at(mid(c.di, [1, 0, 0]), -2.7, YF), text: (c.th / DEG).toFixed(1) + '°', cls: 'num' },
       { p: at(mid(c.dt, [1, 0, 0]), 2.9, YF), text: (c.thT / DEG).toFixed(1) + '°', cls: 'num' },
     ];
@@ -176,4 +173,3 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
 };
 // molecules follow the refracted beam, so they stay in the light at any angle and colour
 function molPos(m, c) { return [m.x, m.y, -Math.tan(c.thT) * m.x + m.u]; }
-const LABELLED = 10 * 2 + 1;      // a molecule in the upper sheet: its label sits above it, clear of the wave

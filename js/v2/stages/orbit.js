@@ -36,14 +36,12 @@ export default {
     return `<dl><dt>Sun above your horizon</dt><dd>${S.sun.toFixed(1)}°</dd>
 <dt>Distance to the Sun</dt><dd>149.6 million km</dd>
 <dt>Light's travel time</dt><dd>8 min 19 s</dd>
-<dt>Rays parallel to within</dt><dd>0.53°</dd></dl>`;
+<dt>Rays parallel to within</dt><dd>0.53°</dd></dl>
+<p>Not to scale: the rainbow is drawn far too big.</p>`;
   },
   labels(S) {
     const p = place(S);
     return [
-      { p: V.mul(p, 1.02), text: 'You are here', cls: 'strong' },
-      { p: [-3.3, 1.5, 0.6], text: 'Sunlight', cls: 'far' },
-      { p: V.add(V.mul(p, 1.0), V.mul(coneDir([1, 0, 0], 42 * DEG, bestPsi(p)), 0.5)), text: 'Your rainbow (drawn far too big)', cls: 'far' },
       { p: [1.0, -0.9, 0.9], text: 'Night', cls: 'big' },
     ];
   },
@@ -137,4 +135,3 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
     R.pt(V.mul(p, 1.012), [1, 1, 1], 1.1 * far, 0.011); R.flushPoints({ minPx: 3.5 });
   },
 };
-function bestPsi(p) { let b = 0, m = -2; for (let i = 0; i < 24; i++) { const d = coneDir([1, 0, 0], 42 * DEG, i / 24 * 6.2832), v = V.dot(d, p); if (v > m) { m = v; b = i / 24 * 6.2832; } } return b; }
