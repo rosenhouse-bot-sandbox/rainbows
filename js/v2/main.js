@@ -2,13 +2,13 @@
 import { createEngine, makeView, project, slerp, V, DEG, clamp, lerp, sstep } from './gl.js';
 import * as O from './optics.js';
 import orbit from './stages/orbit.js';
-import sky from './stages/sky.js';
 import rain from './stages/rain.js';
 import drop, { eyeAngle, bowTrack, crossAngle, CROSSINGS } from './stages/drop.js';
 import surface, { presetAngle, maxAngle } from './stages/surface.js';
 import atoms from './stages/atoms.js';
 
-const STAGES = [orbit, sky, rain, drop, surface, atoms];
+const STAGES = [orbit, rain, drop, surface, atoms];
+const RAIN = STAGES.indexOf(rain), DROP = STAGES.indexOf(drop), SURFACE = STAGES.indexOf(surface), ATOMS = STAGES.indexOf(atoms);
 const $ = id => document.getElementById(id);
 const canvas = $('view');
 const R = createEngine(canvas);
@@ -35,7 +35,7 @@ const S = {
 // ---------- address bar ----------
 function readHash() {
   const q = new URLSearchParams(location.hash.slice(1));
-  const st = STAGES.findIndex(s => s.id === q.get('s')); if (st >= 0) S.stage = st;
+  const st = STAGES.findIndex(s => s.id === q.get('s') || s.aliases?.includes(q.get('s'))); if (st >= 0) S.stage = st;      // aliases: links made when a scale had another name
   if (['ray', 'wave'].includes(q.get('m'))) S.mode = q.get('m');
   if (['sun', 'both', 'eye'].includes(q.get('f'))) S.focus = q.get('f');
   if (CROSSINGS.includes(q.get('x'))) { S.cross = q.get('x'); }
@@ -51,9 +51,9 @@ function writeHash() {
   clearTimeout(hashTimer);
   hashTimer = setTimeout(() => {
     const q = new URLSearchParams({ s: STAGES[S.stage].id, m: S.mode, f: S.focus, sun: S.sun, nm: S.lambda });
-    if (S.stage === 3) { q.set('bow', S.bowpos); if (S.exag) q.set('wide', 1); if (S.second) q.set('two', 1); }
-    if (S.stage === 5) { q.set('tilt', S.tilt); if (S.bfield) q.set('b', 1); }
-    if (S.stage === 4) { q.set('x', S.cross); q.set('a', S.theta); q.set('p', S.pol); }
+    if (S.stage === DROP) { q.set('bow', S.bowpos); if (S.exag) q.set('wide', 1); if (S.second) q.set('two', 1); }
+    if (S.stage === ATOMS) { q.set('tilt', S.tilt); if (S.bfield) q.set('b', 1); }
+    if (S.stage === SURFACE) { q.set('x', S.cross); q.set('a', S.theta); q.set('p', S.pol); }
     history.replaceState(null, '', '#' + q);
   }, 300);
 }
@@ -81,12 +81,14 @@ function viewFor(i, time) {
     v.d = 12; v.tgt = V.mad(eye, f, 12);
   } else {
     const tgt = typeof c.target === 'function' ? c.target(S) : c.target;
-    const yaw = c.yaw + sway, d = c.dist * aspectFix;
+    // a narrow screen backs the camera off; a scene with the whole sky in it (widen) opens its lens out instead
+    const yaw = c.yaw + sway, d = c.dist * (c.widen ? 1 : aspectFix), fo = c.widen ? Math.min(2 * Math.atan(Math.tan(fov / 2) * aspectFix ** 0.5), 2.3) : fov;
+    const pitch = c.minY == null ? c.pitch : Math.max(c.pitch, Math.asin(clamp((c.minY - tgt[1]) / d, -1, 1)));      // never below the ground
     // A stage may be drawn in axes that are tilted in the world (the Surface scale's follow the drop's
     // skin): its camera is still set in the world's, so it stays upright, and is then turned into them.
     const turn = st.camFrame ? st.camFrame(S) : a => a;
-    const dir = turn([Math.sin(yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(yaw) * Math.cos(c.pitch)]);
-    v = makeView(V.mad(tgt, dir, d), V.mul(dir, -1), fov, R.W, R.H, d * 0.02, d * 60 + 50, offX, offY, turn([0, 1, 0]));
+    const dir = turn([Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)]);
+    v = makeView(V.mad(tgt, dir, d), V.mul(dir, -1), fo, R.W, R.H, d * 0.02, d * 60 + 50, offX, offY, turn([0, 1, 0]));
     v.d = d; v.tgt = tgt;
   }
   v.fov = 2 * Math.atan(1 / v.p11);
@@ -131,13 +133,13 @@ function go(to) {
   if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
   ready(to);
   // going deeper, set the next scene to match the thing being entered
-  if (to === 5 && S.stage === 4 && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
+  if (to === ATOMS && S.stage === SURFACE && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
   // a bigger change of scale takes longer
   const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
   const dir = to > S.stage ? 1 : -1, dur = RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5);
   tr = { hi: hiS, q: dir > 0 ? 0 : 1, dir, v: dir / dur, dur, capWait: 0 };
   // the marked drop keeps falling during the flight: set the Drop scene to where it will be on arrival
-  if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
+  if (to === DROP && S.stage === RAIN) { const th = STAGES[RAIN].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
   hopping = far;
   $('labels').classList.add('off');
   syncNav();
@@ -309,11 +311,11 @@ function frame(now) {
   D ??= Object.assign(Object.create(S), { lambda: S.lambda, cross: S.cross, theta: S.theta });
   // ---- which crossing the Surface scale is at ----
   {
-    const goal = crossAngle(S.cross), near3 = tr?.hi === 3;
+    const goal = crossAngle(S.cross), near3 = tr?.hi === DROP;
     phi ??= goal;
-    if (RM.matches || !(near3 || (!tr && S.stage === 4))) phi = goal;       // nothing to fly: change over at once
+    if (RM.matches || !(near3 || (!tr && S.stage === SURFACE))) phi = goal;       // nothing to fly: change over at once
     const gap = goal - phi, far = Math.abs(gap) > 0.12;
-    if (far && !tr) { ready(3); tr = { hi: 3, q: 1, dir: 1, v: 0, dur: HOP, capWait: 0, hop: true }; $('labels').classList.add('off'); }
+    if (far && !tr) { ready(DROP); tr = { hi: DROP, q: 1, dir: 1, v: 0, dur: HOP, capWait: 0, hop: true }; $('labels').classList.add('off'); }
     else if (far && near3 && tr.dir > 0) tr.hop = true;       // already flying in: go back out and round first
     if (tr?.hop) tr.out = far;
     if (gap) {
@@ -357,7 +359,7 @@ function frame(now) {
     // After a turn-round on the way into a marked drop, the drop has fallen further than first planned:
     // ease the Drop scene to where it will now be on arrival.
     if (tr.fromRain && tr.rev && deeper && !still) {
-      const th = STAGES[2].embed(S, paused ? 0 : (1 - tr.q) * tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700));
+      const th = STAGES[RAIN].embed(S, paused ? 0 : (1 - tr.q) * tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700));
       S.bowpos += (clamp((th - a0) / (a1 - a0), -0.8, 1.6) - S.bowpos) * (1 - Math.exp(-dt * 6));
     }
     const vA = viewFor(hi, time), vB = viewFor(lo, time);
@@ -390,9 +392,9 @@ function frame(now) {
     hole.cover = still || !STAGES[lo].overlay ? 1 : sstep(0.7, 1, E);
     // R.zoom tells both scenes how far the flight between them has gone, so each can ease out what only
     // it shows and the two can agree on what they share.
-    R.zoom = { k: E, pair: hi, lo: false, cover: hole.cover };
+    R.zoom = { k: E, pair: hi, from: STAGES[hi].id, lo: false, cover: hole.cover };
     R.begin(0, vHi, 1); STAGES[hi].draw(R, D, time, dt);
-    R.zoom = { k: E, pair: hi, lo: true, cover: hole.cover };
+    R.zoom = { k: E, pair: hi, from: STAGES[hi].id, lo: true, cover: hole.cover };
     R.dive = still ? null : { k: E, M: tr.M };      // lets the deeper scene bring its own detail in gradually
     R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt); R.dive = null; R.zoom = null;
     labelView = S.stage === hi ? vHi : vLo;      // labels stay with the scale the panel is showing, and change over with it, unseen

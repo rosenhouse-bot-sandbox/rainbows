@@ -4,13 +4,12 @@ Interactive explorations, served from the landing page `index.html`.
 
 ## Rainbows
 
-A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added at the end.
+A rebuild at `v2/`, in three dimensions at every scale, from the whole Earth down to single molecules.
 
 | Scale | Size | What you see |
 | --- | --- | --- |
 | Orbit | 10 000 km | The Earth in parallel sunlight, where you stand, and the cone of your bow |
-| Sky | 1 km | A field with the Sun behind you; primary and secondary bows and the dark band between |
-| Rain | 1 m | 30 000 falling drops, each coloured by what it sends to your eye |
+| Rain | 1 km to 1 m | A field with the Sun behind you: the bows on the far rain, and 30 000 near drops, each coloured by what it sends to your eye |
 | Drop | 1 mm | One drop traced in 3D: every route the light takes, with its share of the energy |
 | Surface | 1 µm | The exact field where light crosses the water's surface, on the drop's own curving skin |
 | Molecules | 1 nm | One wave crossing into water at an angle you set, and the electron clouds it shakes: why each wavelength is slowed, and so bent, by a different amount |
@@ -26,10 +25,21 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
   are generated noise and not a map of the real Earth. The ring and dot at "You are here" are a marker
   and nothing more; they fade as the camera dives towards them. The cloud also parts around your spot
   as the camera comes down on it, which is staging and not weather.
+- The Rain scale used to be two, Sky and Rain. It is now one scene with one camera, which starts
+  behind your shoulder with the bow across the sky and moves in among the drops. How far in the
+  camera is sets the dressing: the sky is turned down (to about a third of its brightness, close in)
+  so that single drops show against it, and the far bow fades with it. Old links with `s=sky` open
+  the Rain scale.
+- Sunlight and rain are drawn so that they cannot be mistaken for each other. Sunlight is gold,
+  slanted, and carries arrowheads that travel with the light. Rain is cool blue-white where it sends
+  you nothing, falls straight down, and is drawn as a streak with its head down; a drop near enough
+  to have a size on screen is drawn round, because drops are spheres. The streak is a drawing of
+  motion, not the drop's shape. The panel carries a key.
+- The near drops are coloured by what each sends to the standing figure, not to the camera, while
+  the bow on the far rain is painted for the camera. From behind the figure the two nearly coincide;
+  from the side they part, which is the point: a bow belongs to one pair of eyes.
 - During a flight, both scenes are told how far it has gone (`R.zoom`), and nothing changes on a
-  clock of its own. The Sky and Rain scales draw one shared landscape; at the Rain scale it is turned
-  down to about a quarter of its brightness so that single drops show against it, and the camera's own
-  bow is left out. The Drop, Surface and Molecules scenes are light on a dark ground, so their light
+  clock of its own. The Drop, Surface and Molecules scenes are light on a dark ground, so their light
   is added over the scene they sit in, and their own backdrop and framing (the block of water, the
   wire frame) arrive last. Those frames are drawing aids, not objects inside the drop.
 

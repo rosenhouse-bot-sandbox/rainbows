@@ -1,17 +1,24 @@
-// Stage 3: inside the rain. Units are metres; the geometry is the Sky stage's, seen from outside.
-// Every drop is coloured by the light it sends to the figure's eye: red at 42.4° from the antisolar
-// line, violet at 40.6°, faint white inside that, and almost nothing outside.
-import { V, DEG, rng, clamp } from '../gl.js';
+// Stage 2: a field with the Sun behind you and rain ahead, from the whole sky down to single drops.
+// Units are metres. The far rain paints the bow on the sky; the near drops are drawn one by one, each
+// coloured by the light it sends to the figure's eye: red at 42.4° from the antisolar line, violet at
+// 40.6°, faint white inside that, and almost nothing outside. Both lie on the same cone from the eye.
+// Sunlight is gold, slanted and carries arrowheads; rain is cool, vertical and tear-shaped.
+import { V, DEG, rng, clamp, sstep, lerp } from '../gl.js';
 import * as O from '../optics.js';
-import { WARM, bowTexture, drawFigure, coneDir, wavefrontSheets, colourName } from './common.js';
-import sky, { EYE, sunDir, sunColour, drawEnv } from './sky.js';
+import { SUN, sunRay, bowTexture, drawFigure, coneDir, wavefrontSheets, colourName } from './common.js';
+import { EYE, sunDir, sunColour, drawEnv, initEnv } from './sky.js';
 import { drawFar } from './drop.js';
 
 const BOX0 = [-8, 0, -13], BOXS = [16, 9, 10.5], NDROPS = 30000;
 const CONE = [[650, O.bowAngle(O.nWater(650))], [550, O.bowAngle(O.nWater(550))], [450, O.bowAngle(O.nWater(450))]].map(([l, th]) => ({ th, col: O.wlRGB(l) }));
+const B1 = O.bowAngle(O.nWater(550)), B2 = O.bowAngle(O.nWater(550), 2);
 const DROP = 0.01, FALL = 1.1 / 16;      // a marked drop's drawn radius, and how fast it falls, in metres (per second)
 const HEROES = [[-2.6, -7.5, 0.0], [0.4, -6.2, 0.37], [2.9, -8.4, 0.71], [-0.9, -9.6, 0.55]];
 let drops = null, vao = null;
+// How the scene is dressed depends only on where the camera is. `here` is 0 from far above (arriving
+// from orbit) and 1 once it is down in the field; `close` is 0 from the wide view behind your shoulder
+// and 1 in among the drops, where the sky is turned down so that single drops show against it.
+const dress = eye => { const back = V.len(V.sub(eye, EYE)); return { here: 1 - sstep(60, 500, back), close: 1 - sstep(10, 19, back) }; };
 
 const angleAt = (p, s) => { const d = V.norm(V.sub(p, EYE)); return Math.acos(clamp(V.dot(d, s), -1, 1)); };
 // The hero drops fall straight down through the bow; find the height where each crosses 42°.
@@ -37,10 +44,14 @@ function frame(P, X) {
 }
 
 export default {
-  id: 'rain', name: 'Rain', scale: '1 m', scaleNote: 'drops drawn much larger than life', modes: true, focus: true,
-  controls: ['focus', 'mode', 'sun'], bloom: 1.0, exposure: 1.0,
-  cam: { type: 'orbit', target: [0, 2.9, -4.6], yaw: 0.62, pitch: 0.1, dist: 14.5, fov: 40,
-    lim: { yaw: [-1.2, 1.2], pitch: [0.02, 0.6], dist: [7.5, 19] } },
+  id: 'rain', aliases: ['sky'], name: 'Rain', scale: '1 km to 1 m', scaleNote: 'near drops drawn larger than life, as streaks', modes: true, focus: true,
+  controls: ['focus', 'mode', 'sun', 'key'], bloom: 0.85, exposure: 1.0,
+  hint: 'Drag to look around · scroll to move in among the drops',
+  hintSmall: 'Drag to look around · pinch to move in',
+  // One camera for the whole scale: from behind your shoulder with the bow across the sky, in to the drops.
+  cam: { type: 'orbit', target: [0, 3.7, -6], yaw: 0.1, pitch: -0.18, dist: 20, fov: 58, sway: 0.02, minY: 0.9, widen: true,
+    lim: { yaw: [-1.2, 1.2], pitch: [-0.22, 0.6], dist: [8.5, 26] } },
+  extent: 3500,        // how much of this scene matters, in metres: the rain and the bow in it
   // the next scale is one of the marked drops: pick the one with the most of its fall left, and stay with it
   portal: S => {
     const now = performance.now();
@@ -57,47 +68,65 @@ export default {
   },
 
   caption(S) {
+    if (S.sun > 42) return { title: 'Too high a Sun, no bow',
+      body: 'The bow is a circle 42° from the point directly opposite the Sun. With the Sun more than 42° up, that whole circle lies below the horizon, which is why rainbows belong to mornings and late afternoons. Only drops close by and below your eye line can still send you colour, as a garden sprinkler does. Lower the Sun to bring the bow back.' };
     if (S.focus === 'eye') return { title: 'Only some drops are aimed at you',
-      body: 'A drop sends you colour only while it sits on the cone 42° from your antisolar line. As each drop falls through that cone it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
+      body: 'The coloured lines leave your eye 42° away from the line to your head\'s shadow. A drop sends you colour only while it sits on one of them, near or far. Falling through, it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
     if (S.focus === 'sun') return { title: 'Every drop does the same thing',
-      body: 'Each drop takes in parallel sunlight and throws a hollow cone of colour back toward the Sun, red on the outside. All the cones point the same way. Whether you see a drop as coloured depends only on whether its cone happens to pass through your eye.' };
-    return { title: 'A bow made of falling drops',
-      body: 'Here the drops are coloured by what each one sends to the standing figure. Together they trace a cone with the eye at its tip. Watch the marked drops: each throws back its own cone of colour, and one edge of it sweeps across the eye as the drop falls.' };
+      body: 'The Sun is behind you, and its light, drawn in gold, passes over your shoulder into the rain. Each drop takes in parallel sunlight and throws a hollow cone of colour back toward the Sun, red on the outside. All the cones point the same way. Whether you see a drop as coloured depends only on whether its cone happens to pass through your eye.' };
+    return { title: 'Sun behind, rain ahead',
+      body: 'The gold arrows are sunlight. The falling streaks are raindrops, each coloured by what it sends to the standing figure. Near drops and far rain light up along the same cone, 42° from the line through your head to its shadow: the bow is a direction, not a place. Move in to watch single drops fall through it.' };
   },
   readout(S) {
+    const top = (B1 / DEG - S.sun), top2 = (B2 / DEG - S.sun);
     const rows = lastHeroes.map((h, i) => `<dt>Marked drop ${i + 1} · ${(h.th / DEG).toFixed(1)}°</dt><dd>${h.lam ? colourName(h.lam) + ' ' + Math.round(h.lam) + ' nm' : h.th > 0.74 ? 'dark' : 'pale white'}</dd>`).join('');
-    return `<dl>${rows}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd></dl>`;
+    return `<dl><dt>Top of the main bow</dt><dd>${top > 0 ? top.toFixed(1) + '° up' : 'below the horizon'}</dd>
+<dt>Top of the outer bow</dt><dd>${top2 > 0 ? top2.toFixed(1) + '° up' : 'below the horizon'}</dd>
+${rows}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd></dl>`;
   },
   liveReadout: true,
-  labels(S) {
+  labels(S, view) {
+    const s = sunDir(S), { close } = dress(view.eye), wide = close < 0.5;
     const L = [{ p: [0, 1.95, 0], text: 'You', cls: 'strong' }];
-    lastHeroes.forEach((h, i) => { if (h.fade > 0.5) L.push({ p: V.add(h.P, [0.12, 0.1, 0]), text: h.lam ? `sends you ${colourName(h.lam)}` : h.th > 0.74 ? 'nothing for you yet' : 'pale white now', cls: i ? 'far' : '' }); });
-    const s = sunDir(S);
+    // the bow on the sky: a direction from your eye, marked far out along it
+    const at = (th, psi) => V.mad(EYE, coneDir(s, th, psi), 900);
+    if (B1 / DEG - S.sun > 2) L.push({ p: at(B1, 0), text: `Main bow · ${(B1 / DEG).toFixed(0)}°`, cls: 'strong' });
+    if (wide && B2 / DEG - S.sun > 2) L.push({ p: at(B2 + 0.01, S.sun > 30 ? 0 : -0.28), text: `Outer bow · ${(B2 / DEG).toFixed(0)}°`, cls: 'far' });
+    if (wide && S.sun > 1.5) { const t = EYE[1] / Math.sin(S.sun * DEG); if (t < 60) L.push({ p: V.mad(EYE, s, t), text: 'Shadow of your head: the centre of the bow', cls: 'note' }); }
+    lastHeroes.forEach((h, i) => { if (h.fade > 0.5 && (!wide || i === lock)) L.push({ p: V.add(h.P, [0.12, 0.1, 0]), text: h.lam ? `sends you ${colourName(h.lam)}` : h.th > 0.74 ? 'nothing for you yet' : 'pale white now', cls: i ? 'far' : '' }); });
     L.push({ p: V.mad([2.5, 6.5, 0], s, -3), text: 'Sunlight', cls: 'far' });
+    L.push({ p: [6.2, 8.2, -9], text: 'Raindrops, falling', cls: 'far' });
     return L;
   },
 
   init(R) {
-    const gl = R.gl; bowTexture(R); sky.init(R);
+    const gl = R.gl; bowTexture(R); initEnv(R);
     drops = R.compile(`#version 300 es
 layout(location=0) in vec2 corner; layout(location=1) in vec4 D;
 uniform mat4 uVP; uniform vec2 uRes, uLutRange; uniform float uPx, uP11, uTime, uFade, uGain;
 uniform vec3 uSun, uEyeP, uSunCol, uBox0, uBoxS; uniform sampler2D uLUT;
-out vec3 vC; out vec2 vUV;
+out vec3 vC; out vec2 vUV; out float vTail;
 void main(){
   vec3 p = D.xyz; p.y = uBox0.y + mod(D.y - uTime*(0.45+0.2*D.w), uBoxS.y);
   float th = degrees(acos(clamp(dot(normalize(p-uEyeP), uSun), -1.0, 1.0)));
   vec3 bow = texture(uLUT, vec2((th-uLutRange.x)/(uLutRange.y-uLutRange.x), 0.5)).rgb;
   vec3 e = (p-uBox0)/uBoxS; float edge = smoothstep(0.0,0.08,e.x)*smoothstep(1.0,0.92,e.x)*smoothstep(0.0,0.1,e.z)*smoothstep(1.0,0.9,e.z)*smoothstep(1.0,0.9,e.y);
-  vC = (vec3(0.022,0.027,0.036) + bow*uSunCol*uGain)*uFade*edge;
+  vC = (vec3(0.014,0.026,0.048) + bow*uSunCol*uGain)*uFade*edge;
   vec4 c = uVP*vec4(p,1.0);
   if(c.w < 0.05){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
   float truePx = 0.02*uP11*uRes.y*0.5/c.w, px = max(truePx, 1.0*uPx);
   vC *= min(1.0, truePx*truePx/(px*px)*6.0);      // seen from far off, a drop keeps its share of light, not a whole pixel
-  gl_Position = vec4(c.xy + corner*vec2(1.0,2.4)*px/(uRes*0.5)*c.w, c.z, c.w); vUV = corner; }`,
+  // From a distance a falling drop is drawn as a streak, head down. Close enough to have a size of
+  // its own it is what it is: a sphere, as the Drop scale shows it.
+  vTail = 1.0 - smoothstep(2.5, 8.0, truePx);
+  gl_Position = vec4(c.xy + corner*vec2(1.0, mix(1.0, 3.4, vTail))*px/(uRes*0.5)*c.w, c.z, c.w); vUV = corner; }`,
     `#version 300 es
-precision highp float; in vec3 vC; in vec2 vUV; layout(location=0) out vec4 o;
-void main(){ float r2 = dot(vUV,vUV); if(r2 > 1.0) discard; o = vec4(vC*exp(-r2*3.5), 0.0); }`);
+precision highp float; in vec3 vC; in vec2 vUV; in float vTail; layout(location=0) out vec4 o;
+// the streak: a round head with a tail thinning out above it
+void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vUV.y+0.62)/0.38;
+  float streak = exp(-x*x*3.5)*(vUV.y < -0.62 ? exp(-h*h*3.5) : pow(1.0-(vUV.y+0.62)/1.62, 1.6))*1.25;
+  float f = mix(exp(-dot(vUV,vUV)*3.5), streak, vTail);
+  if(f < 0.01) discard; o = vec4(vC*f, 0.0); }`);
     const rnd = rng(5), data = new Float32Array(NDROPS * 4);
     for (let i = 0; i < NDROPS; i++) { data[i * 4] = BOX0[0] + rnd() * BOXS[0]; data[i * 4 + 1] = rnd() * BOXS[1]; data[i * 4 + 2] = BOX0[2] + rnd() * BOXS[2]; data[i * 4 + 3] = rnd(); }
     vao = gl.createVertexArray(); gl.bindVertexArray(vao);
@@ -110,57 +139,65 @@ void main(){ float r2 = dot(vUV,vUV); if(r2 > 1.0) discard; o = vec4(vC*exp(-r2*
 
   draw(R, S, T) {
     const gl = R.gl, s = sunDir(S), toSun = V.mul(s, -1), sc = sunColour(S), f = S.focus, bt = bowTexture(R);
-    // the same land and sky as the Sky scale, turned down (and turning down, on the way in from it)
-    drawEnv(R, S, T, R.zoom?.pair === 1 ? R.zoom.k : 1);
-    drawFigure(R, [0, 0, 0], toSun, sc.map(x => x * 0.8));
+    const { here, close } = dress(R.view.eye);
+    drawEnv(R, S, T, lerp(0.36, 0.85, close) * here, lerp(0.62, 0.25, close));
+    drawFigure(R, [0, 0, 0], toSun, sc.map(x => x * 0.85));
+    if (here <= 0) return;       // from orbit there is only the land: the diagram is drawn once you are down in it
 
-    // the rain
+    // the near rain, drop by drop
     gl.useProgram(drops.p);
     const u = drops.u, v = R.view;
     gl.uniformMatrix4fv(u.uVP, false, v.vp); gl.uniform2f(u.uRes, R.W, R.H); gl.uniform2f(u.uLutRange, bt.tab.deg0, bt.tab.deg1);
-    gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uP11, v.p11); gl.uniform1f(u.uTime, T); gl.uniform1f(u.uFade, R.fade);
+    gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uP11, v.p11); gl.uniform1f(u.uTime, T); gl.uniform1f(u.uFade, R.fade * here);
     gl.uniform1f(u.uGain, f === 'sun' ? 1.2 : 3.2);
     gl.uniform3fv(u.uSun, s); gl.uniform3fv(u.uEyeP, EYE); gl.uniform3fv(u.uSunCol, sc); gl.uniform3fv(u.uBox0, BOX0); gl.uniform3fv(u.uBoxS, BOXS);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bt.tex); gl.uniform1i(u.uLUT, 0);
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
     gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, NDROPS);
 
-    // sunlight
-    const aS = f === 'eye' ? 0.1 : f === 'sun' ? 1 : 0.55;
+    // sunlight, over your shoulder and down into the rain
+    const aS = (f === 'eye' ? 0.1 : f === 'sun' ? 1 : 0.55) * here;
     if (S.mode === 'wave') {
-      wavefrontSheets(R, V.mad([0, 4.2, -5], s, -10), s, 5.0, 2.4, 8, (T * 0.4) % 1, WARM, 0.2 * aS, p => p[1] > 0, 4);
-      R.flushLines();
+      wavefrontSheets(R, V.mad([0, 4.2, -5], s, -10), s, 5.0, 2.4, 8, (T * 0.4) % 1, SUN, 0.24 * aS, p => p[1] > 0, 4);
     } else {
       const r = [1, 0, 0], up = V.cross(r, s);
       for (let i = -3; i <= 3; i++) for (let j = 0; j < 4; j++) {
         const q = V.mad(V.mad([0, 1, -4], r, i * 2.1 + (j & 1)), up, j * 2.1 + 0.4);
         const tg = s[1] < -1e-3 ? Math.min(30, q[1] / -s[1]) : 30;
-        R.seg(V.mad(q, s, -14), V.mad(q, s, tg), WARM, 0.3 * aS, 1.5, 0.3 * aS, i * 1.3 + j * 2.9);
+        sunRay(R, V.mad(q, s, -22), V.mad(q, s, tg), 0.3 * aS, 0.3 * aS, T, { gap: 3.4, size: 0.24, speed: 3.2, phase: i * 0.37 + j * 0.61 });
       }
-      R.flushLines({ dash: [2.6, T * 3.2, 0.4] });
+      // the one ray that reaches your head
+      sunRay(R, V.mad(EYE, s, -22), EYE, 0.6 * aS, 0.6 * aS, T, { gap: 3.4, size: 0.24, speed: 3.2, w: 2 });
     }
-    // the antisolar line through the head
+    R.flushLines();
+    // the antisolar line: on through your head to its shadow, the centre of the bow
     const tgE = s[1] < -1e-3 ? Math.min(40, EYE[1] / -s[1]) : 40;
-    R.seg(V.mad(EYE, s, -5), V.mad(EYE, s, tgE), [0.7, 0.8, 1], 0.5, 1.3);
+    R.seg(EYE, V.mad(EYE, s, tgE), [0.7, 0.8, 1], 0.5 * here, 1.3);
     R.flushLines({ dash: [0.3, 0, 0.5] });
+    if (tgE < 40) { R.arc(V.add(V.mad(EYE, s, tgE), [0, 0.02, 0]), [1, 0, 0], [0, 0, 1], 0.35, 0, 6.2832, [0.7, 0.8, 1], 0.7 * here, 1.6, 28); R.flushLines(); }
 
     // marked drops: the cone each throws back, and the one ray of it that finds the eye
     // (drawn by the Drop scale's own code, in the drop's own axes, so the two scales agree line for line)
     const hs = lastHeroes = heroes(S, T);
     for (const h of hs) {
       const M = frame(h.P, s);
-      drawFar(R, S, h, EYE, 1, 1, p => [M.o[0] + (M.X[0] * p[0] + M.Y[0] * p[1] + M.Z[0] * p[2]) * DROP, M.o[1] + (M.X[1] * p[0] + M.Y[1] * p[1] + M.Z[1] * p[2]) * DROP, M.o[2] + (M.X[2] * p[0] + M.Y[2] * p[1] + M.Z[2] * p[2]) * DROP], DROP);
+      drawFar(R, S, h, EYE, here, here, p => [M.o[0] + (M.X[0] * p[0] + M.Y[0] * p[1] + M.Z[0] * p[2]) * DROP, M.o[1] + (M.X[1] * p[0] + M.Y[1] * p[1] + M.Z[1] * p[2]) * DROP, M.o[2] + (M.X[2] * p[0] + M.Y[2] * p[1] + M.Z[2] * p[2]) * DROP], DROP);
     }
     R.flushLines();
     if (f !== 'sun') {
-      // the eye's own cone, for comparison
-      for (const c of CONE) for (let k = -16; k <= 16; k++) {
-        const d = coneDir(s, c.th, k * 0.1), L = d[1] < -1e-3 ? Math.min(12, EYE[1] / -d[1]) : 12;
-        R.seg(EYE, V.mad(EYE, d, L), c.col, (f === 'eye' ? 0.3 : 0.1), 1.2, 0.0, k);
+      // the cone of sight-lines that carry colour back to you: red, green and blue in turn, each at its
+      // own angle, out through the near drops and on toward the bow in the far rain
+      const aE = (f === 'eye' ? 0.5 : 0.14) * here;
+      for (let k = -24; k <= 24; k++) {
+        const c = CONE[(k + 24) % 3], d = coneDir(s, c.th, k * 0.075);
+        if (d[1] < -0.03) continue;
+        const L = d[1] < -1e-3 ? Math.min(1400, EYE[1] / -d[1]) : 1400;
+        R.seg(EYE, V.mad(EYE, d, Math.min(L, 40)), c.col, aE, 1.3, aE * 0.5, k);
+        if (L > 40 && close < 1) R.seg(V.mad(EYE, d, 40), V.mad(EYE, d, L), c.col, aE * 0.5 * (1 - close), 1.3, 0.02 * aE, k + 40);      // the far reach only in the wide view
       }
       R.flushLines({ dash: [1.2, -T * 2.5, 0.6] });
     }
-    R.pt(EYE, [1, 1, 1], 0.9, 0.09);
+    R.pt(EYE, [1, 1, 1], 0.9 * here, 0.09);
     R.flushPoints({ minPx: 2 });
   },
 };

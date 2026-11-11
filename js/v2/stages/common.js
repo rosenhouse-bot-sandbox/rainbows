@@ -7,6 +7,26 @@ export const vis = I => Math.pow(Math.max(I, 0), 0.42);
 
 export const WARM = [1.0, 0.86, 0.62];      // low sunlight
 export const WHITE = [1, 1, 1];
+// Sunlight as it is drawn wherever there is rain about: a strong gold, so that it cannot be taken for
+// water. Rain is drawn cool and blue-white, falls straight down, and is never gold.
+export const SUN = [1.0, 0.66, 0.2];
+export const RAIN = [0.45, 0.68, 1.0];
+
+// One ray of sunlight from a to b: a steady gold line with arrowheads that travel along it with the
+// light. Rain has no arrowheads and no slant, so the two read differently even in a still frame.
+// gap and size are in the scene's units; speed in units per second.
+export function sunRay(R, a, b, alphaA, alphaB, T, { gap, size, speed, phase = 0, w = 1.6, reach = Infinity }) {
+  const d = V.sub(b, a), L = V.len(d); if (L < 1e-6) return;
+  const s = V.mul(d, 1 / L);
+  R.seg(a, b, SUN, alphaA * 0.7, w, alphaB * 0.7);
+  for (let t = (((T * speed + phase * gap) % gap) + gap) % gap; t < L; t += gap) {
+    const p = V.mad(a, s, t), toEye = V.sub(R.view.eye, p), far = V.len(toEye);
+    if (far > reach) continue;
+    const sz = Math.min(size, far * 0.022), n = V.norm(V.cross(s, toEye)), back = V.mad(p, s, -sz);      // never a big arrowhead close to the camera
+    const al = (alphaA + (alphaB - alphaA) * t / L) * Math.min(1, t / size, (L - t) / size) * 1.5;
+    R.seg(p, V.mad(back, n, sz * 0.45), SUN, al, w + 0.8); R.seg(p, V.mad(back, n, -sz * 0.45), SUN, al, w + 0.8);
+  }
+}
 
 let backdropProg = null;
 // A quiet gradient behind the small-scale stages.

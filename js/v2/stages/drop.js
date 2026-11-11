@@ -329,7 +329,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       }
       // On the way to or from the Surface scale the photons stay the dots they are from here, instead
       // of swelling into discs as the camera closes on them: that scale's own photons take over from them.
-      R.flushPoints({ minPx: 1.3, gain: near, maxPx: R.zoom?.pair === 3 ? 6 : undefined });
+      R.flushPoints({ minPx: 1.3, gain: near, maxPx: R.zoom?.from === 'drop' ? 6 : undefined });
     } else {
       // crests: points of equal optical path length, joined across neighbouring rays
       const SP = 0.42, phase = (T * 0.55) % 1, orders = S.second ? 2 : 1, tolE = (S.exag ? 2.4 : 1.1) * DEG;
