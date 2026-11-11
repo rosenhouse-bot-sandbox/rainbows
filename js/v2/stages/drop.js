@@ -59,6 +59,7 @@ const CROSS_AT = (() => { const t = O.traceDrop(O.bowB(N_MID), N_MID, 1); return
 export const crossAngle = c => CROSS_AT[Math.max(0, CROSSINGS.indexOf(c))];
 const OWN = { '-1': 1, 0: 0, 1: 2, 2: 3 };       // first leg a branch does not share with an earlier one
 
+const PH_SPEED = 2.4;      // photon speed along its route, drop radii per second
 let prog = null, cache = null, cacheKey = '', photons = [], photonKey = '';
 const A = [0, 0, 0], B = [0, 0, 0];
 const rand = rng(11);
@@ -181,10 +182,17 @@ function route(ph, S) {
   }
   ph.br = br; ph.sp = sp; ph.phi = phi; ph.end = br.L[br.L.length - 1];
 }
-function spawn(ph, S, T, stagger) {
+// A photon that ran off its route by `over` starts a new one. A few frames' worth is carried onto the
+// new route, so the source emits evenly whatever the frame rate. More than that means nobody was
+// watching (another scale, the wave view, a hidden tab) or its route was changed under it: starting
+// all of those at the source together would send them off as one clump, so each is put somewhere along
+// its new route instead, as the stream would have been had it kept running.
+function spawn(ph, S, T, over) {
   ph.r = [rand(), rand(), rand(), rand()];
   route(ph, S);
-  ph.t0 = T - (stagger ? rand() * ph.end / 2.4 : 0);
+  const l = over <= 0.3 && over < ph.end ? over : rand() * ph.end;
+  ph.t0 = T - l / PH_SPEED;
+  return l;
 }
 
 export default {
@@ -313,9 +321,9 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       if (photons.length === 0) for (let i = 0; i < 460; i++) photons.push({});
       const fresh = pk !== photonKey; photonKey = pk;
       for (const ph of photons) {
-        if (!ph.br) spawn(ph, S, T, true); else if (fresh) route(ph, S);
-        let l = (T - ph.t0) * 2.4;
-        if (l > ph.end) { spawn(ph, S, T, false); l = 0; }
+        if (!ph.br) spawn(ph, S, T, Infinity); else if (fresh) route(ph, S);
+        let l = (T - ph.t0) * PH_SPEED;
+        if (l > ph.end) l = spawn(ph, S, T, l - ph.end);
         const p = pointAt(ph.br, l); if (!p) continue;
         R.pt(rot(p, ph.phi), ph.sp.col, ph.dim ? 0.45 : f === 'eye' ? 0.9 : 0.6, 0.036);
       }
