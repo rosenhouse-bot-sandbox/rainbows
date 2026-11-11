@@ -19,6 +19,17 @@ export function eyeAngle(S) {
   const a0 = O.bowAngle(nEff({ n: O.nWater(400) }, S)), a1 = O.bowAngle(nEff({ n: O.nWater(700) }, S));
   return lerp(a0, a1, S.bowpos);
 }
+// The slider's track, painted with what each position sends the eye: faint white inside the bow, the
+// colour whose bow passes through the eye across it, and next to nothing outside. `lo` and `hi` are
+// the slider's ends; the stops are measured between the centres of the thumb's end positions.
+export function bowTrack(lo, hi, thumb = 18) {
+  const a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)), stops = [];
+  const at = t => `calc(${thumb / 2}px + (100% - ${thumb}px) * ${((t - lo) / (hi - lo)).toFixed(4)})`;
+  stops.push(`rgba(234,240,255,.3) ${at(-0.12)}`);
+  for (let i = 0; i <= 12; i++) { const t = i / 12; stops.push(`${O.cssRGB(O.wlRGB(O.wavelengthAt(lerp(a0, a1, t))))} ${at(t)}`); }
+  stops.push(`rgba(234,240,255,.08) ${at(1.1)}`);
+  return `linear-gradient(90deg,${stops.join(',')})`;
+}
 
 // One route through the drop as a polyline with the optical path length to each corner.
 function branch(tr, n, order) {
@@ -49,7 +60,7 @@ const rand = rng(11);
 
 function build(S) {
   const orders = S.second ? 2 : 1, thetaE = eyeAngle(S);
-  const c = { thetaE, fan: [], cone: [], disc: [], eye: [], eyeCol: [0, 0, 0], desc: null };
+  const c = { thetaE, fan: [], cone: [], disc: [], eye: [], eyeCum: [], eyeCol: [0, 0, 0], desc: null };
   for (const sp of SPEC) {
     const n = nEff(sp, S);
     for (let j = 0; j < 20; j++) c.fan.push({ sp, phi: 0, tr: O.traceDrop((j + 0.5) / 20 * 0.995, n, orders) });
@@ -65,7 +76,7 @@ function build(S) {
     for (let j = 0; j < M; j++) {
       const b = (j + 0.5) / M, tr = O.traceDrop(b, n, 1), out = tr.outs[2];
       if (Math.abs(O.antisolarAngle(out.dir) - thetaE) < tol) {
-        c.eye.push({ sp, phi: 0, tr, b });
+        c.eye.push({ sp, phi: 0, tr, b }); c.eyeCum.push((c.eyeCum.at(-1) ?? 0) + out.I * b);
         for (let k = 0; k < 3; k++) c.eyeCol[k] += sp.part[k] * out.I * b;
       }
     }
@@ -130,21 +141,36 @@ function drawRay(R, ray, alpha, show, w = 1.5) {
   }
 }
 
-function spawn(ph, S, T, stagger) {
-  const c = cache, orders = S.second ? 2 : 1;
+// A photon keeps the random numbers that chose its route (ph.r), so when a control changes the model
+// under it, it can be put on the matching route of the new model and carry on from where it was.
+function route(ph, S) {
+  const c = cache, orders = S.second ? 2 : 1, r = ph.r;
   let br, sp, phi;
   if (S.focus === 'eye' && c.eye.length) {
-    const e = c.eye[Math.floor(rand() * c.eye.length)];
-    sp = e.sp; phi = (rand() - 0.5) * 0.12; br = branch(e.tr, nEff(sp, S), 1);
+    // the rays that reach the eye, each as likely as the light it carries
+    const u = r[0] * c.eyeCum.at(-1);
+    let lo = 0, hi = c.eye.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (c.eyeCum[m] < u) lo = m + 1; else hi = m; }
+    const e = c.eye[lo];
+    sp = e.sp; phi = (r[1] - 0.5) * 0.12; br = branch(e.tr, nEff(sp, S), 1);
+  } else if (S.focus === 'eye') {
+    // outside the bow nothing is sent this way: show the light that comes back, all of it passing inside
+    sp = SPEC[Math.floor(r[0] * SPEC.length)];
+    const n = nEff(sp, S);
+    phi = (r[1] - 0.5) * 0.12; br = branch(O.traceDrop(Math.sqrt(r[2]) * 0.995, n, 1), n, 1);
   } else {
-    sp = SPEC[Math.floor(rand() * SPEC.length)];
-    const n = nEff(sp, S), tr = O.traceDrop(Math.sqrt(rand()) * 0.995, n, orders);
-    phi = rand() * 2 * Math.PI;
-    let u = rand(), order = orders;
+    sp = SPEC[Math.floor(r[0] * SPEC.length)];
+    const n = nEff(sp, S), tr = O.traceDrop(Math.sqrt(r[2]) * 0.995, n, orders);
+    phi = r[1] * 2 * Math.PI;
+    let u = r[3], order = orders;
     for (const out of tr.outs) { if (u < out.I) { order = out.order; break; } u -= out.I; }
     br = branch(tr, n, order);
   }
   ph.br = br; ph.sp = sp; ph.phi = phi; ph.end = br.L[br.L.length - 1];
+}
+function spawn(ph, S, T, stagger) {
+  ph.r = [rand(), rand(), rand(), rand()];
+  route(ph, S);
   ph.t0 = T - (stagger ? rand() * ph.end / 2.4 : 0);
 }
 
@@ -169,7 +195,7 @@ export default {
 
   caption(S) {
     if (S.focus === 'eye') return { title: 'The few rays that reach you',
-      body: 'Only light leaving in exactly your direction counts. Rays that enter near one particular height all leave at almost the same angle, so they pile up there: that crowding is the bow. Slide the drop through the bow and a different colour piles up toward you.' };
+      body: 'Only light leaving in exactly your direction counts. Rays that enter near one particular height all leave at almost the same angle, so they pile up there: that crowding is the bow. Slide the drop through the bow and a different colour piles up toward you. Inside the bow the colours that pile up further out still send a little light, so they mix toward white; outside it almost none comes your way, and the light that returns passes you by.' };
     if (S.focus === 'sun') return { title: 'Where all the sunlight goes',
       body: 'Sunlight covers the whole face of the drop. About 6% glances off the front and 89% goes straight out through the back. Only about 5% reflects once inside and comes back out, crowded onto a hollow cone that opens 42° out from the line back toward the Sun.' };
     return S.mode === 'wave'
@@ -266,7 +292,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
         for (const r of c.cone) drawRay(R, r, 0.3 * k, { inc: 0, leg: 0.4, legs: 2, '-1': 0, 0: 0, 1: 1, 2: 0 }, 1.2);
       } else {
         const ghost = { inc: 0.5, leg: 1, legs: 2, '-1': 0, 0: 0.25, 1: 0.6, 2: 0 };
-        for (const r of c.fan) drawRay(R, r, 0.07, ghost, 1.1);
+        for (const r of c.fan) drawRay(R, r, c.eye.length ? 0.07 : 0.16, ghost, 1.1);
         const a = Math.min(0.9, 9 / Math.max(6, c.eye.length));
         const show = { inc: 1, leg: 2.4, legs: 2, '-1': 0, 0: 0, 1: 4, 2: 0 };
         for (const r of c.eye) drawRay(R, r, a, show, 1.7);
@@ -276,12 +302,13 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       const pk = key + f;
       if (photons.length === 0) for (let i = 0; i < 460; i++) photons.push({});
       const fresh = pk !== photonKey; photonKey = pk;
+      const dark = f === 'eye' && !c.eye.length;
       for (const ph of photons) {
-        if (fresh || !ph.br) spawn(ph, S, T, true);
+        if (!ph.br) spawn(ph, S, T, true); else if (fresh) route(ph, S);
         let l = (T - ph.t0) * 2.4;
         if (l > ph.end) { spawn(ph, S, T, false); l = 0; }
         const p = pointAt(ph.br, l); if (!p) continue;
-        R.pt(rot(p, ph.phi), ph.sp.col, f === 'eye' ? 0.9 : 0.6, 0.036);
+        R.pt(rot(p, ph.phi), ph.sp.col, dark ? 0.45 : f === 'eye' ? 0.9 : 0.6, 0.036);
       }
       R.flushPoints({ minPx: 1.3, gain: near });
     } else {

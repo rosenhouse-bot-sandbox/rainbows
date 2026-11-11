@@ -4,7 +4,7 @@ import * as O from './optics.js';
 import orbit from './stages/orbit.js';
 import sky from './stages/sky.js';
 import rain from './stages/rain.js';
-import drop, { eyeAngle } from './stages/drop.js';
+import drop, { eyeAngle, bowTrack } from './stages/drop.js';
 import surface, { presetAngle } from './stages/surface.js';
 import atoms from './stages/atoms.js';
 
@@ -163,6 +163,7 @@ const sliders = {
   tilt: v => `${v.toFixed(1)}°`,
   lambda: v => `${Math.round(v)} nm`,
 };
+$('bowpos').style.setProperty('--spec', bowTrack(+$('bowpos').min, +$('bowpos').max));
 for (const id in sliders) $(id).addEventListener('input', e => { S[id] = parseFloat(e.target.value); syncUI(true); });
 for (const id of ['exag', 'second']) $(id).addEventListener('change', e => { S[id] = e.target.checked; syncUI(); });
 $('prev').addEventListener('click', () => step(-1));
