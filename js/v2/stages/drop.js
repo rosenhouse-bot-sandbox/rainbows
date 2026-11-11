@@ -2,7 +2,7 @@
 // The drop is a unit sphere at the origin; sunlight travels along +x. Every ray stays in the plane
 // that holds it and the drop's axis, so a ray is traced in 2D (optics.traceDrop) and then turned
 // about the axis by its azimuth.
-import { V, DEG, rng, modelTRS, lerp } from '../gl.js';
+import { V, DEG, rng, modelTRS, lerp, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { vis, backdrop, eyeGlyph } from './common.js';
 
@@ -94,6 +94,28 @@ function ensure(S) {
   const key = [S.bowpos, S.exag, S.second].join();
   if (key !== cacheKey) { cache = build(S); cacheKey = key; }
   return cache;
+}
+
+// ---- the drop as the Rain scale shows it ----
+// From metres away a drop is a glint, the cone of colour it throws back, and the one ray that finds
+// the eye. Rain draws exactly this for each marked drop, and this scene draws it again around itself
+// while the camera flies between the two, so every line carries straight on across the join.
+const FAR = 180;      // how far the cone is drawn, in drop radii
+let farRays = null;
+// h: the marked drop (its colour and brightness at the eye); toEye: the far end of the ray to the eye;
+// gain dims the lines and glint dims the glow that stands in for the drop itself;
+// xf places a point of this scene in the caller's world, where one drop radius is `unit` long.
+export function drawFar(R, S, h, toEye, gain = 1, glint = gain, xf = p => p, unit = 1) {
+  farRays ??= SPEC.flatMap(sp => {
+    const tr = O.traceDrop(O.bowB(sp.n), sp.n, 1), out = tr.outs.find(o => o.order === 1), p = tr.hits[out.at];
+    return Array.from({ length: 30 }, (_, a) => { const phi = (a + 0.5) / 30 * 2 * Math.PI; return { col: sp.part, p: rot(p, phi), q: rot([p[0] + out.dir[0] * FAR, p[1] + out.dir[1] * FAR], phi) }; });
+  });
+  const f = S.focus, aC = (f === 'eye' ? 0.12 : f === 'sun' ? 1 : 0.6) * h.fade * gain, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
+  for (const r of farRays) R.seg(xf(r.p), xf(r.q), r.col, 0.7 * aC, 1.2, 0);
+  const o = xf([0, 0, 0]);
+  R.seg(o, toEye, h.col, (0.25 + 0.75 * h.level) * aE, 2.4);
+  R.pt(o, [0.8, 0.9, 1], 0.7 * h.fade * glint, 6 * unit);
+  R.pt(o, h.col, h.level * aE / gain * glint, 20 * unit);
 }
 
 function drawRay(R, ray, alpha, show, w = 1.5) {
@@ -205,6 +227,9 @@ void main(){ vec3 ro = uEye, rd = rayDir();
 
   draw(R, S, T) {
     const c = ensure(S), key = cacheKey, f = S.focus, wave = S.mode === 'wave';
+    // Flying in from the rain (R.dive.k runs 0 to 1), the scene starts as the drop the Rain scale drew,
+    // and everything only this scale shows fades in on the way: `near` is how much of it is there yet.
+    const dive = R.dive, near = dive ? sstep(0.4, 0.97, dive.k) : 1, far = dive?.M.hero ? 1 - sstep(0.6, 1, dive.k) : 0;
     backdrop(R, T, [0.012, 0.02, 0.045], [0.004, 0.006, 0.014], [0.12, 0.09, 0.05], [-1, 0, 0]);
 
     const e = [-Math.cos(c.thetaE), -Math.sin(c.thetaE), 0];
@@ -212,12 +237,17 @@ void main(){ vec3 ro = uEye, rd = rayDir();
     R.seg([0, 0, 0], [-4.6, 0, 0], [0.6, 0.7, 1], 0.28, 1.2, 0.05);
     R.seg([0, 0, 0], V.mul(e, EYE_DIST - 0.5), [0.6, 0.7, 1], 0.16, 1.2);
     R.arc([0, 0, 0], [-1, 0, 0], [0, -1, 0], 2.2, 0, c.thetaE, [0.7, 0.8, 1], 0.5, 1.4, 24);
-    R.flushLines({ dash: [0.22, 0, 0.55] });
+    R.flushLines({ dash: [0.22, 0, 0.55], gain: near });
     // the normal at the back, with the angle of incidence
     const hb = c.desc.hits[1];
     R.seg(V.mul([hb[0], hb[1], 0], 0.45), V.mul([hb[0], hb[1], 0], 1.5), [0.7, 0.8, 1], 0.4, 1.2);
     eyeGlyph(R, eyeAt(c), [0, 0, 1], [-e[1], e[0], 0], 0.4, f === 'sun' ? [0.5, 0.5, 0.5] : c.eyeCol.map(x => x * c.eyeLevel + 0.08), f === 'sun' ? 0.4 : 1);
-    R.flushLines(); R.flushPoints();
+    R.flushLines({ gain: near }); R.flushPoints({ gain: near });
+    if (far > 0) {
+      const t = dive.M.theta;
+      drawFar(R, S, dive.M.hero, V.mul([-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), far, 1 - sstep(0.25, 0.8, dive.k));
+      R.flushLines(); R.flushPoints({ minPx: 2 });
+    }
 
     if (!wave) {
       const k = 0.62;       // rays sit under the photons
@@ -237,7 +267,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
         const show = { inc: 1, leg: 2.4, legs: 2, '-1': 0, 0: 0, 1: 4, 2: 0 };
         for (const r of c.eye) drawRay(R, r, a, show, 1.7);
       }
-      R.flushLines();
+      R.flushLines({ gain: near });
       // photons: each one is a single colour and takes one route, chosen with the Fresnel odds
       const pk = key + f;
       if (photons.length === 0) for (let i = 0; i < 460; i++) photons.push({});
@@ -249,7 +279,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
         const p = pointAt(ph.br, l); if (!p) continue;
         R.pt(rot(p, ph.phi), ph.sp.col, f === 'eye' ? 0.9 : 0.6, 0.036);
       }
-      R.flushPoints({ minPx: 1.3 });
+      R.flushPoints({ minPx: 1.3, gain: near });
     } else {
       // crests: points of equal optical path length, joined across neighbouring rays
       const SP = 0.42, phase = (T * 0.55) % 1, orders = S.second ? 2 : 1, tolE = (S.exag ? 2.4 : 1.1) * DEG;
@@ -276,8 +306,8 @@ void main(){ vec3 ro = uEye, rd = rayDir();
           }
         }
       }
-      R.flushLines({ keep: true });
-      R.flushLines({ model: modelTRS([0, 0, 0], 1, Math.PI / 2), gain: 0.3 });
+      R.flushLines({ keep: true, gain: near });
+      R.flushLines({ model: modelTRS([0, 0, 0], 1, Math.PI / 2), gain: 0.3 * near });
     }
 
     const gl = R.gl;

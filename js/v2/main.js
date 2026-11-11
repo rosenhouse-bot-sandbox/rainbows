@@ -108,11 +108,12 @@ function go(to) {
   if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
   ready(to);
   // going deeper, set the next scene to match the thing being entered
-  if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; }
   if (to === 5 && S.stage === 4 && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
   // a bigger change of scale takes longer
   const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
   tr = { from: S.stage, to, t: 0, dur: RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5) };
+  // the marked drop keeps falling during the flight: set the Drop scene to where it will be on arrival
+  if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; }
   hopping = far;
   $('labels').classList.add('off');
   $('cap').classList.add('swap');
@@ -298,7 +299,8 @@ function frame(now) {
     mix = sstep(0.3, 0.8, E);
     const rush = still ? 0 : Math.sin(Math.PI * p) ** 2;
     R.begin(0, vHi, 1); STAGES[hi].draw(R, D, time, dt);
-    R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt);
+    R.dive = still ? null : { k: E, M: tr.M };      // lets the deeper scene bring its own detail in gradually
+    R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt); R.dive = null;
     labelView = deeper ? vLo : vHi;
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));

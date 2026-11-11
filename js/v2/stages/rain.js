@@ -5,9 +5,11 @@ import { V, DEG, rng, clamp } from '../gl.js';
 import * as O from '../optics.js';
 import { WARM, bowTexture, drawFigure, coneDir, wavefrontSheets, colourName } from './common.js';
 import { EYE, sunDir, sunColour } from './sky.js';
+import { drawFar } from './drop.js';
 
 const BOX0 = [-8, 0, -13], BOXS = [16, 9, 10.5], NDROPS = 30000;
 const CONE = [[650, O.bowAngle(O.nWater(650))], [550, O.bowAngle(O.nWater(550))], [450, O.bowAngle(O.nWater(450))]].map(([l, th]) => ({ th, col: O.wlRGB(l) }));
+const DROP = 0.01, FALL = 1.1 / 16;      // a marked drop's drawn radius, and how fast it falls, in metres (per second)
 const HEROES = [[-2.6, -7.5, 0.0], [0.4, -6.2, 0.37], [2.9, -8.4, 0.71], [-0.9, -9.6, 0.55]];
 let ground = null, drops = null, vao = null;
 
@@ -21,13 +23,18 @@ function heroes(S, T) {
     if (angleAt([x, hi, z], s) < target) continue;
     for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (angleAt([x, m, z], s) < target) lo = m; else hi = m; }
     if (lo < 0.6 || lo > 8.2) continue;
-    const u = (T / 16 + ph) % 1, y = lo + 0.55 - 1.1 * u;
+    const u = (T / 16 + ph) % 1, y = lo + 0.55 - FALL * 16 * u;
     const P = [x, y, z], th = angleAt(P, s), c = O.sampleBow(tab, th / DEG), m = Math.max(c[0], c[1], c[2], 1e-4);
     out.push({ P, th, col: c.map(v => v / Math.max(m, 0.25)), level: Math.min(1, m / 0.25), lam: O.wavelengthAt(th), u, fade: Math.min(1, u * 8, (1 - u) * 8) });
   }
   return out;
 }
 let lastHeroes = [], lock = 0, lockAt = 0;
+// The Drop scene's axes for a drop at P: sunlight along its +x, and the eye in its x-y plane, below.
+function frame(P, X) {
+  const v = V.norm(V.sub(EYE, P)), Y = V.mul(V.norm(V.mad(v, X, -V.dot(v, X))), -1);
+  return { o: P, s: DROP, X, Y, Z: V.cross(X, Y), theta: Math.acos(clamp(-V.dot(v, X), -1, 1)) };
+}
 
 export default {
   id: 'rain', name: 'Rain', scale: '1 m', scaleNote: 'drops drawn much larger than life', modes: true, focus: true,
@@ -43,10 +50,10 @@ export default {
   },
 
   // The Drop scene is one of the marked drops: sunlight along its +x, and its eye direction toward the figure.
-  embed(S) {
-    const P = this.portal(S), X = sunDir(S), v = V.norm(V.sub(EYE, P));
-    const Y = V.mul(V.norm(V.mad(v, X, -V.dot(v, X))), -1);
-    return { o: P, s: 0.01, X, Y, Z: V.cross(X, Y), theta: Math.acos(clamp(-V.dot(v, X), -1, 1)) };
+  // `ahead` asks where the drop will be that many seconds on: it keeps falling during the flight in.
+  embed(S, ahead = 0) {
+    const P = V.add(this.portal(S), [0, -FALL * ahead, 0]);
+    return { ...frame(P, sunDir(S)), hero: lastHeroes[lock], eyeDist: V.len(V.sub(EYE, P)) / DROP };
   },
 
   caption(S) {
@@ -156,16 +163,11 @@ void main(){ float r2 = dot(vUV,vUV); if(r2 > 1.0) discard; o = vec4(vC*exp(-r2*
     R.flushLines({ dash: [0.3, 0, 0.5] });
 
     // marked drops: the cone each throws back, and the one ray of it that finds the eye
-    const hs = lastHeroes = heroes(S, T), back = toSun;
-    const aC = f === 'eye' ? 0.12 : f === 'sun' ? 1 : 0.6, aE = f === 'sun' ? 0.15 : 1;
+    // (drawn by the Drop scale's own code, in the drop's own axes, so the two scales agree line for line)
+    const hs = lastHeroes = heroes(S, T);
     for (const h of hs) {
-      for (const c of CONE) for (let k = 0; k < 30; k++) {
-        const d = coneDir(back, c.th, k / 30 * 2 * Math.PI);
-        R.seg(h.P, V.mad(h.P, d, 1.8), c.col, 0.4 * aC * h.fade, 1.2, 0);
-      }
-      R.seg(h.P, EYE, h.col, (0.25 + 0.75 * h.level) * aE * h.fade, 2.4);
-      R.pt(h.P, [0.8, 0.9, 1], 0.7 * h.fade, 0.06);
-      R.pt(h.P, h.col, h.level * h.fade * aE, 0.2);
+      const M = frame(h.P, s);
+      drawFar(R, S, h, EYE, 1, 1, p => [M.o[0] + (M.X[0] * p[0] + M.Y[0] * p[1] + M.Z[0] * p[2]) * DROP, M.o[1] + (M.X[1] * p[0] + M.Y[1] * p[1] + M.Z[1] * p[2]) * DROP, M.o[2] + (M.X[2] * p[0] + M.Y[2] * p[1] + M.Z[2] * p[2]) * DROP], DROP);
     }
     R.flushLines();
     if (f !== 'sun') {
