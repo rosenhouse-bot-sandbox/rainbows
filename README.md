@@ -170,6 +170,13 @@ CSS or client-side JavaScript, consult
 [Modern Web Guidance](https://github.com/GoogleChrome/modern-web-guidance) and follow it where it
 applies.
 
+Rainbows has a test for the things a screenshot cannot show: a jump part-way along a slider
+drag, a flash on one frame of a flight, a control that moves as it is pressed, a view that depends
+on the route taken to it. `node tests/smooth/run.mjs` drives the page in headless Chromium with a
+real pointer on a stepped clock, samples every frame, and writes a report with strips of the worst
+frames to `tests/smooth/out/`. `tests/smooth/README.md` explains how it works and what it cannot
+judge (how it feels on a real GPU, above all).
+
 ## Deploying
 
 `.github/workflows/pages.yml` publishes the repository root to GitHub Pages on
@@ -184,3 +191,5 @@ every push to `main`. In the repository settings, set Pages → Source to
   (`profile.js` geometry, `scene.js` molecules and drawing, `vitro.js` microscope, `shaders.js` GLSL,
   `main.js` controls).
 - `drafts/`: review boards from each design round.
+- `tests/smooth/`: the smooth-interaction tests for Rainbows (`run.mjs` drives the page, `inject.js` is the
+  stepped clock and the probes, `scenarios.mjs` the gestures, `analyze.mjs` the checks and the report).

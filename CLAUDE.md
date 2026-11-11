@@ -6,7 +6,8 @@ experience is and where its code lives.
 ## Ground rules
 
 - Static site, no build step, no dependencies. Plain HTML, CSS and ES modules, served as-is from
-  GitHub Pages (`.github/workflows/pages.yml` publishes `main`).
+  GitHub Pages (`.github/workflows/pages.yml` publishes `main`). (`tests/` is not part of the site:
+  it needs Node and a Playwright installed outside the repository.)
 - Run it with `python3 -m http.server 8000` from the repository root. ES modules do not load from
   `file://`.
 - Each experience is self-contained: `v2/` (Rainbows) and `vesicle/` have their own page, stylesheet
@@ -53,9 +54,18 @@ What that guidance has meant here so far, and should keep meaning:
 
 ## Checking a change
 
-There is no test suite. Before pushing:
+Before pushing:
 
 - `node --check` every changed module.
+- For v2, run the smooth-interaction tests: `node tests/smooth/run.mjs --quick` after any change,
+  and the full `node tests/smooth/run.mjs` after changing a slider, a flight between scales, the
+  particles or the panel's layout. They drag every slider and press every button one frame at a
+  time on a stepped clock and report anything that jumps, flashes, shifts under the pointer or
+  depends on the route taken. Read `tests/smooth/out/report.md` and look at `contact.png`. A new
+  finding is yours to fix, or to record in `tests/smooth/accepted.json` with the reason it is
+  meant. `tests/smooth/README.md` says what the tests can and cannot see.
+- A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
+  `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone
   width (390 × 844), and step through every scale and control.
 - For v2, also check with reduced motion switched on, and with only the keyboard.

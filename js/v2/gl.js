@@ -93,16 +93,24 @@ float fbm(vec3 p){ float a = 0.5, s = 0.0; for(int i=0;i<5;i++){ s += a*vnoise(p
 const LINE_VS = `#version 300 es
 layout(location=0) in vec2 corner; layout(location=1) in vec3 A; layout(location=2) in vec3 B;
 layout(location=3) in vec4 CA; layout(location=4) in vec4 CB; layout(location=5) in vec2 WS;
-uniform mat4 uVP, uModel; uniform vec2 uRes; uniform float uPx;
+uniform mat4 uVP, uModel; uniform vec2 uRes; uniform float uPx, uNear;
 out vec4 vC; out float vAcross, vS;
+// keep the part of the stretch ta..tb where f, which runs from fa to fb along the line, is not negative
+void clipTo(float fa, float fb, inout float ta, inout float tb){
+  if(fa < 0.0 && fb < 0.0) tb = -1.0; else if(fa < 0.0) ta = max(ta, fa/(fa-fb)); else if(fb < 0.0) tb = min(tb, fa/(fa-fb));
+}
 void main(){
   vec4 wa = uModel*vec4(A,1.0), wb = uModel*vec4(B,1.0);
   vec4 a = uVP*wa, b = uVP*wb;
-  const float NW = 1e-4;
-  if(a.w < NW && b.w < NW){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
+  // Only the part of a line that is in front of the camera and within a few screens of the view is
+  // drawn. Left whole, a line passing close by the camera has an end millions of pixels off screen;
+  // interpolating colour across that gives infinities and NaN, and one such pixel, spread by the
+  // bloom, is a white blob for a frame.
   float ta = 0.0, tb = 1.0;
-  if(a.w < NW) ta = (NW-a.w)/(b.w-a.w);
-  if(b.w < NW) tb = (NW-a.w)/(b.w-a.w);
+  clipTo(a.w-uNear, b.w-uNear, ta, tb);
+  clipTo(3.0*a.w-a.x, 3.0*b.w-b.x, ta, tb); clipTo(3.0*a.w+a.x, 3.0*b.w+b.x, ta, tb);
+  clipTo(3.0*a.w-a.y, 3.0*b.w-b.y, ta, tb); clipTo(3.0*a.w+a.y, 3.0*b.w+b.y, ta, tb);
+  if(ta >= tb){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
   vec4 a2 = mix(a,b,ta), b2 = mix(a,b,tb);
   vec2 sa = a2.xy/a2.w*uRes*0.5, sb = b2.xy/b2.w*uRes*0.5;
   vec2 d = sb-sa; float L = length(d); d = L > 1e-5 ? d/L : vec2(1.0,0.0);
@@ -119,16 +127,17 @@ precision highp float; in vec4 vC; in float vAcross, vS; uniform float uGain; un
 void main(){
   float f = exp(-vAcross*vAcross*3.2);
   float a = vC.a*f*uGain;
+  if(!(a >= 0.0 && a < 1e4)){ o = vec4(0.0); return; }      // never write a NaN or an infinity: the bloom would spread it
   if(uDash.x > 0.0){ float m = fract((vS-uDash.y)/uDash.x); a *= smoothstep(1.0-uDash.z, 1.0, m)*smoothstep(1.0, 0.985, m)*1.6 + 0.10; }
   o = vec4(vC.rgb*a, 0.0);
 }`;
 const POINT_VS = `#version 300 es
 layout(location=0) in vec2 corner; layout(location=1) in vec3 P; layout(location=2) in vec4 C; layout(location=3) in float S;
-uniform mat4 uVP, uModel; uniform vec2 uRes; uniform float uPx, uMinPx, uMaxPx, uP11;
+uniform mat4 uVP, uModel; uniform vec2 uRes; uniform float uPx, uMinPx, uMaxPx, uP11, uNear;
 out vec4 vC; out vec2 vUV;
 void main(){
   vec4 c = uVP*uModel*vec4(P,1.0);
-  if(c.w < 1e-4){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
+  if(c.w < uNear){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
   float truePx = S*uP11*uRes.y*0.5/c.w, px = min(max(truePx, uMinPx*uPx), uMaxPx*uPx);
   gl_Position = vec4(c.xy + corner*px/(uRes*0.5)*c.w, c.z, c.w);
   vC = C; vC.a *= min(1.0, truePx*truePx/(px*px)*12.0); vUV = corner;      // far-off points fade instead of staying a pixel wide
@@ -136,7 +145,7 @@ void main(){
 const POINT_FS = `#version 300 es
 precision highp float; in vec4 vC; in vec2 vUV; uniform float uGain; layout(location=0) out vec4 o;
 void main(){
-  float r2 = dot(vUV,vUV); if(r2 > 1.0) discard;
+  float r2 = dot(vUV,vUV); if(!(r2 <= 1.0)) discard;      // (written so that a NaN is discarded too)
   float f = exp(-r2*7.0)*1.3 + pow(1.0-r2, 3.0)*0.25;
   o = vec4(vC.rgb*vC.a*f*uGain, 0.0);
 }`;
@@ -339,7 +348,7 @@ export function createEngine(canvas) {
       const L = R.lines; if (!L.n) return;
       const u = progLine.u; gl.useProgram(progLine.p);
       gl.uniformMatrix4fv(u.uVP, false, R.view.vp); gl.uniformMatrix4fv(u.uModel, false, opts.model || IDENT);
-      gl.uniform2f(u.uRes, R.W, R.H); gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uGain, (opts.gain ?? 1) * R.fade);
+      gl.uniform2f(u.uRes, R.W, R.H); gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uNear, R.view.near); gl.uniform1f(u.uGain, (opts.gain ?? 1) * R.fade);
       const d = opts.dash || [0, 0, 0]; gl.uniform3f(u.uDash, d[0], d[1], d[2]);
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
       if (opts.depth === false) gl.disable(gl.DEPTH_TEST); else { gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
@@ -357,7 +366,7 @@ export function createEngine(canvas) {
       const P = R.points; if (!P.n) return;
       const u = progPoint.u; gl.useProgram(progPoint.p);
       gl.uniformMatrix4fv(u.uVP, false, R.view.vp); gl.uniformMatrix4fv(u.uModel, false, opts.model || IDENT);
-      gl.uniform2f(u.uRes, R.W, R.H); gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uGain, (opts.gain ?? 1) * R.fade);
+      gl.uniform2f(u.uRes, R.W, R.H); gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uNear, R.view.near); gl.uniform1f(u.uGain, (opts.gain ?? 1) * R.fade);
       gl.uniform1f(u.uMinPx, opts.minPx ?? 1.2); gl.uniform1f(u.uMaxPx, opts.maxPx ?? 1e6); gl.uniform1f(u.uP11, R.view.p11);
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
       if (opts.depth === false) gl.disable(gl.DEPTH_TEST); else { gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
