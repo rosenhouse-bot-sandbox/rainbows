@@ -69,20 +69,26 @@ function build(S) {
     for (const b of [0.25, 0.5, 0.7, 0.86, 0.96]) for (let a = 0; a < 10; a++)
       c.disc.push({ sp, phi: (a + (b * 7 % 1)) / 10 * 2 * Math.PI, tr: O.traceDrop(b, n, orders) });
   }
-  // rays that leave within the Sun's half-width of the eye's direction, for a fine set of colours
+  // rays that leave within the Sun's half-width of the eye's direction, for a fine set of colours.
+  // The Sun is a disc, so a ray counts by how much of the disc could have sent it (the chord at its
+  // offset): the light reaching the eye then fades out at the bow's edge instead of stopping dead.
   const tol = (S.exag ? 0.8 : 0.3) * DEG, M = 260;
   for (const sp of SPEC_EYE) {
     const n = nEff(sp, S);
     for (let j = 0; j < M; j++) {
       const b = (j + 0.5) / M, tr = O.traceDrop(b, n, 1), out = tr.outs[2];
-      if (Math.abs(O.antisolarAngle(out.dir) - thetaE) < tol) {
-        c.eye.push({ sp, phi: 0, tr, b }); c.eyeCum.push((c.eyeCum.at(-1) ?? 0) + out.I * b);
-        for (let k = 0; k < 3; k++) c.eyeCol[k] += sp.part[k] * out.I * b;
+      const d = (O.antisolarAngle(out.dir) - thetaE) / tol;
+      if (Math.abs(d) < 1) {
+        const w = out.I * b * Math.sqrt(1 - d * d);
+        c.eye.push({ sp, phi: 0, tr, b, w }); c.eyeCum.push((c.eyeCum.at(-1) ?? 0) + w);
+        for (let k = 0; k < 3; k++) c.eyeCol[k] += sp.part[k] * w;
       }
     }
   }
   const m = Math.max(...c.eyeCol, 1e-9);
-  c.eyeLevel = Math.min(1, 0.2 + m / 0.006);
+  // how much of the full beam still comes this way: 1 through the bow, falling to 0 just outside it
+  c.share = sstep(0, 1, Math.min(1, (c.eyeCum.at(-1) ?? 0) / 1.5));
+  c.eyeLevel = c.share * Math.min(1, 0.2 + m / 0.0047);
   c.eyeCol = c.eyeCol.map(x => x / m);
   c.desc = O.traceDrop(O.bowB(nEff(SPEC[3], S)), nEff(SPEC[3], S), 2);
   // dense fans for drawing wavefronts
@@ -146,7 +152,8 @@ function drawRay(R, ray, alpha, show, w = 1.5) {
 function route(ph, S) {
   const c = cache, orders = S.second ? 2 : 1, r = ph.r;
   let br, sp, phi;
-  if (S.focus === 'eye' && c.eye.length) {
+  ph.dim = S.focus === 'eye' && r[3] >= c.share;
+  if (S.focus === 'eye' && !ph.dim) {
     // the rays that reach the eye, each as likely as the light it carries
     const u = r[0] * c.eyeCum.at(-1);
     let lo = 0, hi = c.eye.length - 1;
@@ -154,7 +161,8 @@ function route(ph, S) {
     const e = c.eye[lo];
     sp = e.sp; phi = (r[1] - 0.5) * 0.12; br = branch(e.tr, nEff(sp, S), 1);
   } else if (S.focus === 'eye') {
-    // outside the bow nothing is sent this way: show the light that comes back, all of it passing inside
+    // past the bow's edge less and less is sent this way: the rest show the light that comes back,
+    // all of it passing inside
     sp = SPEC[Math.floor(r[0] * SPEC.length)];
     const n = nEff(sp, S);
     phi = (r[1] - 0.5) * 0.12; br = branch(O.traceDrop(Math.sqrt(r[2]) * 0.995, n, 1), n, 1);
@@ -208,7 +216,7 @@ export default {
   readout(S) {
     const c = ensure(S), t = c.desc, d = x => (x / DEG).toFixed(1) + '°';
     const lam = (() => { if (S.exag) return null; return O.wavelengthAt(c.thetaE); })();
-    const seen = lam ? `${Math.round(lam)} nm` : (S.bowpos < 0 ? 'faint white (inside the bow)' : S.bowpos > 1 ? 'almost nothing (outside)' : 'shown on the eye marker');
+    const seen = lam ? `${Math.round(lam)} nm` : (S.bowpos < 0 ? 'faint white (inside the bow)' : S.bowpos > 1 ? (c.share > 0.02 ? 'the last of the red' : 'almost nothing (outside)') : 'shown on the eye marker');
     const out = k => (t.outs[k].I * 100).toFixed(k === 3 ? 1 : 1) + '%';
     return `<dl>
 <dt>This drop sits</dt><dd>${d(c.thetaE)} from the antisolar point</dd>
@@ -292,8 +300,8 @@ void main(){ vec3 ro = uEye, rd = rayDir();
         for (const r of c.cone) drawRay(R, r, 0.3 * k, { inc: 0, leg: 0.4, legs: 2, '-1': 0, 0: 0, 1: 1, 2: 0 }, 1.2);
       } else {
         const ghost = { inc: 0.5, leg: 1, legs: 2, '-1': 0, 0: 0.25, 1: 0.6, 2: 0 };
-        for (const r of c.fan) drawRay(R, r, c.eye.length ? 0.07 : 0.16, ghost, 1.1);
-        const a = Math.min(0.9, 9 / Math.max(6, c.eye.length));
+        for (const r of c.fan) drawRay(R, r, lerp(0.16, 0.07, c.share), ghost, 1.1);
+        const a = Math.min(0.9, 9 / Math.max(6, c.eye.length)) * c.share;
         const show = { inc: 1, leg: 2.4, legs: 2, '-1': 0, 0: 0, 1: 4, 2: 0 };
         for (const r of c.eye) drawRay(R, r, a, show, 1.7);
       }
@@ -302,13 +310,12 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       const pk = key + f;
       if (photons.length === 0) for (let i = 0; i < 460; i++) photons.push({});
       const fresh = pk !== photonKey; photonKey = pk;
-      const dark = f === 'eye' && !c.eye.length;
       for (const ph of photons) {
         if (!ph.br) spawn(ph, S, T, true); else if (fresh) route(ph, S);
         let l = (T - ph.t0) * 2.4;
         if (l > ph.end) { spawn(ph, S, T, false); l = 0; }
         const p = pointAt(ph.br, l); if (!p) continue;
-        R.pt(rot(p, ph.phi), ph.sp.col, dark ? 0.45 : f === 'eye' ? 0.9 : 0.6, 0.036);
+        R.pt(rot(p, ph.phi), ph.sp.col, ph.dim ? 0.45 : f === 'eye' ? 0.9 : 0.6, 0.036);
       }
       R.flushPoints({ minPx: 1.3, gain: near });
     } else {
