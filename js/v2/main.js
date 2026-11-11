@@ -97,11 +97,24 @@ function poseView(i, eye, f, up, fov, d) {
 // ---------- transitions ----------
 const inited = new Set();
 function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); } }
-let tr = null, queued = null, hopping = false;       // tr: {from, to, t}
+// A flight is between two neighbouring scales, hi and hi + 1. tr.q is how far along it the camera is
+// (0 at the shallower scale, 1 at the deeper one), tr.dir which way it is heading and tr.v how fast q
+// is changing. Everything drawn mid-flight depends on q alone, so a flight can turn round anywhere.
+let tr = null, queued = null, hopping = false;       // tr: {hi, q, dir, v, dur}
 const DIVE = 4.5;    // seconds for the move between scales
+const TURN = 0.3;    // seconds, roughly, to slow down and set off the other way
+const dest = () => tr ? tr.hi + (tr.dir > 0 ? 1 : 0) : S.stage;      // the scale the camera is flying to
+const heading = () => queued ?? dest();                               // the scale it will end up at
 function go(to) {
   to = clamp(to, 0, STAGES.length - 1);
-  if (tr) { queued = to; return; }      // remember a press made mid-flight and go there next
+  if (tr) {
+    // A press made mid-flight. Back the way we came: slow, stop and reverse from right here.
+    // Further on: finish this flight and carry on from there.
+    if ((to - dest()) * tr.dir < 0) { tr.dir = -tr.dir; tr.rev = true; tr.capWait = 0.25; }
+    queued = to === dest() ? null : to;
+    syncNav();
+    return;
+  }
   if (to === S.stage) return;
   // a jump of several scales passes through each one in turn, more briskly
   const far = Math.abs(to - S.stage) > 1;
@@ -111,13 +124,21 @@ function go(to) {
   if (to === 5 && S.stage === 4 && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
   // a bigger change of scale takes longer
   const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
-  tr = { from: S.stage, to, t: 0, dur: RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5) };
+  const dir = to > S.stage ? 1 : -1, dur = RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5);
+  tr = { hi: hiS, q: dir > 0 ? 0 : 1, dir, v: dir / dur, dur, capWait: 0 };
   // the marked drop keeps falling during the flight: set the Drop scene to where it will be on arrival
-  if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; }
+  if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
   hopping = far;
   $('labels').classList.add('off');
   $('cap').classList.add('swap');
-  setTimeout(() => { S.stage = to; syncUI(); $('cap').classList.remove('swap'); }, tr.dur * 450);
+  syncNav();
+}
+// Zoom in and Zoom out step from where the camera will end up, so a second press mid-flight means "one
+// more", and the opposite press takes the last one back.
+const step = d => go(heading() + d);
+function syncNav() {
+  const h = heading();
+  $('prev').setAttribute('aria-disabled', String(h === 0)); $('next').setAttribute('aria-disabled', String(h === STAGES.length - 1));
 }
 
 // ---------- UI ----------
@@ -144,8 +165,8 @@ const sliders = {
 };
 for (const id in sliders) $(id).addEventListener('input', e => { S[id] = parseFloat(e.target.value); syncUI(true); });
 for (const id of ['exag', 'second']) $(id).addEventListener('change', e => { S[id] = e.target.checked; syncUI(); });
-$('prev').addEventListener('click', () => go((tr ? tr.to : S.stage) - 1));
-$('next').addEventListener('click', () => go((tr ? tr.to : S.stage) + 1));
+$('prev').addEventListener('click', () => step(-1));
+$('next').addEventListener('click', () => step(1));
 $('resetView').addEventListener('click', resetView);
 const setPaused = p => { paused = p; $('pause').textContent = p ? 'Play' : 'Pause'; };
 $('pause').addEventListener('click', () => setPaused(!paused));
@@ -167,7 +188,7 @@ function syncUI(light) {
   for (const key in segs) document.querySelectorAll(`[data-${key}]`).forEach(b => b.setAttribute('aria-pressed', String(b.dataset[key] === S[key])));
   document.querySelectorAll('.ctl').forEach(el => { el.hidden = !st.controls.includes(el.dataset.c); });
   [...nav.children].forEach((b, i) => b.setAttribute('aria-current', String(i === S.stage)));
-  $('prev').setAttribute('aria-disabled', String(S.stage === 0)); $('next').setAttribute('aria-disabled', String(S.stage === STAGES.length - 1));
+  syncNav();
   $('scaleText').textContent = st.scaleNote || '';
   const cap = st.caption(S), ck = S.stage + cap.title + cap.body;
   if (ck !== lastCap) {       // the caption is a live region: only touch it when it really changes
@@ -216,8 +237,8 @@ canvas.addEventListener('dblclick', resetView);
 window.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.target instanceof HTMLInputElement) return;      // leave browser zoom and shortcuts alone
   const k = e.key;
-  if (k === 'PageDown' || k === ']') go(S.stage + 1);
-  else if (k === 'PageUp' || k === '[') go(S.stage - 1);
+  if (k === 'PageDown' || k === ']') step(1);
+  else if (k === 'PageUp' || k === '[') step(-1);
   else if (document.activeElement === canvas || document.activeElement === document.body) {
     if (k === 'ArrowLeft') nudge(-0.08, 0, 1); else if (k === 'ArrowRight') nudge(0.08, 0, 1);
     else if (k === 'ArrowUp') nudge(0, 0.06, 1); else if (k === 'ArrowDown') nudge(0, -0.06, 1);
@@ -247,13 +268,15 @@ function drawLabels(list, view) {
 }
 
 // ---------- frame loop ----------
-const dbg = {};       // test hook: dbg.hold freezes a transition at a given point
+// Test hooks. dbg.hold freezes a transition at a given point along its direction of travel. dbg.dt
+// replaces the clock: each frame then advances by dbg.dt seconds while dbg.steps lasts, and not at all after.
+const dbg = {};
 let last = 0, time = 0, scale = 1, slow = 0, fast = 0, readoutClock = 0;
 const dprCap = () => Math.min(window.devicePixelRatio || 1, 2);
 function frame(now) {
   requestAnimationFrame(frame);
   if (lost) return;
-  const dt = Math.min(0.05, (now - last) / 1000 || 0.016), raw = now - last; last = now;
+  const dt = dbg.dt != null ? (dbg.steps-- > 0 ? dbg.dt : 0) : Math.min(0.05, (now - last) / 1000 || 0.016), raw = now - last; last = now;
   if (!paused) time += dt;
   // keep the frame rate: draw fewer pixels on slow machines
   if (raw > 30) { if (++slow > 20 && scale > 0.5) { scale = Math.max(0.5, scale * 0.85); slow = 0; } fast = 0; }
@@ -267,14 +290,28 @@ function frame(now) {
   let mix = 0, labelView;
   if (tr) {
     // The move between two scales is one camera flight through one world, played forward to go deeper
-    // and backward to come out. The deeper scene sits inside the shallower one at its true place, size
+    // and backward to come out, and able to turn round part-way: the speed along it eases over to the
+    // new direction, so the camera slows, stops and sets off back from where it is. The deeper scene sits inside the shallower one at its true place, size
     // and orientation (each stage's embed), so both are drawn from the same camera and line up. The
     // camera's distance to where it is going shrinks at a steady rate; the deeper scene shows through
     // a soft round opening exactly as big as it appears from that distance.
     const still = RM.matches;         // reduced motion: a plain cross-fade in place of the flight
-    tr.t = Math.min(1, tr.t + dt / tr.dur);
-    const p = dbg.hold ?? tr.t, deeper = tr.to > tr.from, hi = Math.min(tr.from, tr.to), lo = hi + 1;
-    const q = deeper ? p : 1 - p, E = q * q * q * (q * (q * 6 - 15) + 10);      // progress toward the deeper scale
+    const want = tr.dir / tr.dur;
+    tr.v = still ? want : want + (tr.v - want) * Math.exp(-dt / TURN);
+    tr.q = clamp(tr.q + tr.v * dt, 0, 1);
+    const deeper = tr.dir > 0, hi = tr.hi, lo = hi + 1;
+    const q = dbg.hold != null ? (deeper ? dbg.hold : 1 - dbg.hold) : tr.q, E = q * q * q * (q * (q * 6 - 15) + 10);      // progress toward the deeper scale
+    // The words change over a little before half-way to wherever the camera is now heading.
+    tr.capWait = Math.max(0, tr.capWait - dt);
+    const to = dest(), show = (deeper ? q : 1 - q) >= 0.45 ? to : 2 * hi + 1 - to;
+    if (show !== S.stage && !tr.capWait) { S.stage = show; syncUI(); }
+    $('cap').classList.toggle('swap', S.stage !== to);
+    // After a turn-round on the way into a marked drop, the drop has fallen further than first planned:
+    // ease the Drop scene to where it will now be on arrival.
+    if (tr.fromRain && tr.rev && deeper && !still) {
+      const th = STAGES[2].embed(S, paused ? 0 : (1 - tr.q) * tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700));
+      S.bowpos += (clamp((th - a0) / (a1 - a0), -0.8, 1.6) - S.bowpos) * (1 - Math.exp(-dt * 6));
+    }
     const vA = viewFor(hi, time), vB = viewFor(lo, time);
     let hole, vHi = vA, vLo = vB;
     if (still) hole = { c: [0.5, 0.5], r: 9, alpha: 1, floor: sstep(0, 1, q), soft: 0.3 };
@@ -297,15 +334,15 @@ function frame(now) {
       hole = { c: [sp[0], 1 - sp[1]], r: Math.min(9, 1.25 * size), alpha: sstep(0.03, 0.45, E), floor: sstep(0.82, 1, E), soft: 0.6 };
     }
     mix = sstep(0.3, 0.8, E);
-    const rush = still ? 0 : Math.sin(Math.PI * p) ** 2;
+    const rush = still ? 0 : Math.sin(Math.PI * q) ** 2 * Math.min(1, Math.abs(tr.v) * tr.dur);      // none while stopped to turn round
     R.begin(0, vHi, 1); STAGES[hi].draw(R, D, time, dt);
     R.dive = still ? null : { k: E, M: tr.M };      // lets the deeper scene bring its own detail in gradually
     R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt); R.dive = null;
     labelView = deeper ? vLo : vHi;
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
-    if (tr.t >= 1) {
-      const done = tr.to; tr = null; S.stage = done;
+    if (deeper ? tr.q >= 1 : tr.q <= 0) {
+      const done = to; tr = null; S.stage = done; syncUI(); $('cap').classList.remove('swap');
       if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }
   } else {
@@ -313,7 +350,7 @@ function frame(now) {
     R.begin(0, labelView, 1); STAGES[S.stage].draw(R, D, time, dt);
     R.present(null, time, STAGES[S.stage].bloom, STAGES[S.stage].exposure);
   }
-  const st = STAGES[tr ? tr.to : S.stage];
+  const st = STAGES[dest()];
   drawLabels(st.labels ? st.labels(D, labelView) : [], labelView);
   if (st.liveReadout && (readoutClock += dt) > 0.25 && !tr) { readoutClock = 0; $('readout').innerHTML = st.readout(S); }
 }
@@ -330,7 +367,7 @@ else {
     // compile the other scales one at a time, between frames, so start-up is not one long task
     const yieldToMain = () => globalThis.scheduler?.yield ? scheduler.yield() : new Promise(r => setTimeout(r, 0));
     (async () => { for (let i = 0; i < STAGES.length; i++) { await yieldToMain(); ready(i); } })().catch(console.error);
-    window.__rainbows = { S, go, syncUI, cams, R, dbg, get busy() { return !!tr; } };
+    window.__rainbows = { S, go, syncUI, cams, R, dbg, get busy() { return !!tr; }, get tr() { return tr; } };
   } catch (err) {
     console.error(err);
     $('fail').hidden = false;
