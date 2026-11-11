@@ -169,15 +169,15 @@ void main(){ vec2 uv = v*0.5+0.5;
   c += (texture(T, uv+uDir*3.2308).rgb + texture(T, uv-uDir*3.2308).rgb)*0.070270;
   o = vec4(c, 1.0); }`;
 const POST_MIX = `#version 300 es
-precision highp float; in vec2 v; uniform sampler2D A, B; uniform vec4 uHole; uniform vec3 uMix; layout(location=0) out vec4 o;
+precision highp float; in vec2 v; uniform sampler2D A, B; uniform vec4 uHole; uniform vec4 uMix; layout(location=0) out vec4 o;
 // B shows through a soft-edged round opening in A: centre uHole.xy (uv), radius uHole.z in screen heights,
-// aspect uHole.w. uMix: the opening's opacity, a floor that fades B in everywhere, and the edge softness.
+// aspect uHole.w. uMix: the opening's opacity, a floor that fades B in everywhere, the edge softness, and
+// how far B has taken A's place inside the opening (below 1, B's light is added on top of A).
 void main(){ vec2 uv = v*0.5+0.5;
   float d = length((uv-uHole.xy)*vec2(uHole.w, 1.0));
   float w = max((1.0-smoothstep(uHole.z*(1.0-uMix.z), uHole.z, d))*uMix.x, uMix.y);
   vec3 a = texture(A,uv).rgb, b = texture(B,uv).rgb;
-  float rim = smoothstep(uHole.z*(1.0-uMix.z), uHole.z*(1.0-0.5*uMix.z), d)*(1.0-smoothstep(uHole.z*(1.0-0.5*uMix.z), uHole.z, d));
-  o = vec4(mix(a, b, w) + (a+b)*0.12*rim*uMix.x*(1.0-uMix.y), 1.0); }`;
+  o = vec4(a*(1.0-w*uMix.w) + b*w, 1.0); }`;
 const POST_FINAL = `#version 300 es
 precision highp float; in vec2 v; uniform sampler2D T, B1, B2, B3; uniform float uBloom, uTime, uExposure; uniform vec3 uStreak; layout(location=0) out vec4 o;
 float h(vec2 p){ p = fract(p*vec2(123.34, 456.21)); p += dot(p, p+45.32); return fract(p.x*p.y); }
@@ -284,7 +284,7 @@ export function createEngine(canvas) {
   const bloom = [0, 1, 2].map(() => [mkTarget(false), mkTarget(false)]);
 
   const R = {
-    gl, hdr, canvas, W: 1, H: 1, px: 1, view: null, fade: 1,
+    gl, hdr, canvas, W: 1, H: 1, px: 1, view: null, fade: 1, zoom: null, dive: null,
     lines: new Batch(gl, lineCorners, [3, 3, 4, 4, 2]),
     points: new Batch(gl, quadCorners, [3, 4, 1]),
     compile: (vs, fs) => compile(gl, vs, fs),
@@ -384,7 +384,7 @@ export function createEngine(canvas) {
       gl.bindVertexArray(m.vao); gl.drawElements(gl.TRIANGLES, m.n, gl.UNSIGNED_SHORT, 0);
     },
     // ---- post: (optional cross-fade) → bloom → tone map ----
-    // hole: null, or {c:[u,v], r, alpha, floor, soft} describing how scene 1 shows through scene 0
+    // hole: null, or {c:[u,v], r, alpha, floor, soft, cover} describing how scene 1 shows through scene 0
     present(hole, time, bloomAmt = 1, exposure = 1, streak = 0) {
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
       gl.bindVertexArray(emptyVAO);
@@ -393,7 +393,7 @@ export function createEngine(canvas) {
       if (hole) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, mixT.fb); gl.viewport(0, 0, R.W, R.H);
         gl.useProgram(pMix.p); bind(0, scene[0]); bind(1, scene[1]);
-        gl.uniform1i(pMix.u.A, 0); gl.uniform1i(pMix.u.B, 1); gl.uniform4f(pMix.u.uHole, hole.c[0], hole.c[1], hole.r, R.W / R.H); gl.uniform3f(pMix.u.uMix, hole.alpha, hole.floor, hole.soft);
+        gl.uniform1i(pMix.u.A, 0); gl.uniform1i(pMix.u.B, 1); gl.uniform4f(pMix.u.uHole, hole.c[0], hole.c[1], hole.r, R.W / R.H); gl.uniform4f(pMix.u.uMix, hole.alpha, hole.floor, hole.soft, hole.cover ?? 1);
         gl.drawArrays(gl.TRIANGLES, 0, 3); src = mixT;
       }
       let from = src;

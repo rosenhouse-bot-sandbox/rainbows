@@ -61,6 +61,7 @@ function writeHash() {
 // ---------- cameras: one per stage, each with hard limits so you cannot get lost ----------
 const cams = STAGES.map(s => ({ ...s.cam, gy: s.cam.yaw, gp: s.cam.pitch, gd: s.cam.dist }));
 let cssW = 1, cssH = 1, offX = 0, offY = 0, wide = false;
+let offXg = null, offYg = 0;       // where the optical centre is heading: it glides there when the panel changes size
 
 // The resting camera of a stage, in that stage's own coordinates. Besides the usual view it carries
 // the point it is looking at (tgt) and how far away that is (d).
@@ -130,7 +131,6 @@ function go(to) {
   if (to === 3 && S.stage === 2) { const th = STAGES[2].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
   hopping = far;
   $('labels').classList.add('off');
-  $('cap').classList.add('swap');
   syncNav();
 }
 // Zoom in and Zoom out step from where the camera will end up, so a second press mid-flight means "one
@@ -202,10 +202,13 @@ function syncUI(light) {
 }
 
 function layout() {
+  const was = wide;
   cssW = window.innerWidth; cssH = window.innerHeight; wide = cssW >= 900;
   const pr = $('panel').getBoundingClientRect();
-  offX = wide ? (pr.right + 8) / cssW : 0;
-  offY = wide ? 0 : clamp((cssH - pr.top) / cssH, 0, 0.5) * 0.92;
+  const first = offXg === null;
+  offXg = wide ? (pr.right + 8) / cssW : 0;
+  offYg = wide ? 0 : clamp((cssH - pr.top) / cssH, 0, 0.5) * 0.92;
+  if (first || RM.matches || was !== wide) { offX = offXg; offY = offYg; }
 }
 window.addEventListener('resize', layout);
 new ResizeObserver(layout).observe($('panel'));
@@ -285,6 +288,7 @@ function frame(now) {
 
   D ??= Object.assign(Object.create(S), { lambda: S.lambda });
   { const gap = S.lambda - D.lambda; D.lambda = RM.matches || Math.abs(gap) < 0.05 ? S.lambda : D.lambda + gap * (1 - Math.exp(-dt * 9)); }
+  if (offXg !== null) { const k = 1 - Math.exp(-dt * 5); offX += (offXg - offX) * k; offY += (offYg - offY) * k; }
   for (const c of cams) { const k = 1 - Math.exp(-dt * 9); c.yaw += (c.gy - c.yaw) * k; c.pitch += (c.gp - c.pitch) * k; c.dist += (c.gd - c.dist) * k; }
 
   let mix = 0, labelView;
@@ -305,7 +309,8 @@ function frame(now) {
     tr.capWait = Math.max(0, tr.capWait - dt);
     const to = dest(), show = (deeper ? q : 1 - q) >= 0.45 ? to : 2 * hi + 1 - to;
     if (show !== S.stage && !tr.capWait) { S.stage = show; syncUI(); }
-    $('cap').classList.toggle('swap', S.stage !== to);
+    // (its text and controls fade out just before that, and back in after: the panel keeps the flight's time)
+    $('panel').classList.toggle('swap', S.stage !== to && (deeper ? q : 1 - q) >= 0.45 - 0.4 / tr.dur);
     // After a turn-round on the way into a marked drop, the drop has fallen further than first planned:
     // ease the Drop scene to where it will now be on arrival.
     if (tr.fromRain && tr.rev && deeper && !still) {
@@ -335,14 +340,23 @@ function frame(now) {
     }
     mix = sstep(0.3, 0.8, E);
     const rush = still ? 0 : Math.sin(Math.PI * q) ** 2 * Math.min(1, Math.abs(tr.v) * tr.dur);      // none while stopped to turn round
+    // Scenes that are light on a dark ground (the drop and below) are laid over the scene they sit in:
+    // their light adds to it through the opening, and only as `cover` rises does the larger scene give
+    // way to the smaller one's own backdrop: late, once the opening has grown past the edges of the
+    // screen. So there is never a dark disc with something inside it.
+    hole.cover = still || !STAGES[lo].overlay ? 1 : sstep(0.7, 1, E);
+    // R.zoom tells both scenes how far the flight between them has gone, so each can ease out what only
+    // it shows and the two can agree on what they share.
+    R.zoom = { k: E, pair: hi, lo: false, cover: hole.cover };
     R.begin(0, vHi, 1); STAGES[hi].draw(R, D, time, dt);
+    R.zoom = { k: E, pair: hi, lo: true, cover: hole.cover };
     R.dive = still ? null : { k: E, M: tr.M };      // lets the deeper scene bring its own detail in gradually
-    R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt); R.dive = null;
-    labelView = deeper ? vLo : vHi;
+    R.begin(1, vLo, 1); STAGES[lo].draw(R, D, time, dt); R.dive = null; R.zoom = null;
+    labelView = S.stage === hi ? vHi : vLo;      // labels stay with the scale the panel is showing, and change over with it, unseen
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
     if (deeper ? tr.q >= 1 : tr.q <= 0) {
-      const done = to; tr = null; S.stage = done; syncUI(); $('cap').classList.remove('swap');
+      const done = to; tr = null; S.stage = done; syncUI(); $('panel').classList.remove('swap');
       if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }
   } else {
@@ -350,7 +364,7 @@ function frame(now) {
     R.begin(0, labelView, 1); STAGES[S.stage].draw(R, D, time, dt);
     R.present(null, time, STAGES[S.stage].bloom, STAGES[S.stage].exposure);
   }
-  const st = STAGES[dest()];
+  const st = STAGES[S.stage];
   drawLabels(st.labels ? st.labels(D, labelView) : [], labelView);
   if (st.liveReadout && (readoutClock += dt) > 0.25 && !tr) { readoutClock = 0; $('readout').innerHTML = st.readout(S); }
 }

@@ -2,7 +2,7 @@
 // At this scale the drop's surface is flat. Water fills y < 0. The field drawn is the exact
 // plane-wave solution of Maxwell's equations at a flat boundary (Fresnel's coefficients), inside a
 // beam of finite width; past the critical angle the transmitted wave becomes an evanescent one.
-import { V, DEG, rng } from '../gl.js';
+import { V, DEG, rng, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { backdrop } from './common.js';
 
@@ -33,6 +33,7 @@ const weights = S => S.focus === 'sun' ? [1, 0.22, 0.22] : S.focus === 'both' ? 
 export default {
   id: 'surface', name: 'Surface', scale: '1 µm', scaleNote: 'about 12 µm across', modes: true, focus: true,
   controls: ['cross', 'focus', 'mode', 'theta', 'lambda', 'pol'], bloom: 0.9, exposure: 1.0,
+  overlay: true,      // light on a dark ground: laid over the scale above during the flight in
   cam: { type: 'orbit', target: [0, 0, 0], yaw: 0.42, pitch: 0.2, dist: 19, fov: 34,
     lim: { yaw: [-1.1, 1.1], pitch: [-0.35, 0.8], dist: [6, 25] } },
   // past the critical angle, come in close and level with the surface so the thin field outside shows
@@ -83,7 +84,7 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW;
+uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn;
 const vec3 BOX = vec3(${BOX.map(x => x.toFixed(2)).join(',')});
 float sg(float a){ return exp(-a*a); }       // a beam with a fairly flat top and a definite edge
 // x: the field; y: its envelope squared; z: how strongly to draw it
@@ -126,12 +127,12 @@ void main(){
       water += step(p.y, 0.0)*ds;
     }
     col *= 1.6;
-    col += vec3(0.010,0.028,0.070)*water*0.55;
+    col += vec3(0.010,0.028,0.070)*water*0.55*uOwn;
     float tp = -ro.y/rd.y;
     if(tp > ta && tp < tb){
       vec3 P = ro + rd*tp; vec2 g = abs(fract(P.xz*0.5)-0.5);
       float line = smoothstep(0.47,0.5,max(g.x,g.y));
-      col += vec3(0.16,0.34,0.7)*(0.05 + 0.10*line + 0.45*pow(1.0-abs(rd.y), 4.0));
+      col += vec3(0.16,0.34,0.7)*(0.05 + 0.10*line + 0.45*pow(1.0-abs(rd.y), 4.0))*uOwn;
     }
   }
   o = vec4(col*uFade, 0.0); }`);
@@ -151,6 +152,11 @@ void main(){
     gl.uniform4f(prog.u.uC, c.F.r[0], c.F.r[1], c.k0 * c.F.kappa, omegaT);
     gl.uniform4f(prog.u.uD, WAIST, wave ? 1 : 0, si / ci, c.F.tir ? 0 : st / ct);
     gl.uniform3fv(prog.u.uCol, col.map(x => x * 0.9 + 0.06)); gl.uniform3fv(prog.u.uW, W);
+    // The block of water and its edges are this scale's own frame around a patch of the drop's skin.
+    // Flying in from the drop they come up last, so the patch never shows as a box hanging in the drop.
+    // Flying on into the molecules they go first, for the same reason.
+    const z = R.zoom, own = !z ? 1 : z.lo ? sstep(0.75, 1, z.k) : 1 - sstep(0.15, 0.5, z.k);
+    gl.uniform1f(prog.u.uOwn, own);
     R.fullscreen(prog, 'add');
 
     // the perpendicular, the three beam axes and their angles
@@ -170,8 +176,8 @@ void main(){
     }
     // box edges, to fix the space
     const [bx, by, bz] = BOX;
-    for (const sz of [-1, 1]) R.seg([-bx, 0, sz * bz], [bx, 0, sz * bz], [0.3, 0.5, 0.9], 0.35, 1.1);
-    for (const sx of [-1, 1]) R.seg([sx * bx, 0, -bz], [sx * bx, 0, bz], [0.3, 0.5, 0.9], 0.35, 1.1);
+    for (const sz of [-1, 1]) R.seg([-bx, 0, sz * bz], [bx, 0, sz * bz], [0.3, 0.5, 0.9], 0.35 * own, 1.1);
+    for (const sx of [-1, 1]) R.seg([sx * bx, 0, -bz], [sx * bx, 0, bz], [0.3, 0.5, 0.9], 0.35 * own, 1.1);
     R.flushLines({ depth: false });
 
     if (!wave) {

@@ -20,8 +20,10 @@ void main(){ vec3 rd = rayDir();
   c *= 0.85 + 0.3*fbm(rd*2.5 + vec3(0.0, uTime*0.01, 0.0));
   o = vec4(c*uFade, 1.0); gl_FragDepth = 1.0; }`);
   gl.useProgram(backdropProg.p); R.setRayUniforms(backdropProg, time);
-  gl.uniform3fv(backdropProg.u.uTop, top); gl.uniform3fv(backdropProg.u.uBot, bot);
-  gl.uniform3fv(backdropProg.u.uGlow, glow); gl.uniform3fv(backdropProg.u.uGlowDir, glowDir);
+  // arriving from the scale above, this backdrop comes up only as that scene gives way (see main.js)
+  const k = R.zoom?.lo ? R.zoom.cover : 1, dimmed = c => c.map(x => x * k);
+  gl.uniform3fv(backdropProg.u.uTop, dimmed(top)); gl.uniform3fv(backdropProg.u.uBot, dimmed(bot));
+  gl.uniform3fv(backdropProg.u.uGlow, dimmed(glow)); gl.uniform3fv(backdropProg.u.uGlowDir, glowDir);
   R.fullscreen(backdropProg, 'opaque');
 }
 

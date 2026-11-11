@@ -52,7 +52,7 @@ export default {
     prog = R.rayProgram(`
 vec3 stars(vec3 d){ vec3 p = d*110.0, id = floor(p), f = fract(p)-0.5; float r = hash3(id);
   return vec3(0.8,0.88,1.0)*smoothstep(0.16, 0.0, length(f))*step(0.975, r)*(r-0.97)*45.0; }
-uniform vec2 uSpin;
+uniform vec2 uSpin; uniform vec3 uPlace;
 void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
   float sd = max(dot(rd,toSun),0.0);
   vec3 col = stars(rd) + vec3(0.004,0.006,0.014) + vec3(1.0,0.82,0.6)*(pow(sd,6.0)*0.10 + pow(sd,60.0)*0.5 + pow(sd,900.0)*40.0);
@@ -73,6 +73,9 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
     landc = mix(landc, vec3(0.85,0.9,0.95), smoothstep(0.80,0.9,abs(n.y)+0.08*f));
     vec3 surf = mix(vec3(0.012,0.05,0.16), landc, land);
     float cl = smoothstep(0.50,0.78, fbm(m*3.2+vec3(uTime*0.006,2.0,0.0)) + 0.35*fbm(m*9.0+vec3(0.0,uTime*0.01,5.0))-0.12 + 0.22*cd);
+    // coming down on the place where you stand, the cloud parts ahead of you: the clearing is always
+    // about as wide as the view, so it is never seen as a hole, and the land below is what the Sky scale shows
+    cl *= 1.0 - smoothstep(0.25, 0.01, alt)*exp(-pow(distance(n, uPlace)/max(alt*2.0, 1e-6), 2.0));
     float mu = dot(n,toSun), day = smoothstep(-0.12,0.22,mu);
     vec3 sunc = mix(vec3(1.0,0.45,0.2), vec3(1.0,0.96,0.9), smoothstep(-0.05,0.35,mu));
     surf = mix(surf, vec3(0.92), cl*0.9);
@@ -92,7 +95,7 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
   draw(R, S, T) {
     const gl = R.gl, f = S.focus, p = place(S);
     gl.useProgram(prog.p); R.setRayUniforms(prog, T);
-    const spin = HOME - lon(S); gl.uniform2f(prog.u.uSpin, Math.cos(spin), Math.sin(spin));
+    const spin = HOME - lon(S); gl.uniform2f(prog.u.uSpin, Math.cos(spin), Math.sin(spin)); gl.uniform3fv(prog.u.uPlace, p);
     R.fullscreen(prog, 'opaque');
     const dim = f === 'eye' ? 0.18 : 1;
     if (S.mode === 'wave') {

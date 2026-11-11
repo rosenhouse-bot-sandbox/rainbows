@@ -55,8 +55,9 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 .stages button[aria-current="true"]{color:var(--ink);font-weight:600}
 .stages button[aria-current="true"] i{background:var(--ink);border-color:var(--ink);transform:scale(1.35);box-shadow:0 0 12px rgba(234,240,255,.7)}
 
-.cap{display:grid;gap:3px;transition:opacity .45s}
-.cap.swap{opacity:0}
+.cap{display:grid;gap:3px}
+.cap,.controls,.readout{transition:opacity .4s}
+.panel.swap :is(.cap,.controls,.readout){opacity:0}
 .eyebrow{font-family:var(--mono);font-size:0.6562rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
 .cap h2{font-family:var(--display);font-weight:600;font-size:1.1875rem;letter-spacing:-.015em;line-height:1.15;margin:0;text-wrap:balance}
 .cap p{margin:0;font-size:0.875rem;line-height:1.42;color:var(--ink2);max-width:62ch}

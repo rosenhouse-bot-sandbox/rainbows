@@ -4,7 +4,7 @@
 // The model is the Lorentz oscillator that gives optics.nWater: each molecule's electron cloud is held
 // by a spring that rings at an ultraviolet frequency ω0, and light at ω drives it with amplitude
 // ∝ 1/(ω0² − ω²). The surface is the plane x = 0, with water at x > 0; light arrives at an angle you set.
-import { V, DEG, rng } from '../gl.js';
+import { V, DEG, rng, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { backdrop } from './common.js';
 
@@ -32,6 +32,7 @@ const pct = x => (x * 100).toFixed(1) + '%';
 export default {
   id: 'atoms', name: 'Molecules', scale: '1 nm', scaleNote: 'not to scale: see the note', modes: false, focus: false,
   controls: ['tilt', 'lambda'], lambdaMin: 250, bloom: 1.0, exposure: 1.0,
+  overlay: true,      // light on a dark ground: laid over the scale above during the flight in
   cam: { type: 'orbit', target: [1.0, -1.2, -0.3], yaw: 0.3, pitch: 0.7, dist: 32, fov: 34,
     lim: { yaw: [-0.3, 1.35], pitch: [0.04, 1.05], dist: [15, 40] } },
 
@@ -96,10 +97,13 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
     backdrop(R, T, [0.012, 0.016, 0.04], [0.003, 0.004, 0.012], [0.02, 0.05, 0.12], [1, 0, 0]);
 
     // the surface (the plane x = 0) and the body of water behind it
+    // (this wire frame is the scale's own; flying in from the Surface scale it comes up last, so the
+    // wave is first seen in the surface it belongs to and not in a box of its own)
+    const own = R.zoom?.lo ? sstep(0.75, 1, R.zoom.k) : 1;
     for (let i = -6; i <= 6; i++) R.seg([0, -3.0, i * ZB / 6], [0, 3.0, i * ZB / 6], BCOL, 0.1, 1.0);
     for (let i = -3; i <= 3; i++) R.seg([0, i, -ZB], [0, i, ZB], BCOL, i === -3 ? 0.4 : 0.1, 1.0);
     for (const sy of [-1, 1]) for (const sz of [-1, 1]) R.seg([0, sy * 3, sz * ZB], [XB, sy * 3, sz * ZB], BCOL, 0.28, 1.2, 0.02);
-    R.flushLines();
+    R.flushLines({ gain: own });
     // the perpendicular to the surface, on the floor, and the two angles measured from it
     R.seg([-4.5, YF, 0], [5.5, YF, 0], WHITE, 0.5, 1.2);
     R.flushLines({ dash: [0.3, 0, 0.5] });

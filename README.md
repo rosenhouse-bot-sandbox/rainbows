@@ -24,7 +24,14 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
   tangent to the drop where the ray crosses it), and moving between scales is a single camera flight.
 - The continents and clouds on the globe, and the cloud tops you pass on the way down to the field,
   are generated noise and not a map of the real Earth. The ring and dot at "You are here" are a marker
-  and nothing more; they fade as the camera dives towards them.
+  and nothing more; they fade as the camera dives towards them. The cloud also parts around your spot
+  as the camera comes down on it, which is staging and not weather.
+- During a flight, both scenes are told how far it has gone (`R.zoom`), and nothing changes on a
+  clock of its own. The Sky and Rain scales draw one shared landscape; at the Rain scale it is turned
+  down to about a quarter of its brightness so that single drops show against it, and the camera's own
+  bow is left out. The Drop, Surface and Molecules scenes are light on a dark ground, so their light
+  is added over the scene they sit in, and their own backdrop and framing (the block of water, the
+  wire frame) arrive last. Those frames are drawing aids, not objects inside the drop.
 
 The physics, all in `js/v2/optics.js`:
 

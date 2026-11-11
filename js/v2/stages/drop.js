@@ -152,6 +152,7 @@ export default {
   id: 'drop', name: 'Drop', scale: '1 mm', modes: true, focus: true,
   controls: ['mode', 'focus', 'bowpos', 'exag', 'second'],
   bloom: 1.0, exposure: 1.0,
+  overlay: true,      // light on a dark ground: laid over the scale above during the flight in
   cam: { type: 'orbit', target: [-0.5, -0.95, 0], yaw: 0.2, pitch: 0.15, dist: 13.5, fov: 34,
     lim: { yaw: [-1.25, 1.25], pitch: [-0.6, 1.0], dist: [4.5, 17] } },
   // the crossing the next scale is set to show: where the rainbow ray enters, meets the back, or leaves
@@ -215,7 +216,7 @@ uniform float uBody;
 void main(){ vec3 ro = uEye, rd = rayDir();
   float b = dot(ro, rd), c = dot(ro, ro)-1.0, h = b*b-c;
   if(h < 0.0){ o = vec4(0.0); return; }
-  h = sqrt(h); vec3 n1 = ro + rd*(-b-h), n2 = ro + rd*(-b+h);
+  h = sqrt(h); vec3 n1 = normalize(ro + rd*(-b-h)), n2 = normalize(ro + rd*(-b+h));      // (seen from metres away, rounding would push these off the sphere)
   vec3 sun = vec3(-1.0, 0.0, 0.0);
   float f1 = pow(clamp(1.0-dot(n1,-rd), 0.0, 1.0), 3.0);
   vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1);
@@ -243,9 +244,12 @@ void main(){ vec3 ro = uEye, rd = rayDir();
     R.seg(V.mul([hb[0], hb[1], 0], 0.45), V.mul([hb[0], hb[1], 0], 1.5), [0.7, 0.8, 1], 0.4, 1.2);
     eyeGlyph(R, eyeAt(c), [0, 0, 1], [-e[1], e[0], 0], 0.4, f === 'sun' ? [0.5, 0.5, 0.5] : c.eyeCol.map(x => x * c.eyeLevel + 0.08), f === 'sun' ? 0.4 : 1);
     R.flushLines({ gain: near }); R.flushPoints({ gain: near });
-    if (far > 0) {
+    if (far * (R.zoom?.cover ?? 1) > 0) {
       const t = dive.M.theta;
-      drawFar(R, S, dive.M.hero, V.mul([-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), far, 1 - sstep(0.25, 0.8, dive.k));
+      // the rain scene still shows through until this one covers it (R.zoom.cover), and it draws these
+      // same lines: scale ours by the cover so that the two together always make one set
+      const cov = R.zoom?.cover ?? 1;
+      drawFar(R, S, dive.M.hero, V.mul([-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), far * cov, (1 - sstep(0.25, 0.8, dive.k)) * cov);
       R.flushLines(); R.flushPoints({ minPx: 2 });
     }
 

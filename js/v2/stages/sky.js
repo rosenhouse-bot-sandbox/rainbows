@@ -1,6 +1,6 @@
 // Stage 2: standing in a field with the Sun behind you and rain ahead. Units are metres.
 // You face −z; sunlight travels along sunDir (which is also the direction of the antisolar point).
-import { V, DEG, clamp, sstep } from '../gl.js';
+import { V, DEG, clamp, sstep, lerp } from '../gl.js';
 import * as O from '../optics.js';
 import { WARM, bowTexture, drawFigure, coneDir } from './common.js';
 
@@ -10,6 +10,23 @@ export const sunColour = S => { const t = clamp(Math.sin(S.sun * DEG) / 0.55, 0,
 const B1 = O.bowAngle(O.nWater(550)), B2 = O.bowAngle(O.nWater(550), 2);
 const RINGS = [[650, 1], [550, 1], [450, 1]].map(([l]) => ({ th: O.bowAngle(O.nWater(l)), col: O.wlRGB(l) }));
 let prog = null;
+
+// The land, hills, sky and weather that the Sky and Rain scales share: it is one place. `rainy` runs
+// from 0 (the Sky scale's daylight view, with the bow in it) to 1 (the Rain scale's, turned well down
+// so that single drops show against it, with a metre grid on the ground and no bow of the camera's
+// own). During the flight between the two, both draw it with the same value, so nothing jumps.
+const DIM = 0.24;
+export function drawEnv(R, S, T, rainy) {
+  const gl = R.gl, bt = bowTexture(R);
+  // a bow belongs to one pair of eyes: from far away (arriving from orbit) this one is not yours to see
+  const near = 1 - sstep(250, 2500, V.len(V.sub(R.view.eye, EYE)));
+  gl.useProgram(prog.p); R.setRayUniforms(prog, T);
+  gl.uniform3fv(prog.u.uSun, sunDir(S)); gl.uniform3fv(prog.u.uSunCol, sunColour(S));
+  gl.uniform1f(prog.u.uBow, 0.62 * near * (1 - rainy)); gl.uniform1f(prog.u.uDim, lerp(1, DIM, rainy)); gl.uniform1f(prog.u.uFloor, rainy);
+  gl.uniform2f(prog.u.uLutRange, bt.tab.deg0, bt.tab.deg1);
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bt.tex); gl.uniform1i(prog.u.uLUT, 0);
+  R.fullscreen(prog, 'opaque');
+}
 
 export default {
   id: 'sky', name: 'Sky', scale: '1 km', scaleNote: 'rain about 1 km away', modes: false, focus: true,
@@ -53,8 +70,9 @@ export default {
 
   init(R) {
     bowTexture(R);
+    if (prog) return;       // the Rain scale draws this too, and may have asked first
     prog = R.rayProgram(`
-uniform vec3 uSun, uSunCol; uniform sampler2D uLUT; uniform vec2 uLutRange; uniform float uBow;
+uniform vec3 uSun, uSunCol; uniform sampler2D uLUT; uniform vec2 uLutRange; uniform float uBow, uDim, uFloor;
 float hills(float az){ return 0.008 + 0.026*vnoise(vec3(az*4.0, 1.0, 2.0)) + 0.010*vnoise(vec3(az*15.0, 5.0, 1.0)); }
 void main(){
   vec3 ro = uEye, rd = rayDir(), toSun = -uSun;
@@ -70,7 +88,7 @@ void main(){
   float th = degrees(acos(clamp(dot(rd,uSun),-1.0,1.0)));
   vec3 bow = texture(uLUT, vec2((th-uLutRange.x)/(uLutRange.y-uLutRange.x), 0.5)).rgb*uSunCol*sunUp*uBow;
   float streak = pow(vnoise(vec3(az*240.0, el*6.0 + uTime*1.5, 0.0)), 5.0);
-  float hz = hills(az), depth = 1.0; vec3 col;
+  float hz = hills(az), depth = 1.0; vec3 col, mark = vec3(0.0);
   if(el > hz){
     col = sky + bow*rainAmt*smoothstep(hz, hz+0.015, el);
     col += vec3(0.5,0.6,0.7)*streak*0.045*rainAmt;
@@ -97,20 +115,20 @@ void main(){
       vec3 sun = uSunCol*sunUp;
       col = mix(col, mix(lnd*(sun*(0.22+1.9*max(toSun.y,0.0)) + vec3(0.09,0.12,0.17)), vec3(0.92)*(sun*(0.05+1.5*max(toSun.y,0.0)) + 0.01), deck*0.9), high);
     }
+    // the Rain scale's floor: a metre grid and the shimmer of wet ground, close around the figure
+    if(uFloor > 0.0){
+      vec2 gr = abs(fract(P.xz)-0.5); float rip = vnoise(vec3(P.xz*3.0, uTime*0.7));
+      mark = (vec3(0.05,0.07,0.1)*smoothstep(0.485,0.5,max(gr.x,gr.y))*exp(-t/14.0) + uSunCol*0.012*rip*exp(-t/45.0))*uFloor;
+    }
     depth = depthOf(P);
   }
-  o = vec4(col*uFade, 1.0); gl_FragDepth = depth; }`);
+  o = vec4((col*uDim + mark)*uFade, 1.0); gl_FragDepth = depth; }`);
   },
 
   draw(R, S, T) {
-    const gl = R.gl, s = sunDir(S), toSun = V.mul(s, -1), sc = sunColour(S), f = S.focus, bt = bowTexture(R);
-    // a bow belongs to one pair of eyes: from far away (arriving from orbit) this one is not yours to see
+    const s = sunDir(S), toSun = V.mul(s, -1), sc = sunColour(S), f = S.focus;
     const back = V.len(V.sub(R.view.eye, EYE)), near = 1 - sstep(250, 2500, back);
-    gl.useProgram(prog.p); R.setRayUniforms(prog, T);
-    gl.uniform3fv(prog.u.uSun, s); gl.uniform3fv(prog.u.uSunCol, sc); gl.uniform1f(prog.u.uBow, 0.62 * near);
-    gl.uniform2f(prog.u.uLutRange, bt.tab.deg0, bt.tab.deg1);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bt.tex); gl.uniform1i(prog.u.uLUT, 0);
-    R.fullscreen(prog, 'opaque');
+    drawEnv(R, S, T, R.zoom?.pair === 1 ? R.zoom.k : 0);
 
     const out = clamp((back - 0.8) / 2, 0, 1) * near;
     if (back > 0.9) drawFigure(R, [0, 0, 0], toSun, sc.map(x => x * 0.9));

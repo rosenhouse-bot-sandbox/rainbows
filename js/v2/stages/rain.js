@@ -4,14 +4,14 @@
 import { V, DEG, rng, clamp } from '../gl.js';
 import * as O from '../optics.js';
 import { WARM, bowTexture, drawFigure, coneDir, wavefrontSheets, colourName } from './common.js';
-import { EYE, sunDir, sunColour } from './sky.js';
+import sky, { EYE, sunDir, sunColour, drawEnv } from './sky.js';
 import { drawFar } from './drop.js';
 
 const BOX0 = [-8, 0, -13], BOXS = [16, 9, 10.5], NDROPS = 30000;
 const CONE = [[650, O.bowAngle(O.nWater(650))], [550, O.bowAngle(O.nWater(550))], [450, O.bowAngle(O.nWater(450))]].map(([l, th]) => ({ th, col: O.wlRGB(l) }));
 const DROP = 0.01, FALL = 1.1 / 16;      // a marked drop's drawn radius, and how fast it falls, in metres (per second)
 const HEROES = [[-2.6, -7.5, 0.0], [0.4, -6.2, 0.37], [2.9, -8.4, 0.71], [-0.9, -9.6, 0.55]];
-let ground = null, drops = null, vao = null;
+let drops = null, vao = null;
 
 const angleAt = (p, s) => { const d = V.norm(V.sub(p, EYE)); return Math.acos(clamp(V.dot(d, s), -1, 1)); };
 // The hero drops fall straight down through the bow; find the height where each crosses 42°.
@@ -78,24 +78,7 @@ export default {
   },
 
   init(R) {
-    const gl = R.gl; bowTexture(R);
-    ground = R.rayProgram(`
-uniform vec3 uSun, uSunCol;
-void main(){ vec3 ro = uEye, rd = rayDir(); float depth = 1.0;
-  float toward = dot(normalize(rd.xz+vec2(1e-5)), normalize(-uSun.xz));
-  vec3 sky = mix(vec3(0.016,0.022,0.04), vec3(0.07,0.085,0.12), smoothstep(-0.4,1.0,toward))*(0.6+0.8*fbm(rd*2.0+vec3(0.0,0.0,uTime*0.01)));
-  sky += uSunCol*0.05*exp(-abs(rd.y)*7.0);
-  vec3 col = sky;
-  if(rd.y < -1e-4){
-    float t = -ro.y/rd.y; vec3 P = ro + rd*t;
-    float rip = vnoise(vec3(P.xz*3.0, uTime*0.7));
-    vec3 g = vec3(0.020,0.032,0.022)*(0.6+0.8*vnoise(vec3(P.xz*0.7,1.0))) + uSunCol*0.012*rip;
-    vec2 gr = abs(fract(P.xz)-0.5); g += vec3(0.05,0.07,0.1)*smoothstep(0.485,0.5,max(gr.x,gr.y))*exp(-t/14.0);
-    vec3 refl = reflect(rd, normalize(vec3((rip-0.5)*0.12, 1.0, 0.0)));
-    g += uSunCol*pow(max(dot(refl,-uSun),0.0), 24.0)*0.25;
-    col = mix(g, sky, 1.0-exp(-t/45.0)); depth = depthOf(P);
-  }
-  o = vec4(col*uFade, 1.0); gl_FragDepth = depth; }`);
+    const gl = R.gl; bowTexture(R); sky.init(R);
     drops = R.compile(`#version 300 es
 layout(location=0) in vec2 corner; layout(location=1) in vec4 D;
 uniform mat4 uVP; uniform vec2 uRes, uLutRange; uniform float uPx, uP11, uTime, uFade, uGain;
@@ -127,9 +110,8 @@ void main(){ float r2 = dot(vUV,vUV); if(r2 > 1.0) discard; o = vec4(vC*exp(-r2*
 
   draw(R, S, T) {
     const gl = R.gl, s = sunDir(S), toSun = V.mul(s, -1), sc = sunColour(S), f = S.focus, bt = bowTexture(R);
-    gl.useProgram(ground.p); R.setRayUniforms(ground, T);
-    gl.uniform3fv(ground.u.uSun, s); gl.uniform3fv(ground.u.uSunCol, sc);
-    R.fullscreen(ground, 'opaque');
+    // the same land and sky as the Sky scale, turned down (and turning down, on the way in from it)
+    drawEnv(R, S, T, R.zoom?.pair === 1 ? R.zoom.k : 1);
     drawFigure(R, [0, 0, 0], toSun, sc.map(x => x * 0.8));
 
     // the rain
