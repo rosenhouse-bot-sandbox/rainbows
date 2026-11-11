@@ -206,7 +206,7 @@ void main(){
     if (!wave) {
       // photons: each reflects or passes with the Fresnel odds, and travels at c/n
       const key = [S.cross, S.theta, S.pol].join();       // a change of colour leaves the photons where they are
-      if (!photons.length) for (let i = 0; i < 1500; i++) photons.push({ t0: -rand() * 6, c: O.wlRGB(420 + 260 * rand()) });
+      if (!photons.length) for (let i = 0; i < 1500; i++) photons.push({ c: O.wlRGB(420 + 260 * rand()) });
       // seen from far off a photon is drawn large enough to stay a dot, as the Drop scale's are
       const size = Math.max(0.075, 0.004 * V.len(R.view.eye));
       const fresh = key !== photonKey; photonKey = key;
@@ -215,10 +215,17 @@ void main(){
       for (let i = 0; i < count; i++) {
         const ph = photons[i];
         const dur = LEN * c.n1 / speed + LEN * Math.max(c.n1, c.n2) / speed;
-        if (fresh || ph.u === undefined || T - ph.t0 > ph.dur) {
+        // A photon that has just run out starts again at the source, keeping the few frames it ran
+        // over, so the source emits evenly whatever the frame rate. One that ran out long ago was not
+        // being drawn (another scale, the wave view, or too far off to be counted in): starting all of
+        // those together would send them down the beam as one clump, so each is put somewhere along
+        // its run instead, as the stream would have been had it kept going.
+        const over = T - ph.t0 - ph.dur;
+        if (fresh || ph.u === undefined || over > 0) {
+          const carry = !fresh && ph.u !== undefined && over < 0.15;
           ph.u = rand.gauss() * WAIST * 0.5; ph.v = rand.gauss() * WAIST * 0.5;
           ph.refl = rand() < c.F.R; ph.dur = dur * (0.7 + 0.3 * rand());
-          ph.t0 = (fresh || ph.u === undefined) && ph.t0 > -900 ? T - rand() * dur : T;
+          ph.t0 = T - (carry ? over : rand() * ph.dur);
         }
         const tHit = LEN * c.n1 / speed, t = T - ph.t0, x0 = ph.u / ci;
         let q, w;
