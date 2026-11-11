@@ -57,22 +57,15 @@ export function fresnel(n1, n2, ci) {
   const rs = (n1 * ci - n2 * ct) / (n1 * ci + n2 * ct), rp = (n2 * ci - n1 * ct) / (n2 * ci + n1 * ct);
   return { rs, rp, Rs: rs * rs, Rp: rp * rp, ct, tir: false };
 }
-// Complex amplitude reflection coefficient r = [re, im] (time convention e^{i(kx−ωt)}), valid on both
-// sides of the critical angle. For s it is the coefficient of E; for p, of the magnetic field, which is
-// the component that stays a scalar. In both cases the transmitted amplitude is 1 + r.
-// Also returns kappa: the decay rate of the evanescent field, in units of the vacuum wavenumber.
-export function fresnelComplex(n1, n2, thetaI, pol) {
+// Amplitude reflection coefficient r for light meeting a flat boundary at thetaI, below the critical
+// angle. For s it is the coefficient of E; for p, of the magnetic field, which is the component that
+// stays a scalar. In both cases the transmitted amplitude is 1 + r.
+export function fresnelAmp(n1, n2, thetaI, pol) {
   const ci = Math.cos(thetaI), si = Math.sin(thetaI);
-  const q2 = n2 * n2 - n1 * n1 * si * si;          // (n2 cos θt)²
-  const a = pol === 'p' ? n2 * n2 * ci : n1 * ci;
-  if (q2 >= 0) {
-    const q = Math.sqrt(q2), b = pol === 'p' ? n1 * q : q;
-    const r = (a - b) / (a + b);
-    return { r: [r, 0], R: r * r, tir: false, thetaT: Math.atan2(n1 * si, q), kappa: 0 };
-  }
-  const k = Math.sqrt(-q2), b = pol === 'p' ? n1 * k : k;
-  const ph = -2 * Math.atan2(b, a);
-  return { r: [Math.cos(ph), Math.sin(ph)], R: 1, tir: true, thetaT: Math.PI / 2, kappa: k, phase: ph };
+  const q = Math.sqrt(Math.max(0, n2 * n2 - n1 * n1 * si * si));          // n2 cos θt
+  const a = pol === 'p' ? n2 * n2 * ci : n1 * ci, b = pol === 'p' ? n1 * q : q;
+  const r = (a - b) / (a + b);
+  return { r, R: r * r, thetaT: Math.atan2(n1 * si, q) };
 }
 export const criticalAngle = n => Math.asin(1 / n);
 export const brewsterInside = n => Math.atan(1 / n);

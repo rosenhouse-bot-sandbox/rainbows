@@ -1,12 +1,13 @@
 // Stage 5: light meeting the water's surface, about ten wavelengths across. Units are micrometres.
-// At this scale the drop's surface is flat. Water fills y < 0. The field drawn is the exact
-// plane-wave solution of Maxwell's equations at a flat boundary (Fresnel's coefficients), inside a
-// beam of finite width; past the critical angle the transmitted wave becomes an evanescent one.
-import { V, DEG, rng, sstep } from '../gl.js';
+// The surface is the drop's own: a sphere 1000 µm in radius whose top touches the origin, drawn to
+// scale, so it runs off to a horizon and curves away below it. Across the beam it departs from flat
+// by about 20 nm, so the field drawn is the exact plane-wave solution of Maxwell's equations at a
+// flat boundary (Fresnel's coefficients), inside a beam of finite width. Water fills y < 0 there.
+import { V, DEG, rng, sstep, clamp } from '../gl.js';
 import * as O from '../optics.js';
 import { backdrop } from './common.js';
 
-const WAIST = 1.25, BOX = [6.2, 4.4, 2.3];
+const WAIST = 1.25, BOX = [6.2, 4.4, 2.3], RD = 1000;      // RD: the drop's radius
 let prog = null, photons = [], photonKey = '', omegaT = 0, lastT = null;
 const rand = rng(23);
 
@@ -14,21 +15,21 @@ const rand = rng(23);
 export function presetAngle(S) {
   const n = O.nWater(S.lambda), b = O.bowB(n);
   if (S.cross === 'enter') return +(Math.asin(b) / DEG).toFixed(1);
-  if (S.cross === 'tir') return 56;
   return +(Math.asin(b / n) / DEG).toFixed(1);
 }
+// The steepest angle the slider offers. From inside the water it stops short of the critical angle
+// (48.1° for violet), beyond which nothing is transmitted: sunlight in a drop never gets there.
+export const maxAngle = S => S.cross === 'enter' ? 85 : 47.5;
 function setup(S) {
-  const n = O.nWater(S.lambda), enter = S.cross === 'enter';
-  const n1 = enter ? 1 : n, n2 = enter ? n : 1, th = Math.max(0.001, S.theta * DEG);
-  const F = O.fresnelComplex(n1, n2, th, S.pol), k0 = 2 * Math.PI / (S.lambda / 1000);
-  const tAmp = Math.hypot(1 + F.r[0], F.r[1]);
-  return { n, n1, n2, th, F, k0, sy: enter ? 1 : -1, enter, crit: O.criticalAngle(n), tAmp,
-    depth: F.tir ? S.lambda / (2 * Math.PI * F.kappa) : 0 };
+  const n = O.nWater(S.lambda), enter = S.cross === 'enter', crit = O.criticalAngle(n);
+  const n1 = enter ? 1 : n, n2 = enter ? n : 1, th = clamp(S.theta * DEG, 0.001, enter ? 1.5 : crit - 0.004);
+  const F = O.fresnelAmp(n1, n2, th, S.pol), k0 = 2 * Math.PI / (S.lambda / 1000);
+  return { n, n1, n2, th, F, k0, sy: enter ? 1 : -1, enter, crit };
 }
 // map from the solver's frame (light arrives from q.y > 0) to the scene (water below)
 const toScene = (q, c) => [q[0], q[1] * c.sy, q[2]];
 const weights = S => S.focus === 'sun' ? [1, 0.22, 0.22] : S.focus === 'both' ? [1, 1, 1]
-  : (S.cross === 'back' || S.cross === 'tir') ? [0.22, 1, 0.18] : [0.22, 0.18, 1];
+  : S.cross === 'back' ? [0.22, 1, 0.18] : [0.22, 0.18, 1];
 
 export default {
   id: 'surface', name: 'Surface', scale: '1 µm', scaleNote: 'about 12 µm across', modes: true, focus: true,
@@ -36,17 +37,12 @@ export default {
   overlay: true,      // light on a dark ground: laid over the scale above during the flight in
   cam: { type: 'orbit', target: [0, 0, 0], yaw: 0.42, pitch: 0.2, dist: 19, fov: 34,
     lim: { yaw: [-1.1, 1.1], pitch: [-0.35, 0.8], dist: [6, 25] } },
-  // past the critical angle, come in close and level with the surface so the thin field outside shows
-  camGoal: S => S.cross === 'tir' ? { yaw: 0.3, pitch: 0.045, dist: 9.5 } : { yaw: 0.42, pitch: 0.2, dist: 19 },
-  portal: () => [0, 0, 0],
   // The Molecules scene is the same surface where the beam meets it: its +x runs down into the water,
   // and one of its units is 0.17 µm, so its wavelengths are this scene's wavelengths.
   embed: () => ({ o: [0, 0, 0], s: 550 / 3200, X: [0, -1, 0], Y: [0, 0, 1], Z: [-1, 0, 0] }),
 
   caption(S) {
     const c = setup(S);
-    if (c.F.tir) return { title: 'Past the critical angle: an evanescent field',
-      body: `Steeper than ${(c.crit / DEG).toFixed(1)}°, no wave can carry energy out into the air, and all of it reflects. The field still reaches a little way outside: it slides along the surface and fades to nothing within a fraction of a wavelength. Sunlight inside a raindrop never arrives this steeply, so the rainbow has no such field. It is shown here because you can steer the light past the limit.` };
     if (S.cross === 'enter') return { title: 'Slowed, squeezed and turned',
       body: 'Crests cannot be created or lost at the surface, so each one in the air must join one in the water. Light is slower in water, so the crests there sit closer together, and the only way they can still match along the surface is to tilt. That tilt is refraction. A small part of the wave reflects.' };
     if (S.cross === 'back') return { title: 'The back wall is a leaky mirror',
@@ -56,55 +52,72 @@ export default {
   },
   readout(S) {
     const c = setup(S), d = x => (x / DEG).toFixed(1) + '°';
-    const other = O.fresnelComplex(c.n1, c.n2, c.th, S.pol === 's' ? 'p' : 's');
+    const other = O.fresnelAmp(c.n1, c.n2, c.th, S.pol === 's' ? 'p' : 's');
     const nr = O.nWater(700), nv = O.nWater(400);
     const bend = n => c.enter ? Math.asin(Math.min(1, Math.sin(c.th) / n)) : Math.asin(Math.min(1, n * Math.sin(c.th)));
     let rows = `<dt>Water's index at ${Math.round(S.lambda)} nm</dt><dd>${c.n.toFixed(4)}</dd>
 <dt>Wavelength in water</dt><dd>${(S.lambda / c.n).toFixed(0)} nm</dd>
-<dt>Critical angle (inside)</dt><dd>${d(c.crit)}</dd>
 <dt>Reflected</dt><dd>${(c.F.R * 100).toFixed(1)}% (other polarisation ${(other.R * 100).toFixed(1)}%)</dd>`;
-    if (c.F.tir) rows += `<dt>Field outside fades to 1/e in</dt><dd>${c.depth.toFixed(0)} nm</dd>
-<dt>Phase shift on reflection</dt><dd>${(c.F.phase / DEG).toFixed(0)}°</dd>
-<dt>Energy carried out</dt><dd>none</dd>`;
-    else rows += `<dt>Transmitted, leaving at</dt><dd>${((1 - c.F.R) * 100).toFixed(1)}% at ${d(c.F.thetaT)}</dd>
+    rows += `<dt>Transmitted, leaving at</dt><dd>${((1 - c.F.R) * 100).toFixed(1)}% at ${d(c.F.thetaT)}</dd>
 <dt>Red would leave at</dt><dd>${d(bend(nr))}</dd><dt>Violet would leave at</dt><dd>${d(bend(nv))}</dd>`;
     return `<dl>${rows}</dl>` + (S.pol === 'p' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
   },
-  labels(S) {
+  labels(S, view) {
     const c = setup(S), si = Math.sin(c.th), ci = Math.cos(c.th), L = [];
     L.push({ p: [-5.4, 3.6, 0], text: 'Air', cls: 'big' }, { p: [-5.4, -3.6, 0], text: 'Water', cls: 'big' });
     L.push({ p: toScene([-si * 5.6, ci * 5.6, 0], c), text: 'Arriving', cls: 'far' });
     L.push({ p: toScene([si * 5.6, ci * 5.6, 0], c), text: `Reflected ${(c.F.R * 100).toFixed(c.F.R > 0.1 ? 0 : 1)}%`, cls: 'far' });
-    if (c.F.tir) L.push({ p: toScene([0.25, -c.depth / 1000 - 0.5, 0], c), text: `Evanescent field: down to 1/e at ${Math.round(c.depth)} nm, the line`, cls: 'note' });
-    else L.push({ p: toScene([Math.sin(c.F.thetaT) * 5.0, -Math.cos(c.F.thetaT) * 5.0, 0], c), text: `Transmitted ${((1 - c.F.R) * 100).toFixed(c.F.R > 0.1 ? 0 : 1)}%`, cls: 'far' });
+    L.push({ p: toScene([Math.sin(c.F.thetaT) * 5.0, -Math.cos(c.F.thetaT) * 5.0, 0], c), text: `Transmitted ${((1 - c.F.R) * 100).toFixed(c.F.R > 0.1 ? 0 : 1)}%`, cls: 'far' });
     L.push({ p: toScene([-Math.sin(c.th / 2) * 2.3, Math.cos(c.th / 2) * 2.3, 0], c), text: (c.th / DEG).toFixed(1) + '°', cls: 'num' });
-    if (!c.F.tir) L.push({ p: toScene([Math.sin(c.F.thetaT / 2) * 2.3, -Math.cos(c.F.thetaT / 2) * 2.3, 0], c), text: (c.F.thetaT / DEG).toFixed(1) + '°', cls: 'num' });
+    L.push({ p: toScene([Math.sin(c.F.thetaT / 2) * 2.3, -Math.cos(c.F.thetaT / 2) * 2.3, 0], c), text: (c.F.thetaT / DEG).toFixed(1) + '°', cls: 'num' });
+    // how far the drop's skin can be seen before it curves out of sight, from where the camera is
+    if (view) {
+      const e = view.eye, h = Math.hypot(e[0], e[1] + RD, e[2]) - RD;
+      if (h > 0.05) {
+        const dist = Math.sqrt(h * (2 * RD + h)), a = Math.asin(RD / (RD + h)), f = V.norm([view.f[0], 0, view.f[2]]);
+        // the point of the horizon straight ahead: down from the camera by the angle a from the vertical
+        const dn = V.norm([e[0], e[1] + RD, e[2]]), t = V.norm(V.mad(f, dn, -V.dot(f, dn)));
+        const p = V.add(e, V.mul(V.add(V.mul(dn, -Math.cos(a)), V.mul(t, Math.sin(a))), dist));
+        L.push({ p: V.add(p, [0, dist * 0.035, 0]), text: `The drop curves out of sight ${Math.round(dist)} µm away`, cls: 'far' });
+      }
+    }
     return L;
   },
 
   init(R) {
     prog = R.rayProgram(`
 uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn;
+const float RD = ${RD.toFixed(1)};
 const vec3 BOX = vec3(${BOX.map(x => x.toFixed(2)).join(',')});
 float sg(float a){ return exp(-a*a); }       // a beam with a fairly flat top and a definite edge
 // x: the field; y: its envelope squared; z: how strongly to draw it
 vec3 field(vec3 p){
   vec3 q = vec3(p.x, p.y*uA.w, p.z);
   float w2 = uD.x*uD.x, gz = sg(q.z*q.z/w2), ci = uA.z, c2 = ci*ci/w2;
-  float rr = length(uC.xy), ra = atan(uC.y, uC.x);
-  vec2 tc = vec2(1.0+uC.x, uC.y); float tm = length(tc), ta = atan(tc.y, tc.x);
+  float r = uC.x, tm = 1.0 + r;          // Fresnel's reflected and transmitted amplitudes
   if(q.y >= 0.0){
     float xi = q.x + q.y*uD.z, xr = q.x - q.y*uD.z;
-    float gi = gz*sg(xi*xi*c2), gr = rr*gz*sg(xr*xr*c2);
-    float F = gi*cos(uA.x*(uA.y*q.x - ci*q.y) - uC.w) + gr*cos(uA.x*(uA.y*q.x + ci*q.y) - uC.w + ra);
+    float gi = gz*sg(xi*xi*c2), gr = abs(r)*gz*sg(xr*xr*c2);
+    float F = gi*cos(uA.x*(uA.y*q.x - ci*q.y) - uC.w) + sign(r)*gr*cos(uA.x*(uA.y*q.x + ci*q.y) - uC.w);
     return vec3(F, gi*gi + gr*gr, (uW.x*gi + uW.y*gr)/(gi + gr + 1e-4));
   }
-  if(uB.w > 0.5){
-    float g = tm*gz*sg(q.x*q.x*c2)*exp(uC.z*q.y);
-    return vec3(g*cos(uA.x*uA.y*q.x - uC.w + ta), g*g, 1.0);
-  }
   float xt = q.x + q.y*uD.w, g = tm*gz*sg(xt*xt*c2);
-  return vec3(g*cos(uB.x*(uB.y*q.x - uB.z*q.y) - uC.w + ta), g*g, uW.z);
+  return vec3(g*cos(uB.x*(uB.y*q.x - uB.z*q.y) - uC.w), g*g, uW.z);
+}
+// The drop's surface along a ray: x is how far to it (negative if the ray misses), y how far the ray
+// then runs through water. The sphere's centre is RD below the origin; the forms used keep their
+// precision though the camera is a few units from a sphere a thousand across.
+vec2 dropHit(vec3 ro, vec3 rd){
+  float c = dot(ro,ro) + 2.0*RD*ro.y, b = dot(ro,rd) + RD*rd.y, h = b*b - c;
+  if(c <= 0.0){ float t = sqrt(max(h,0.0)) - b; return vec2(t, t); }          // the camera is under water
+  if(h <= 0.0 || b >= 0.0) return vec2(-1.0, 0.0);
+  h = sqrt(h); return vec2(c/(h - b), 2.0*h);
+}
+// lines of a square net with cells "cell" across, kept about a pixel wide and faded out before they blur together
+float net(vec2 g, float cell){
+  vec2 q = g/cell, w = fwidth(q), d = abs(fract(q - 0.5) - 0.5);
+  vec2 l = 1.0 - smoothstep(w*0.6, w*1.6, d);
+  return max(l.x, l.y)*(1.0 - smoothstep(0.08, 0.3, max(w.x, w.y)));
 }
 void main(){
   vec3 ro = uEye, rd = rayDir();
@@ -115,7 +128,7 @@ void main(){
   if(tb > ta){
     const int N = 72;
     float ds = (tb-ta)/float(N), j = hash1(gl_FragCoord.xy + fract(uTime)*17.0);
-    float water = 0.0, Tr = 1.0;
+    float Tr = 1.0;
     // crests glow and also hide what is behind them, so the near face of the beam reads as solid sheets
     for(int i=0;i<N;i++){
       vec3 p = ro + rd*(ta + (float(i)+j)*ds);
@@ -124,16 +137,19 @@ void main(){
       float e = mix(f.y*0.07, c2*c2*5.0 + f.x*f.x*0.12, uD.y)*f.z;
       col += Tr*mix(uCol, vec3(1.0), 0.35*c2*c2*uD.y)*e*ds;
       Tr *= exp(-e*ds*mix(0.0, 2.2, uD.y));
-      water += step(p.y, 0.0)*ds;
     }
     col *= 1.6;
-    col += vec3(0.010,0.028,0.070)*water*0.55*uOwn;
-    float tp = -ro.y/rd.y;
-    if(tp > ta && tp < tb){
-      vec3 P = ro + rd*tp; vec2 g = abs(fract(P.xz*0.5)-0.5);
-      float line = smoothstep(0.47,0.5,max(g.x,g.y));
-      col += vec3(0.16,0.34,0.7)*(0.05 + 0.10*line + 0.45*pow(1.0-abs(rd.y), 4.0))*uOwn;
-    }
+  }
+  // The drop itself, to scale: its skin carries a net of 2 µm squares near the beam, 20 µm and 200 µm
+  // ones further off, and shines where it is seen edge-on, at the horizon.
+  vec2 hit = dropHit(ro, rd);
+  if(hit.x > 0.0){
+    vec3 P = ro + rd*hit.x, nrm = vec3(P.x, P.y + RD, P.z)/RD;
+    vec2 g = RD*vec2(atan(P.x, P.y + RD), atan(P.z, P.y + RD));
+    float line = max(net(g, 2.0), max(net(g, 20.0), net(g, 200.0)));
+    float graze = pow(1.0 - abs(dot(nrm, rd)), 4.0);
+    col += vec3(0.16,0.34,0.7)*(0.05 + 0.11*line + 0.45*graze)*uOwn;
+    col += vec3(0.010,0.028,0.070)*1.5*(1.0 - exp(-hit.y/7.0))*uOwn;
   }
   o = vec4(col*uFade, 0.0); }`);
   },
@@ -148,14 +164,14 @@ void main(){
     lastT = T;
     gl.useProgram(prog.p); R.setRayUniforms(prog, T);
     gl.uniform4f(prog.u.uA, c.k0 * c.n1, si, ci, c.sy);
-    gl.uniform4f(prog.u.uB, c.k0 * c.n2, st, ct, c.F.tir ? 1 : 0);
-    gl.uniform4f(prog.u.uC, c.F.r[0], c.F.r[1], c.k0 * c.F.kappa, omegaT);
-    gl.uniform4f(prog.u.uD, WAIST, wave ? 1 : 0, si / ci, c.F.tir ? 0 : st / ct);
+    gl.uniform4f(prog.u.uB, c.k0 * c.n2, st, ct, 0);
+    gl.uniform4f(prog.u.uC, c.F.r, 0, 0, omegaT);
+    gl.uniform4f(prog.u.uD, WAIST, wave ? 1 : 0, si / ci, st / ct);
     gl.uniform3fv(prog.u.uCol, col.map(x => x * 0.9 + 0.06)); gl.uniform3fv(prog.u.uW, W);
-    // The block of water and its edges are this scale's own frame around a patch of the drop's skin.
-    // Flying in from the drop they come up last, so the patch never shows as a box hanging in the drop.
-    // Flying on into the molecules they go first, for the same reason.
-    const z = R.zoom, own = !z ? 1 : z.lo ? sstep(0.75, 1, z.k) : 1 - sstep(0.15, 0.5, z.k);
+    // The drop's skin and the water under it are the same sphere the Drop scale draws, in the same
+    // place: flying in from there they take over as that scene gives way, so the drop is never drawn
+    // twice. Flying on into the molecules they go first.
+    const z = R.zoom, own = !z ? 1 : z.lo ? z.cover : 1 - sstep(0.15, 0.5, z.k);
     gl.uniform1f(prog.u.uOwn, own);
     R.fullscreen(prog, 'add');
 
@@ -165,19 +181,9 @@ void main(){
     R.flushLines({ dash: [0.28, 0, 0.5], depth: false });
     R.seg(P([-si * 5.2, ci * 5.2, 0]), [0, 0, 0], dim, 0.1 * W[0], 1.3, 0.55 * W[0]);
     R.seg([0, 0, 0], P([si * 5.2, ci * 5.2, 0]), dim, 0.55 * W[1] * Math.sqrt(c.F.R), 1.3, 0.1 * W[1]);
-    if (!c.F.tir) R.seg([0, 0, 0], P([st * 5.0, -ct * 5.0, 0]), dim, 0.55 * W[2], 1.3, 0.1 * W[2]);
+    R.seg([0, 0, 0], P([st * 5.0, -ct * 5.0, 0]), dim, 0.55 * W[2], 1.3, 0.1 * W[2]);
     R.arc([0, 0, 0], P([0, 1, 0]), P([-1, 0, 0]), 1.7, 0, c.th, dim, 0.6, 1.3, 20);
-    if (!c.F.tir) R.arc([0, 0, 0], P([0, -1, 0]), P([1, 0, 0]), 1.7, 0, c.F.thetaT, dim, 0.6, 1.3, 20);
-    // the critical direction, for light arriving from inside the water
-    if (!c.enter) { const a = c.crit; R.seg([0, 0, 0], P([-Math.sin(a) * 3.2, Math.cos(a) * 3.2, 0]), [1, 0.5, 0.35], 0.5, 1.1, 0.1); }
-    if (c.F.tir) {       // how far the field reaches: the height at which it has fallen to 1/e
-      const y = c.depth / 1000;
-      R.seg(P([-2.6, -y, 0]), P([2.6, -y, 0]), [1, 1, 1], 0.7, 1.1);
-    }
-    // box edges, to fix the space
-    const [bx, by, bz] = BOX;
-    for (const sz of [-1, 1]) R.seg([-bx, 0, sz * bz], [bx, 0, sz * bz], [0.3, 0.5, 0.9], 0.35 * own, 1.1);
-    for (const sx of [-1, 1]) R.seg([sx * bx, 0, -bz], [sx * bx, 0, bz], [0.3, 0.5, 0.9], 0.35 * own, 1.1);
+    R.arc([0, 0, 0], P([0, -1, 0]), P([1, 0, 0]), 1.7, 0, c.F.thetaT, dim, 0.6, 1.3, 20);
     R.flushLines({ depth: false });
 
     if (!wave) {

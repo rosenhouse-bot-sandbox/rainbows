@@ -4,8 +4,8 @@ import * as O from './optics.js';
 import orbit from './stages/orbit.js';
 import sky from './stages/sky.js';
 import rain from './stages/rain.js';
-import drop, { eyeAngle, bowTrack } from './stages/drop.js';
-import surface, { presetAngle } from './stages/surface.js';
+import drop, { eyeAngle, bowTrack, crossAngle, CROSSINGS } from './stages/drop.js';
+import surface, { presetAngle, maxAngle } from './stages/surface.js';
 import atoms from './stages/atoms.js';
 
 const STAGES = [orbit, sky, rain, drop, surface, atoms];
@@ -38,11 +38,11 @@ function readHash() {
   const st = STAGES.findIndex(s => s.id === q.get('s')); if (st >= 0) S.stage = st;
   if (['ray', 'wave'].includes(q.get('m'))) S.mode = q.get('m');
   if (['sun', 'both', 'eye'].includes(q.get('f'))) S.focus = q.get('f');
-  if (['enter', 'back', 'exit', 'tir'].includes(q.get('x'))) { S.cross = q.get('x'); }
+  if (CROSSINGS.includes(q.get('x'))) { S.cross = q.get('x'); }
   const num = (k, a, b, d) => { const v = parseFloat(q.get(k)); return Number.isFinite(v) ? clamp(v, a, b) : d; };
   S.sun = num('sun', 0, 50, S.sun); S.lambda = num('nm', 250, 700, S.lambda); S.bowpos = num('bow', -0.8, 1.6, S.bowpos);
   S.tilt = num('tilt', 0, 75, S.tilt);
-  S.theta = q.has('a') ? num('a', 0, 85, S.theta) : presetAngle(S);
+  S.theta = q.has('a') ? num('a', 0, maxAngle(S), presetAngle(S)) : presetAngle(S);
   if (q.get('p') === 'p') S.pol = 'p';
   S.exag = q.get('wide') === '1'; S.second = q.get('two') === '1';
 }
@@ -104,6 +104,12 @@ function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); }
 let tr = null, queued = null, hopping = false;       // tr: {hi, q, dir, v, dur}
 const DIVE = 4.5;    // seconds for the move between scales
 const TURN = 0.3;    // seconds, roughly, to slow down and set off the other way
+// Changing which crossing the Surface scale shows is a flight too: out along the same path until the
+// whole drop is in view, round the drop to the new crossing, and back in. `phi` is where round the
+// drop the Surface scene sits just now; it follows S.cross, moving only while the camera is far out.
+let phi = null;
+const HOP = 2.8;     // seconds a crossing hop would take to fly the whole way between the two scales
+const HOP_OUT = 0.24;      // how far out it goes (as tr.q): the drop fills about a third of the view
 const dest = () => tr ? tr.hi + (tr.dir > 0 ? 1 : 0) : S.stage;      // the scale the camera is flying to
 const heading = () => queued ?? dest();                               // the scale it will end up at
 function go(to) {
@@ -153,7 +159,7 @@ STAGES.forEach((s, i) => {
 const segs = { focus: 'focus', mode: 'mode', cross: 'cross', pol: 'pol' };
 for (const key in segs) document.querySelectorAll(`[data-${key}]`).forEach(b => b.addEventListener('click', () => {
   S[key] = b.dataset[key];
-  if (key === 'cross') { S.theta = presetAngle(S); resetView(); }
+  if (key === 'cross') S.theta = presetAngle(S);      // the camera keeps its own angle on the surface
   syncUI();
 }));
 const sliders = {
@@ -171,12 +177,13 @@ $('next').addEventListener('click', () => step(1));
 $('resetView').addEventListener('click', resetView);
 const setPaused = p => { paused = p; $('pause').textContent = p ? 'Play' : 'Pause'; };
 $('pause').addEventListener('click', () => setPaused(!paused));
-function resetView() { const c = cams[S.stage], st = STAGES[S.stage], d = st.camGoal ? st.camGoal(S) : st.cam; c.gy = d.yaw; c.gp = d.pitch; c.gd = d.dist; }
+function resetView() { const c = cams[S.stage], d = STAGES[S.stage].cam; c.gy = d.yaw; c.gp = d.pitch; c.gd = d.dist; }
 
 let lastCap = '';
 function syncUI(light) {
   const st = STAGES[S.stage];
   $('lambda').min = st.lambdaMin ?? 400;
+  $('theta').max = maxAngle(S); S.theta = Math.min(S.theta, maxAngle(S));
   S.lambda = clamp(S.lambda, st.lambdaMin ?? 400, 700);
   const lmin = +$('lambda').min;
   $('lambda').style.setProperty('--spec', lmin < 400
@@ -287,7 +294,28 @@ function frame(now) {
   else if (raw < 18) { slow = 0; if (++fast > 240 && scale < 1) { scale = Math.min(1, scale / 0.85); fast = 0; } }
   R.resize(cssW, cssH, dprCap(), scale);
 
-  D ??= Object.assign(Object.create(S), { lambda: S.lambda });
+  D ??= Object.assign(Object.create(S), { lambda: S.lambda, cross: S.cross, theta: S.theta });
+  // ---- which crossing the Surface scale is at ----
+  {
+    const goal = crossAngle(S.cross), near3 = tr?.hi === 3;
+    phi ??= goal;
+    if (RM.matches || !(near3 || (!tr && S.stage === 4))) phi = goal;       // nothing to fly: change over at once
+    const gap = goal - phi, far = Math.abs(gap) > 0.12;
+    if (far && !tr) { ready(3); tr = { hi: 3, q: 1, dir: 1, v: 0, dur: HOP, capWait: 0, hop: true }; $('labels').classList.add('off'); }
+    else if (far && near3 && tr.dir > 0) tr.hop = true;       // already flying in: go back out and round first
+    if (tr?.hop) tr.out = far;
+    if (gap) {
+      // round the drop while the camera is far out; the last little way is too small to see from anywhere
+      const go = far ? 1 - sstep(HOP_OUT + 0.05, HOP_OUT + 0.3, tr.q) : 1;
+      const step = Math.sign(gap) * Math.min(Math.abs(gap), go * dt * Math.min(1.9, 0.25 + 4.5 * Math.abs(gap)));
+      phi = Math.abs(gap) < 1e-4 ? goal : phi + step;
+    }
+    S.crossPhi = phi;
+    // The scene drawn is the crossing the camera is nearest, so it changes over while far too small to see.
+    const at = CROSSINGS.reduce((b, c) => Math.abs(crossAngle(c) - phi) < Math.abs(crossAngle(b) - phi) ? c : b);
+    if (at === S.cross) { D.cross = at; D.theta = S.theta; }
+    else if (at !== D.cross) { D.cross = at; D.theta = presetAngle(D); }
+  }
   { const gap = S.lambda - D.lambda; D.lambda = RM.matches || Math.abs(gap) < 0.05 ? S.lambda : D.lambda + gap * (1 - Math.exp(-dt * 9)); }
   if (offXg !== null) { const k = 1 - Math.exp(-dt * 5); offX += (offXg - offX) * k; offY += (offYg - offY) * k; }
   for (const c of cams) { const k = 1 - Math.exp(-dt * 9); c.yaw += (c.gy - c.yaw) * k; c.pitch += (c.gp - c.pitch) * k; c.dist += (c.gd - c.dist) * k; }
@@ -301,7 +329,9 @@ function frame(now) {
     // camera's distance to where it is going shrinks at a steady rate; the deeper scene shows through
     // a soft round opening exactly as big as it appears from that distance.
     const still = RM.matches;         // reduced motion: a plain cross-fade in place of the flight
-    const want = tr.dir / tr.dur;
+    // A crossing hop heads out, easing to a stop at HOP_OUT, until the scene has gone round the drop.
+    if (tr.hop && tr.dir < 0) tr.hop = false;       // Zoom out pressed part-way: carry on out to the Drop scale
+    const want = (tr.hop && tr.out ? -clamp((tr.q - HOP_OUT) / 0.15, -1, 1) : tr.dir) / tr.dur;
     tr.v = still ? want : want + (tr.v - want) * Math.exp(-dt / TURN);
     tr.q = clamp(tr.q + tr.v * dt, 0, 1);
     const deeper = tr.dir > 0, hi = tr.hi, lo = hi + 1;
@@ -309,9 +339,9 @@ function frame(now) {
     // The words change over a little before half-way to wherever the camera is now heading.
     tr.capWait = Math.max(0, tr.capWait - dt);
     const to = dest(), show = (deeper ? q : 1 - q) >= 0.45 ? to : 2 * hi + 1 - to;
-    if (show !== S.stage && !tr.capWait) { S.stage = show; syncUI(); }
+    if (show !== S.stage && !tr.capWait && !tr.hop) { S.stage = show; syncUI(); }
     // (its text and controls fade out just before that, and back in after: the panel keeps the flight's time)
-    $('panel').classList.toggle('swap', S.stage !== to && (deeper ? q : 1 - q) >= 0.45 - 0.4 / tr.dur);
+    $('panel').classList.toggle('swap', !tr.hop && S.stage !== to && (deeper ? q : 1 - q) >= 0.45 - 0.4 / tr.dur);
     // After a turn-round on the way into a marked drop, the drop has fallen further than first planned:
     // ease the Drop scene to where it will now be on arrival.
     if (tr.fromRain && tr.rev && deeper && !still) {
@@ -356,7 +386,7 @@ function frame(now) {
     labelView = S.stage === hi ? vHi : vLo;      // labels stay with the scale the panel is showing, and change over with it, unseen
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
-    if (deeper ? tr.q >= 1 : tr.q <= 0) {
+    if (deeper ? tr.q >= 1 && !(tr.hop && tr.out) : tr.q <= 0) {
       const done = to; tr = null; S.stage = done; syncUI(); $('panel').classList.remove('swap');
       if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }
@@ -375,7 +405,6 @@ else {
   try {
     readHash();
     ready(S.stage);
-    STAGES.forEach((st, i) => { if (st.camGoal) { const g = st.camGoal(S), c = cams[i]; c.yaw = c.gy = g.yaw; c.pitch = c.gp = g.pitch; c.dist = c.gd = g.dist; } });
     layout(); syncUI(); setPaused(paused);
     window.addEventListener('hashchange', () => { const was = S.stage; readHash(); const to = S.stage; S.stage = was; syncUI(); go(to); });
     requestAnimationFrame(frame);

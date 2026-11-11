@@ -12,7 +12,7 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
 | Sky | 1 km | A field with the Sun behind you; primary and secondary bows and the dark band between |
 | Rain | 1 m | 30 000 falling drops, each coloured by what it sends to your eye |
 | Drop | 1 mm | One drop traced in 3D: every route the light takes, with its share of the energy |
-| Surface | 1 µm | The exact field where light crosses the water's surface, including the evanescent field |
+| Surface | 1 µm | The exact field where light crosses the water's surface, on the drop's own curving skin |
 | Molecules | 1 nm | Light arriving at an angle you set: why each wavelength is slowed, and so bent, by a different amount |
 
 - **Follow the light** picks out what comes from the Sun, or only what ends up in your eye.
@@ -46,12 +46,14 @@ The physics, all in `js/v2/optics.js`:
   CIE colour matching and blurred by the Sun's half-degree disc. The dark band and the brighter sky
   inside the bow fall out of it. Interference (supernumerary bows) is not modelled.
 - At the surface the field is the exact plane-wave solution at a flat boundary, in a beam of finite
-  width. Past the critical angle the transmitted wave becomes evanescent, with the right decay
-  length and phase shift.
+  width. The surface around it is the drop's own, a sphere of 1 mm radius drawn to scale: it runs to
+  a horizon about 90 µm away and curves out of sight. Across the beam it is flat to about 20 nm.
+- Changing which crossing the Surface scale shows flies the camera out until the drop is in view,
+  round the drop to the new crossing and back in, keeping the angle you were looking from.
 - The rainbow ray meets the back of the drop at 40°, below the 48.6° critical angle. A ray inside a
   sphere always meets the wall at the angle it was refracted to on entry, so sunlight in a drop is
-  never totally reflected and the back of the drop has no evanescent field. The Surface scale says
-  so, and lets you steer the light past the critical angle to see one anyway.
+  never totally reflected. The Surface scale says so, and its angle slider stops short of the
+  critical angle for light inside the water.
 - In the last scale the wave's energy is split into electric field, magnetic field, stretched
   molecules and moving electrons. Energy held in matter does not travel, which gives the energy
   velocity; nearer the ultraviolet resonance more is held, so violet is slower than red.

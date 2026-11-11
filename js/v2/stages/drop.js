@@ -52,6 +52,11 @@ function pointAt(br, l) {
   }
   return null;
 }
+// Where the rainbow ray meets the drop's surface, as an angle round the drop in the plane of the ray:
+// it enters, and each later crossing is the same step further round.
+export const CROSSINGS = ['enter', 'back', 'exit'];
+const CROSS_AT = (() => { const t = O.traceDrop(O.bowB(N_MID), N_MID, 1); return CROSSINGS.map((_, i) => Math.atan2(t.hits[0][1], t.hits[0][0]) - i * (Math.PI - 2 * t.refr)); })();
+export const crossAngle = c => CROSS_AT[Math.max(0, CROSSINGS.indexOf(c))];
 const OWN = { '-1': 1, 0: 0, 1: 2, 2: 3 };       // first leg a branch does not share with an earlier one
 
 let prog = null, cache = null, cacheKey = '', photons = [], photonKey = '';
@@ -189,16 +194,13 @@ export default {
   overlay: true,      // light on a dark ground: laid over the scale above during the flight in
   cam: { type: 'orbit', target: [-0.5, -0.95, 0], yaw: 0.2, pitch: 0.15, dist: 13.5, fov: 34,
     lim: { yaw: [-1.25, 1.25], pitch: [-0.6, 1.0], dist: [4.5, 17] } },
-  // the crossing the next scale is set to show: where the rainbow ray enters, meets the back, or leaves
-  portal: S => { const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1]; return [h[0], h[1], 0]; },
-
   // The Surface scene is a patch of this drop's skin, a thousandth of its radius across, tangent to the
-  // sphere where the rainbow ray crosses it, with the light arriving from the right direction.
+  // sphere where the rainbow ray crosses it (S.crossPhi, or else the crossing S.cross names), with the
+  // light arriving from the right direction: the ray always travels the same way round the drop, so
+  // the patch's x axis is the tangent in that sense at every crossing and anywhere between two.
   embed(S) {
-    const h = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits, i = S.cross === 'enter' ? 0 : S.cross === 'exit' ? 2 : 1;
-    const Y = [h[i][0], h[i][1], 0], d = i === 0 ? [1, 0, 0] : V.norm([h[i][0] - h[i - 1][0], h[i][1] - h[i - 1][1], 0]);
-    const X = V.norm(V.mad(d, Y, -V.dot(d, Y)));
-    return { o: Y, s: 1e-3, X, Y, Z: V.cross(X, Y) };
+    const a = S.crossPhi ?? crossAngle(S.cross), Y = [Math.cos(a), Math.sin(a), 0];
+    return { o: Y, s: 1e-3, X: [Y[1], -Y[0], 0], Y, Z: [0, 0, 1] };
   },
 
   caption(S) {
@@ -346,6 +348,13 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       }
       R.flushLines({ keep: true, gain: near });
       R.flushLines({ model: modelTRS([0, 0, 0], 1, Math.PI / 2), gain: 0.3 * near });
+    }
+
+    // On the way to or from the Surface scale, a ring on the drop's skin marks the patch that scale shows.
+    if (R.zoom?.pair === 3) {
+      const M = this.embed(S), k = R.zoom.k, a = sstep(0, 0.06, k) * (1 - sstep(0.3, 0.7, k));
+      for (const r of [0.05, 0.012]) R.arc(M.o, M.X, M.Z, r, 0, 2 * Math.PI, [0.85, 0.92, 1], 0.9 * a, 1.5, 40);
+      R.flushLines({ depth: false });
     }
 
     const gl = R.gl;
