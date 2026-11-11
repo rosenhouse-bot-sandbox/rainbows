@@ -364,7 +364,7 @@ function frame(now) {
     }
     const vA = viewFor(hi, time), vB = viewFor(lo, time);
     let hole, vHi = vA, vLo = vB;
-    if (still) hole = { c: [0.5, 0.5], r: 9, alpha: 1, floor: sstep(0, 1, q), soft: 0.3 };
+    if (still) hole = { c: [0.5, 0.5], r: 9, alpha: 0, floor: sstep(0, 1, q), soft: 0.3 };      // (no opening at all: with one, the deeper scene showed at full strength from the first frame, a cut and not a fade)
     else {
       const M = tr.M = STAGES[hi].embed(S);
       const out = a => V.add(M.o, V.mul(turn(M, a), M.s)), turn = (m, a) => [m.X[0] * a[0] + m.Y[0] * a[1] + m.Z[0] * a[2], m.X[1] * a[0] + m.Y[1] * a[1] + m.Z[1] * a[2], m.X[2] * a[0] + m.Y[2] * a[1] + m.Z[2] * a[2]];

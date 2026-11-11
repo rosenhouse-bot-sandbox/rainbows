@@ -6,6 +6,7 @@
 //   node tests/smooth/run.mjs --only drop   only scenarios whose name matches (a regular expression)
 //   node tests/smooth/run.mjs --analyze     re-read the traces of the last run and rebuild the report
 //   --jobs N (browsers at once, default 3)  --dpr X (device pixel ratio, default 0.5)  --list
+//   --keep  leave the last run's traces in place (with --only: rerun a few scenarios, report on all)
 //   --deep  when a NaN or infinity turns up in a render target, name the draw call that wrote it (slow)
 //
 // The page is driven the way a person drives it (a real pointer dragging real sliders, real presses)
@@ -29,7 +30,8 @@ if (!flag('analyze')) {
   try { chromium = createRequire(import.meta.url)('playwright').chromium; }
   catch { try { chromium = createRequire('/opt/node-tools/')('playwright').chromium; } catch { console.error('Playwright is not installed. Install it outside the repository: npm install -g playwright && npx playwright install chromium'); process.exit(2); } }
 
-  fs.rmSync(out, { recursive: true, force: true }); fs.mkdirSync(path.join(out, 'traces'), { recursive: true });
+  if (!flag('keep')) fs.rmSync(out, { recursive: true, force: true });      // --keep: rerun some scenarios and report on them with the rest of the last run
+  fs.mkdirSync(path.join(out, 'traces'), { recursive: true });
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
   const srv = http.createServer((q, s) => {
     let p = decodeURIComponent(new URL(q.url, 'http://x').pathname); if (p.endsWith('/')) p += 'index.html';

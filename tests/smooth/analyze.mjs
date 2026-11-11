@@ -105,7 +105,9 @@ export function analyze(traces) {
         const c = diff(img[i - 1], img[i + 1]).bmax;
         if (c < T.flash * a && !ev[i + 1]) add(tr, 'flash', i, i, a / T.popAbs, `frame ${i} differs from the frames before and after it, which agree with each other (${a.toFixed(1)} of 255 at the ${where(d[i].at)}, then back to within ${c.toFixed(1)})`);
       }
-      if (!ev[i] && !fast && !(rm && x.tr) && a > T.popAbs) {
+      // the press that starts a flight between scales must not cut the picture: the flight is the change
+      if (ev[i] && x.tr && !p.tr && !x.tr.hop && a > 30) add(tr, 'jump', i, i, a / 30, `the picture cut by ${a.toFixed(1)} of 255 on the very frame a flight between scales began`);
+      if (!ev[i] && !fast && a > T.popAbs) {
         const prev = ev[i - 1] ? Infinity : bm(i - 1), next = i + 1 < n ? (ev[i + 1] ? 0 : bm(i + 1)) : 0;
         const win = []; for (let j = Math.max(1, i - 7); j <= Math.min(n - 1, i + 7); j++) if (j !== i && !ev[j] && sinceEv[j] > 10 && s[j].tag === x.tag) win.push(bm(j));
         const lone = a > T.popK * Math.max(prev, next) + T.popB;
@@ -147,9 +149,9 @@ export function analyze(traces) {
 
       // ---- what was sent to WebGL ----
       const g = x.gl, gp = p.gl, flying = !!(x.tr || p.tr || s[i + 1]?.tr || s[i - 2]?.tr), quiet = !ev[i] && !stageCh[i] && !fast && !flying;      // (mid-flight two scenes are drawn and masked: the picture checks cover that)
-      if (quiet && g.tracked >= 20 && g.jumped / g.tracked > T.reshuffle) add(tr, 'particles', i, i, g.jumped / g.tracked / T.reshuffle, `${g.jumped} of ${g.tracked} particles jumped across the screen in one frame`);
       if (quiet && Math.max(g.points, gp.points) >= 20 && Math.abs(g.points - gp.points) / Math.max(g.points, gp.points) > T.count) add(tr, 'particles', i, i, 2, `the number of particles on screen went from ${gp.points} to ${g.points} in one frame`);
-      if (quiet && g.recount && i > 1 && i + 1 < n) {
+      // (where the particles are is compared as counts on a grid, since a page may draw them in a new order each frame)
+      if (quiet && Math.min(g.points, gp.points) >= 20 && i > 1 && i + 1 < n && !ev[i + 1] && !ev[i - 1]) {
         const h0 = histDist(s[i - 2].gl.hist, gp.hist), h1 = histDist(gp.hist, g.hist), h2 = histDist(g.hist, s[i + 1].gl.hist);
         if (h1 > 0.3 && h1 > 3 * Math.max(h0, h2) + 0.05) add(tr, 'particles', i, i, h1 / 0.3, `${(h1 * 100).toFixed(0)}% of the particles moved to another part of the screen in one frame`);
       }
@@ -186,7 +188,7 @@ export function analyze(traces) {
       for (let i = 0; i < n; i++) { if (s[i].labels.some(l => l.off) || tr.reduced) continue; for (const [key] of keyed(s[i].labels)) { if (!seen.has(key)) seen.set(key, []); seen.get(key).push(i); } }
       for (const [key, at] of seen) for (let k = 1; k < at.length; k++) {
         const gap = at[k] - at[k - 1];
-        if (gap > 1 && gap <= 20 && !s.slice(at[k - 1], at[k] + 1).some((x, j) => x.ev || stageCh[at[k - 1] + j] || x.tr || x.labels.some(l => l.off) || !x.labels.length)) add(tr, 'labels', at[k - 1] + 1, at[k], 2, `the label "${key}" went away for ${gap - 1} frame${gap > 2 ? 's' : ''} and came back`);
+        if (gap > 1 && gap <= 20 && !s.slice(at[k - 1], at[k] + 1).some((x, j) => x.ev || /look around|scroll|coasting|resize/.test(x.tag) || stageCh[at[k - 1] + j] || x.tr || x.labels.some(l => l.off) || !x.labels.length)) add(tr, 'labels', at[k - 1] + 1, at[k], 2, `the label "${key}" went away for ${gap - 1} frame${gap > 2 ? 's' : ''} and came back`);
       }
     }
     // ---- there and back ----
