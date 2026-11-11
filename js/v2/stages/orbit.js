@@ -4,8 +4,11 @@ import * as O from '../optics.js';
 import { WARM, wavefrontSheets, coneDir } from './common.js';
 
 let prog = null;
-// Where you stand: the place on the globe where the Sun is S.sun degrees above the horizon.
-const place = S => { const h = S.sun * DEG; return [-Math.sin(h), Math.cos(h) * 0.42, Math.cos(h) * 0.9075]; };
+// Where you stand: latitude 24.8° N, at the longitude where the Sun is S.sun degrees above the horizon.
+// The Earth turns about its poles (the y axis), so the land turns with you and you stay on it.
+const SLAT = 0.42, CLAT = Math.sqrt(1 - SLAT * SLAT), HOME = Math.PI;   // HOME: your longitude on the map, well inland
+const lon = S => Math.asin(Math.min(1, Math.sin(S.sun * DEG) / CLAT));
+const place = S => { const l = lon(S); return [-CLAT * Math.sin(l), SLAT, CLAT * Math.cos(l)]; };
 const lit = p => !(p[1] * p[1] + p[2] * p[2] < 1 && p[0] > -Math.sqrt(1 - p[1] * p[1] - p[2] * p[2]));
 
 export default {
@@ -49,18 +52,20 @@ export default {
     prog = R.rayProgram(`
 vec3 stars(vec3 d){ vec3 p = d*110.0, id = floor(p), f = fract(p)-0.5; float r = hash3(id);
   return vec3(0.8,0.88,1.0)*smoothstep(0.16, 0.0, length(f))*step(0.975, r)*(r-0.97)*45.0; }
+uniform vec2 uSpin;
 void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
   float sd = max(dot(rd,toSun),0.0);
   vec3 col = stars(rd) + vec3(0.004,0.006,0.014) + vec3(1.0,0.82,0.6)*(pow(sd,6.0)*0.10 + pow(sd,60.0)*0.5 + pow(sd,900.0)*40.0);
   float b = dot(ro,rd), c = dot(ro,ro)-1.0, h = b*b-c, depth = 1.0;
   if(h > 0.0 && b < 0.0){
     vec3 n = ro + rd*(-b-sqrt(h));
-    float f = fbm(n*1.9+vec3(3.1,0.0,1.7)) + 0.25*fbm(n*6.0);
+    vec3 m = vec3(n.x*uSpin.x - n.z*uSpin.y, n.y, n.x*uSpin.y + n.z*uSpin.x);   // the map turns with the Earth
+    float f = fbm(m*1.9+vec3(3.1,0.0,1.7)) + 0.25*fbm(m*6.0);
     float land = smoothstep(0.60, 0.66, f);
-    vec3 landc = mix(vec3(0.05,0.17,0.04), vec3(0.34,0.27,0.13), smoothstep(0.35,0.7,fbm(n*4.0+7.0)));
+    vec3 landc = mix(vec3(0.05,0.17,0.04), vec3(0.34,0.27,0.13), smoothstep(0.35,0.7,fbm(m*4.0+7.0)));
     landc = mix(landc, vec3(0.85,0.9,0.95), smoothstep(0.80,0.9,abs(n.y)+0.08*f));
     vec3 surf = mix(vec3(0.012,0.05,0.16), landc, land);
-    float cl = smoothstep(0.50,0.78, fbm(n*3.2+vec3(uTime*0.006,2.0,0.0)) + 0.35*fbm(n*9.0+vec3(0.0,uTime*0.01,5.0))-0.12);
+    float cl = smoothstep(0.50,0.78, fbm(m*3.2+vec3(uTime*0.006,2.0,0.0)) + 0.35*fbm(m*9.0+vec3(0.0,uTime*0.01,5.0))-0.12);
     float mu = dot(n,toSun), day = smoothstep(-0.12,0.22,mu);
     vec3 sunc = mix(vec3(1.0,0.45,0.2), vec3(1.0,0.96,0.9), smoothstep(-0.05,0.35,mu));
     surf = mix(surf, vec3(0.92), cl*0.9);
@@ -79,7 +84,9 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
 
   draw(R, S, T) {
     const gl = R.gl, f = S.focus, p = place(S);
-    gl.useProgram(prog.p); R.setRayUniforms(prog, T); R.fullscreen(prog, 'opaque');
+    gl.useProgram(prog.p); R.setRayUniforms(prog, T);
+    const spin = HOME - lon(S); gl.uniform2f(prog.u.uSpin, Math.cos(spin), Math.sin(spin));
+    R.fullscreen(prog, 'opaque');
     const dim = f === 'eye' ? 0.18 : 1;
     if (S.mode === 'wave') {
       wavefrontSheets(R, [-6.6, 0, 0], [1, 0, 0], 1.9, 1.05, 13, (T * 0.4) % 1, WARM, 0.2 * dim, lit, 4);
