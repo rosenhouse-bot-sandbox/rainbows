@@ -327,7 +327,9 @@ void main(){ vec3 ro = uEye, rd = rayDir();
         const p = pointAt(ph.br, l); if (!p) continue;
         R.pt(rot(p, ph.phi), ph.sp.col, ph.dim ? 0.45 : f === 'eye' ? 0.9 : 0.6, 0.036);
       }
-      R.flushPoints({ minPx: 1.3, gain: near });
+      // On the way to or from the Surface scale the photons stay the dots they are from here, instead
+      // of swelling into discs as the camera closes on them: that scale's own photons take over from them.
+      R.flushPoints({ minPx: 1.3, gain: near, maxPx: R.zoom?.pair === 3 ? 6 : undefined });
     } else {
       // crests: points of equal optical path length, joined across neighbouring rays
       const SP = 0.42, phase = (T * 0.55) % 1, orders = S.second ? 2 : 1, tolE = (S.exag ? 2.4 : 1.1) * DEG;
@@ -356,13 +358,6 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       }
       R.flushLines({ keep: true, gain: near });
       R.flushLines({ model: modelTRS([0, 0, 0], 1, Math.PI / 2), gain: 0.3 * near });
-    }
-
-    // On the way to or from the Surface scale, a ring on the drop's skin marks the patch that scale shows.
-    if (R.zoom?.pair === 3) {
-      const M = this.embed(S), k = R.zoom.k, a = sstep(0, 0.06, k) * (1 - sstep(0.3, 0.7, k));
-      for (const r of [0.05, 0.012]) R.arc(M.o, M.X, M.Z, r, 0, 2 * Math.PI, [0.85, 0.92, 1], 0.9 * a, 1.5, 40);
-      R.flushLines({ depth: false });
     }
 
     const gl = R.gl;

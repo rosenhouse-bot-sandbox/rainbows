@@ -124,12 +124,12 @@ void main(){
 }`;
 const POINT_VS = `#version 300 es
 layout(location=0) in vec2 corner; layout(location=1) in vec3 P; layout(location=2) in vec4 C; layout(location=3) in float S;
-uniform mat4 uVP, uModel; uniform vec2 uRes; uniform float uPx, uMinPx, uP11;
+uniform mat4 uVP, uModel; uniform vec2 uRes; uniform float uPx, uMinPx, uMaxPx, uP11;
 out vec4 vC; out vec2 vUV;
 void main(){
   vec4 c = uVP*uModel*vec4(P,1.0);
   if(c.w < 1e-4){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
-  float truePx = S*uP11*uRes.y*0.5/c.w, px = max(truePx, uMinPx*uPx);
+  float truePx = S*uP11*uRes.y*0.5/c.w, px = min(max(truePx, uMinPx*uPx), uMaxPx*uPx);
   gl_Position = vec4(c.xy + corner*px/(uRes*0.5)*c.w, c.z, c.w);
   vC = C; vC.a *= min(1.0, truePx*truePx/(px*px)*12.0); vUV = corner;      // far-off points fade instead of staying a pixel wide
 }`;
@@ -358,7 +358,7 @@ export function createEngine(canvas) {
       const u = progPoint.u; gl.useProgram(progPoint.p);
       gl.uniformMatrix4fv(u.uVP, false, R.view.vp); gl.uniformMatrix4fv(u.uModel, false, opts.model || IDENT);
       gl.uniform2f(u.uRes, R.W, R.H); gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uGain, (opts.gain ?? 1) * R.fade);
-      gl.uniform1f(u.uMinPx, opts.minPx ?? 1.2); gl.uniform1f(u.uP11, R.view.p11);
+      gl.uniform1f(u.uMinPx, opts.minPx ?? 1.2); gl.uniform1f(u.uMaxPx, opts.maxPx ?? 1e6); gl.uniform1f(u.uP11, R.view.p11);
       gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
       if (opts.depth === false) gl.disable(gl.DEPTH_TEST); else { gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); }
       P.upload(); gl.bindVertexArray(P.vao);

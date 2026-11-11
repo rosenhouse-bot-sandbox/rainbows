@@ -8,7 +8,7 @@ import * as O from '../optics.js';
 import { backdrop } from './common.js';
 import { crossAngle } from './drop.js';
 
-const WAIST = 1.25, BOX = [6.2, 4.4, 2.3], RD = 1000;      // RD: the drop's radius
+const WAIST = 1.25, BOX = [46, 46, 2.3], LEN = 30, RD = 1000;      // BOX: how far the beams are drawn; LEN: how far the photons run;      // RD: the drop's radius
 let prog = null, photons = [], photonKey = '', omegaT = 0, lastT = null;
 const rand = rng(23);
 
@@ -95,7 +95,7 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn;
+uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn, uLit;
 const float RD = ${RD.toFixed(1)};
 const vec3 BOX = vec3(${BOX.map(x => x.toFixed(2)).join(',')});
 float sg(float a){ return exp(-a*a); }       // a beam with a fairly flat top and a definite edge
@@ -128,13 +128,26 @@ float net(vec2 g, float cell){
   vec2 l = 1.0 - smoothstep(w*0.6, w*1.6, d);
   return max(l.x, l.y)*(1.0 - smoothstep(0.08, 0.3, max(w.x, w.y)));
 }
+// whether a stretch of a sight line stays clear of a beam: d holds its two ends' distances from the
+// beam's axis, m is how far out the beam reaches
+bool clear(vec2 d, float m){ return d.x*d.y > 0.0 && min(abs(d.x), abs(d.y)) > m; }
 void main(){
   vec3 ro = uEye, rd = rayDir();
   vec3 inv = 1.0/rd, t0 = (-BOX-ro)*inv, t1 = (BOX-ro)*inv;
   vec3 tn = min(t0,t1), tf = max(t0,t1);
   float ta = max(max(tn.x,tn.y),max(tn.z,0.0)), tb = min(min(tf.x,tf.y),tf.z);
   vec3 col = vec3(0.0);
-  if(tb > ta){
+  // The beams run far past the edges of the view, in a slab a few µm thick. Most sight lines cross
+  // that slab without meeting any of the three, and are not marched at all.
+  bool lit = tb > ta;
+  if(lit){
+    vec2 a = (ro + rd*ta).xy*vec2(1.0, uA.w), b = (ro + rd*tb).xy*vec2(1.0, uA.w);
+    float m = 2.0*uD.x/1.25;
+    lit = !(clear(vec2(a.x*uA.z + a.y*uA.y, b.x*uA.z + b.y*uA.y), m)
+         && clear(vec2(a.x*uA.z - a.y*uA.y, b.x*uA.z - b.y*uA.y), m)
+         && clear(vec2(a.x*uB.z + a.y*uB.y, b.x*uB.z + b.y*uB.y), m*max(1.0, uB.z/uA.z)));
+  }
+  if(lit){
     const int N = 72;
     float ds = (tb-ta)/float(N), j = hash1(gl_FragCoord.xy + fract(uTime)*17.0);
     float Tr = 1.0;
@@ -142,12 +155,13 @@ void main(){
     for(int i=0;i<N;i++){
       vec3 p = ro + rd*(ta + (float(i)+j)*ds);
       vec3 f = field(p);
+      f.z *= 1.0 - smoothstep(0.55, 1.0, max(abs(p.x), abs(p.y))/BOX.x);       // the beams fade out far off
       float crest = max(f.x, 0.0), c2 = crest*crest;
       float e = mix(f.y*0.07, c2*c2*5.0 + f.x*f.x*0.12, uD.y)*f.z;
       col += Tr*mix(uCol, vec3(1.0), 0.35*c2*c2*uD.y)*e*ds;
       Tr *= exp(-e*ds*mix(0.0, 2.2, uD.y));
     }
-    col *= 1.6;
+    col *= 1.6*uLit;
   }
   // The drop itself, to scale: its skin carries a net of 2 µm squares near the beam, 20 µm and 200 µm
   // ones further off, and shines where it is seen edge-on, at the horizon.
@@ -183,25 +197,31 @@ void main(){
     // twice. Flying on into the molecules they go first.
     const z = R.zoom, own = !z ? 1 : z.lo ? z.cover : 1 - sstep(0.15, 0.5, z.k);
     gl.uniform1f(prog.u.uOwn, own);
+    // From the Drop scale this whole scene is a speck on the drop's skin. Its light stays off until it
+    // has some size, or it would be a bright dot there; then its photons take over from that scale's.
+    const lit = z?.lo ? sstep(0.4, 0.7, z.k) : 1, dots = z?.lo ? sstep(0.55, 0.95, z.k) : 1;
+    gl.uniform1f(prog.u.uLit, lit);
     R.fullscreen(prog, 'add');
 
     // the perpendicular, the three beam axes and their angles
     const P = q => toScene(q, c), dim = [0.75, 0.82, 1];
     R.seg(P([0, -3.6, 0]), P([0, 3.6, 0]), dim, 0.5, 1.2);
-    R.flushLines({ dash: [0.28, 0, 0.5], depth: false });
+    R.flushLines({ dash: [0.28, 0, 0.5], depth: false, gain: lit });
     R.seg(P([-si * 5.2, ci * 5.2, 0]), [0, 0, 0], dim, 0.1 * W[0], 1.3, 0.55 * W[0]);
     R.seg([0, 0, 0], P([si * 5.2, ci * 5.2, 0]), dim, 0.55 * W[1] * Math.sqrt(c.F.R), 1.3, 0.1 * W[1]);
     R.seg([0, 0, 0], P([st * 5.0, -ct * 5.0, 0]), dim, 0.55 * W[2], 1.3, 0.1 * W[2]);
     R.arc([0, 0, 0], P([0, 1, 0]), P([-1, 0, 0]), 1.7, 0, c.th, dim, 0.6, 1.3, 20);
     R.arc([0, 0, 0], P([0, -1, 0]), P([1, 0, 0]), 1.7, 0, c.F.thetaT, dim, 0.6, 1.3, 20);
-    R.flushLines({ depth: false });
+    R.flushLines({ depth: false, gain: lit });
 
     if (!wave) {
       // photons: each reflects or passes with the Fresnel odds, and travels at c/n
       const key = [S.cross, S.theta, S.pol].join();       // a change of colour leaves the photons where they are
-      if (!photons.length) for (let i = 0; i < 520; i++) photons.push({ t0: -rand() * 6 });
+      if (!photons.length) for (let i = 0; i < 1500; i++) photons.push({ t0: -rand() * 6, c: O.wlRGB(420 + 260 * rand()) });
+      // seen from far off a photon is drawn large enough to stay a dot, as the Drop scale's are
+      const size = Math.max(0.075, 0.004 * V.len(R.view.eye));
       const fresh = key !== photonKey; photonKey = key;
-      const LEN = 6.0, speed = 2.3;
+      const speed = 2.3;
       for (const ph of photons) {
         const dur = LEN * c.n1 / speed + LEN * Math.max(c.n1, c.n2) / speed;
         if (fresh || ph.u === undefined || T - ph.t0 > ph.dur) {
@@ -214,10 +234,13 @@ void main(){
         if (t < tHit) { const sdist = LEN - t * speed / c.n1; q = [x0 - si * sdist, ci * sdist, ph.v]; w = W[0]; }
         else if (ph.refl) { const sdist = (t - tHit) * speed / c.n1; q = [x0 + si * sdist, ci * sdist, ph.v]; w = W[1]; }
         else { const sdist = (t - tHit) * speed / c.n2; q = [x0 + st * sdist, -ct * sdist, ph.v]; w = W[2]; }
-        if (Math.abs(q[0]) > BOX[0] || Math.abs(q[1]) > BOX[1]) continue;
-        R.pt(P(q), col, 0.95 * w, 0.075);
+        // Flying in from the Drop scale each photon has a colour of its own, as that scale's do, and
+        // they settle to the one wavelength this scale follows. They fade out at the far ends.
+        const far = 1 - sstep(0.6, 1, Math.hypot(q[0], q[1]) / LEN);
+        if (far <= 0) continue;
+        R.pt(P(q), dots < 1 ? V.lerp(ph.c, col, dots) : col, 0.95 * w * far, size);
       }
-      R.flushPoints({ minPx: 1.6, depth: false });
+      R.flushPoints({ minPx: 1.6, depth: false, gain: lit });
     }
   },
 };
