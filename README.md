@@ -22,6 +22,9 @@ A rebuild at `v2/`, in three dimensions at every scale, with a sixth scale added
 - The scales are one connected world. Each deeper scene sits inside the one above at its true place,
   size and orientation (the sky where you stand on the globe, the drop in the rain, a patch of surface
   tangent to the drop where the ray crosses it), and moving between scales is a single camera flight.
+- The continents and clouds on the globe, and the cloud tops you pass on the way down to the field,
+  are generated noise and not a map of the real Earth. The ring and dot at "You are here" are a marker
+  and nothing more; they fade as the camera dives towards them.
 
 The physics, all in `js/v2/optics.js`:
 

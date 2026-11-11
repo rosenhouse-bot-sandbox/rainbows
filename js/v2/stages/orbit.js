@@ -1,5 +1,5 @@
 // Stage 1: the Earth in sunlight. Units are Earth radii; sunlight travels along +x.
-import { V, DEG } from '../gl.js';
+import { V, DEG, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { WARM, wavefrontSheets, coneDir } from './common.js';
 
@@ -60,12 +60,19 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
   if(h > 0.0 && b < 0.0){
     vec3 n = ro + rd*(-b-sqrt(h));
     vec3 m = vec3(n.x*uSpin.x - n.z*uSpin.y, n.y, n.x*uSpin.y + n.z*uSpin.x);   // the map turns with the Earth
-    float f = fbm(m*1.9+vec3(3.1,0.0,1.7)) + 0.25*fbm(m*6.0);
+    // finer detail in the land and the clouds, brought in as you come close enough to resolve it,
+    // so that the ground does not go flat and featureless on the way down
+    float alt = max(length(ro)-1.0, 0.0), fd = 0.0, cd = 0.0, sc = 14.0;
+    for(int i=0;i<4;i++){
+      float w = smoothstep(10.0/sc, 2.5/sc, alt);
+      if(w > 0.0){ fd += w*(fbm(m*sc+11.0)-0.5); cd += w*(fbm(m*sc*1.3+vec3(5.0,uTime*0.004,9.0))-0.5); }
+      sc *= 5.0; }
+    float f = fbm(m*1.9+vec3(3.1,0.0,1.7)) + 0.25*fbm(m*6.0) + 0.035*fd;
     float land = smoothstep(0.60, 0.66, f);
-    vec3 landc = mix(vec3(0.05,0.17,0.04), vec3(0.34,0.27,0.13), smoothstep(0.35,0.7,fbm(m*4.0+7.0)));
+    vec3 landc = mix(vec3(0.05,0.17,0.04), vec3(0.34,0.27,0.13), smoothstep(0.35,0.7,fbm(m*4.0+7.0)+0.3*fd));
     landc = mix(landc, vec3(0.85,0.9,0.95), smoothstep(0.80,0.9,abs(n.y)+0.08*f));
     vec3 surf = mix(vec3(0.012,0.05,0.16), landc, land);
-    float cl = smoothstep(0.50,0.78, fbm(m*3.2+vec3(uTime*0.006,2.0,0.0)) + 0.35*fbm(m*9.0+vec3(0.0,uTime*0.01,5.0))-0.12);
+    float cl = smoothstep(0.50,0.78, fbm(m*3.2+vec3(uTime*0.006,2.0,0.0)) + 0.35*fbm(m*9.0+vec3(0.0,uTime*0.01,5.0))-0.12 + 0.22*cd);
     float mu = dot(n,toSun), day = smoothstep(-0.12,0.22,mu);
     vec3 sunc = mix(vec3(1.0,0.45,0.2), vec3(1.0,0.96,0.9), smoothstep(-0.05,0.35,mu));
     surf = mix(surf, vec3(0.92), cl*0.9);
@@ -99,8 +106,11 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
       }
       R.flushLines({ dash: [1.5, T * 1.6, 0.4] });
     }
+    // Everything drawn at your spot is a diagram mark, sized for the whole-Earth view. Diving toward
+    // it, the marks fade out before they can swell to fill the screen.
+    const far = sstep(0.45, 1.6, V.len(V.sub(R.view.eye, p)));
     // the light that reaches you
-    const a = f === 'sun' ? 0.25 : 1;
+    const a = (f === 'sun' ? 0.25 : 1) * far;
     for (let k = 0; k < 6; k++) {
       const q = [p[0], p[1] + Math.cos(k) * 0.035, p[2] + Math.sin(k) * 0.035];
       R.seg([-7, q[1], q[2]], q, WARM, 0.1 * a, 1.8, 0.9 * a, k * 0.3);
@@ -117,7 +127,11 @@ void main(){ vec3 ro = uEye, rd = rayDir(); vec3 toSun = vec3(-1.0,0.0,0.0);
       }
     });
     R.flushLines();
-    R.pt(p, [1, 1, 1], 1.2, 0.05); R.flushPoints({ minPx: 3 });
+    // where you stand: a small dot just clear of the ground, inside a ring lying on the ground
+    const e1 = V.norm(V.cross(p, [0, 1, 0])), e2 = V.cross(p, e1);
+    R.arc(V.mul(p, 1.004), e1, e2, 0.045, 0, 2 * Math.PI, [1, 1, 1], 0.75 * far, 1.4, 40);
+    R.flushLines();
+    R.pt(V.mul(p, 1.012), [1, 1, 1], 1.1 * far, 0.011); R.flushPoints({ minPx: 3.5 });
   },
 };
 function bestPsi(p) { let b = 0, m = -2; for (let i = 0; i < 24; i++) { const d = coneDir([1, 0, 0], 42 * DEG, i / 24 * 6.2832), v = V.dot(d, p); if (v > m) { m = v; b = i / 24 * 6.2832; } } return b; }

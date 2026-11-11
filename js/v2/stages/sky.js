@@ -86,6 +86,17 @@ void main(){
     float fog = 1.0-exp(-t/1500.0);
     col = mix(g, mix(vec3(0.016,0.032,0.028), sky, 0.5), fog);
     col += bow*rainAmt*(1.0-exp(-t/600.0))*0.6;
+    // From far above (arriving from orbit) you look down on the top of the weather: sunlit land
+    // under broken cloud, in the same tones as the globe. Coming down, it thins into the view below.
+    float high = smoothstep(250.0, 3000.0, ro.y);
+    if(high > 0.0){
+      vec3 Q = ro + rd*(-ro.y/min(rd.y,-1e-4));
+      float k = 1.0/max(ro.y, 2000.0);       // features sized to how much ground is in view
+      float deck = smoothstep(0.42, 0.72, 0.6*fbm(vec3(Q.xz*0.00011, 4.0+uTime*0.004)) + 0.4*fbm(vec3(Q.xz*k*1.6, 9.0)) + 0.25*(fbm(vec3(Q.xz*k*7.0, 2.0))-0.5));
+      vec3 lnd = mix(vec3(0.045,0.105,0.028), vec3(0.17,0.17,0.05), smoothstep(0.35,0.65, fbm(vec3(Q.xz*k*3.0, 5.0))+0.3*(fbm(vec3(Q.xz*k*14.0, 1.0))-0.5)));
+      vec3 sun = uSunCol*sunUp;
+      col = mix(col, mix(lnd*(sun*(0.22+1.9*max(toSun.y,0.0)) + vec3(0.09,0.12,0.17)), vec3(0.92)*(sun*(0.05+1.5*max(toSun.y,0.0)) + 0.01), deck*0.9), high);
+    }
     depth = depthOf(P);
   }
   o = vec4(col*uFade, 1.0); gl_FragDepth = depth; }`);
