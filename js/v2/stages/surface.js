@@ -197,22 +197,25 @@ void main(){
     // twice. Flying on into the molecules they go first.
     const z = R.zoom, own = !z ? 1 : z.lo ? z.cover : 1 - sstep(0.15, 0.5, z.k);
     gl.uniform1f(prog.u.uOwn, own);
-    // From the Drop scale this whole scene is a speck on the drop's skin. Its light stays off until it
-    // has some size, or it would be a bright dot there; then its photons take over from that scale's.
-    const lit = z?.lo ? sstep(0.4, 0.7, z.k) : 1, dots = z?.lo ? sstep(0.55, 0.95, z.k) : 1;
+    // From far off this whole scene is a speck on the drop's skin, and everything in it would pile up
+    // into one bright patch there. So how much of it is drawn goes by how big it looks (`near`: 1 from
+    // closer than 80 µm, falling with distance): the beam's glow and the number of photons grow in
+    // steadily from the crossing as the camera closes on it, and the construction lines come last.
+    const near = Math.min(1, 80 / V.len(R.view.eye)), lit = near * near, lines = sstep(0.3, 0.7, near);
+    const dots = z?.lo ? sstep(0.55, 0.95, z.k) : 1;
     gl.uniform1f(prog.u.uLit, lit);
     R.fullscreen(prog, 'add');
 
     // the perpendicular, the three beam axes and their angles
     const P = q => toScene(q, c), dim = [0.75, 0.82, 1];
     R.seg(P([0, -3.6, 0]), P([0, 3.6, 0]), dim, 0.5, 1.2);
-    R.flushLines({ dash: [0.28, 0, 0.5], depth: false, gain: lit });
+    R.flushLines({ dash: [0.28, 0, 0.5], depth: false, gain: lines });
     R.seg(P([-si * 5.2, ci * 5.2, 0]), [0, 0, 0], dim, 0.1 * W[0], 1.3, 0.55 * W[0]);
     R.seg([0, 0, 0], P([si * 5.2, ci * 5.2, 0]), dim, 0.55 * W[1] * Math.sqrt(c.F.R), 1.3, 0.1 * W[1]);
     R.seg([0, 0, 0], P([st * 5.0, -ct * 5.0, 0]), dim, 0.55 * W[2], 1.3, 0.1 * W[2]);
     R.arc([0, 0, 0], P([0, 1, 0]), P([-1, 0, 0]), 1.7, 0, c.th, dim, 0.6, 1.3, 20);
     R.arc([0, 0, 0], P([0, -1, 0]), P([1, 0, 0]), 1.7, 0, c.F.thetaT, dim, 0.6, 1.3, 20);
-    R.flushLines({ depth: false, gain: lit });
+    R.flushLines({ depth: false, gain: lines });
 
     if (!wave) {
       // photons: each reflects or passes with the Fresnel odds, and travels at c/n
@@ -222,7 +225,9 @@ void main(){
       const size = Math.max(0.075, 0.004 * V.len(R.view.eye));
       const fresh = key !== photonKey; photonKey = key;
       const speed = 2.3;
-      for (const ph of photons) {
+      const count = Math.ceil(photons.length * lit);      // fewer from far off, so the stream never clumps
+      for (let i = 0; i < count; i++) {
+        const ph = photons[i];
         const dur = LEN * c.n1 / speed + LEN * Math.max(c.n1, c.n2) / speed;
         if (fresh || ph.u === undefined || T - ph.t0 > ph.dur) {
           ph.u = rand.gauss() * WAIST * 0.5; ph.v = rand.gauss() * WAIST * 0.5;
@@ -240,7 +245,7 @@ void main(){
         if (far <= 0) continue;
         R.pt(P(q), dots < 1 ? V.lerp(ph.c, col, dots) : col, 0.95 * w * far, size);
       }
-      R.flushPoints({ minPx: 1.6, depth: false, gain: lit });
+      R.flushPoints({ minPx: 1.6, depth: false });
     }
   },
 };
