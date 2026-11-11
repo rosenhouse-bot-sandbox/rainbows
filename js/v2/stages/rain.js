@@ -93,7 +93,6 @@ ${rows}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd></dl>`;
     if (B1 / DEG - S.sun > 2) L.push({ p: at(B1, 0), text: `Main bow · ${(B1 / DEG).toFixed(0)}°`, cls: 'strong' });
     if (wide && B2 / DEG - S.sun > 2) L.push({ p: at(B2 + 0.01, S.sun > 30 ? 0 : -0.28), text: `Outer bow · ${(B2 / DEG).toFixed(0)}°`, cls: 'far' });
     if (wide && S.sun > 1.5) { const t = EYE[1] / Math.sin(S.sun * DEG); if (t < 60) L.push({ p: V.mad(EYE, s, t), text: 'Shadow of your head: the centre of the bow', cls: 'note' }); }
-    lastHeroes.forEach((h, i) => { if (h.fade > 0.5 && (!wide || i === lock)) L.push({ p: V.add(h.P, [0.12, 0.1, 0]), text: h.lam ? `sends you ${colourName(h.lam)}` : h.th > 0.74 ? 'nothing for you yet' : 'pale white now', cls: i ? 'far' : '' }); });
     L.push({ p: V.mad([2.5, 6.5, 0], s, -3), text: 'Sunlight', cls: 'far' });
     L.push({ p: [6.2, 8.2, -9], text: 'Raindrops, falling', cls: 'far' });
     return L;
