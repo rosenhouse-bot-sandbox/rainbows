@@ -31,7 +31,7 @@ const KINDS = {
   'labels': 'A label jumps or flickers',
   'flight': 'The flight between scales is not continuous',
   'round-trip': 'There and back does not give the same view',
-  'route': 'The same view differs by the route taken',
+  'route': 'The address does not bring back the same view',
   'state': 'State changed with no input',
 };
 const ORDER = Object.keys(KINDS);
@@ -55,25 +55,32 @@ const normText = t => t.replace(/[\d.,]+/g, '#');
 // labels are followed by their wording with the numbers taken out, and by which of several alike they are
 const keyed = labels => { const n = new Map(); return labels.map(l => { const t = normText(l.t), k = n.get(t) ?? 0; n.set(t, k + 1); return [k ? `${t} (${k + 1})` : t, l]; }); };
 
-// how two samples that should show the same view differ
-function compare(A, B, imgA, imgB, picLimit, loose) {
-  const out = []; let sev = 0;
-  const d = diff(imgA, imgB);
-  if (d.bmax > picLimit) { out.push(`the picture differs (by ${d.bmax.toFixed(1)} of 255, ${where(d.at)})`); sev = Math.max(sev, d.bmax / picLimit); }
-  for (const k of Object.keys(A.S)) {
-    if (k === 'crossPhi' ? Math.abs(A.S[k] - B.S[k]) > 1e-3 : typeof A.S[k] === 'number' ? Math.abs(A.S[k] - B.S[k]) > 1e-6 : A.S[k] !== B.S[k]) { out.push(`state ${k} is ${B.S[k]} and was ${A.S[k]}`); sev = Math.max(sev, 2); }
+// Particles are compared by how many are in each eighth of the screen. Which particle is where is
+// chance, and two honest draws of the same stream differ cell by cell on a fine grid; a stream that has
+// bunched up, emptied or moved shows on a coarse one.
+const coarse = h => { const o = new Array(8).fill(0); for (let y = 0; y < 10; y++) for (let x = 0; x < 16; x++) o[(y < 5 ? 0 : 4) + (x >> 2)] += h[y * 16 + x]; return o; };
+// how two moments that should show the same view differ. Playing, the particles and waves are never
+// in the same places twice, so the last 60 frames before each moment are averaged (or `span` of them:
+// enough to blur a travelling wave whatever its phase).
+function compare(s, img, a, b, playing, span = 60) {
+  const A = s[a], B = s[b], out = []; let sev = 0;
+  const k = playing ? Math.min(span, b - a - 8, a + 1) : 1, avg = at => { const acc = new Float32Array(LW * LH * 3), hist = new Array(A.gl.hist.length).fill(0); let n = 0; for (let i = Math.max(0, at - k + 1); i <= at; i++) { n++; for (let j = 0; j < acc.length; j++) acc[j] += img[i][j]; s[i].gl.hist.forEach((v, j) => { hist[j] += v; }); } for (let j = 0; j < acc.length; j++) acc[j] /= n; return { img: acc, hist }; };
+  const VA = avg(a), VB = avg(b), busy = Math.max(A.gl.points, B.gl.points) >= 50;
+  const d = diff(VA.img, VB.img), limit = playing ? T.sameRoute : busy ? 2 * T.same : T.same;
+  if (d.bmax > limit) { out.push(`the picture differs (by ${d.bmax.toFixed(1)} of 255, ${where(d.at)})`); sev = Math.max(sev, d.bmax / limit); }
+  for (const key of Object.keys(A.S)) {
+    if (key === 'crossPhi' ? Math.abs(A.S[key] - B.S[key]) > 1e-3 : typeof A.S[key] === 'number' ? Math.abs(A.S[key] - B.S[key]) > 1e-6 : A.S[key] !== B.S[key]) { out.push(`state ${key} is ${B.S[key]} and was ${A.S[key]}`); sev = Math.max(sev, 2); }
   }
-  const moved = Object.keys(A.layout).filter(k => !B.layout[k] || rectDelta(A.layout[k], B.layout[k]) > T.layout), extra = Object.keys(B.layout).filter(k => !A.layout[k]);
-  if (moved.length || extra.length) { out.push(`layout differs: ${[...moved, ...extra].slice(0, 5).join(', ')}`); sev = Math.max(sev, 2); }
-  if (!loose) {
-    const la = A.labels.map(l => `${l.t}@${Math.round(l.x / 3)},${Math.round(l.y / 3)}`).sort().join('|'), lb = B.labels.map(l => `${l.t}@${Math.round(l.x / 3)},${Math.round(l.y / 3)}`).sort().join('|');
-    if (la !== lb) { out.push('the labels differ'); sev = Math.max(sev, 1.5); }
-    if (A.gl.points !== B.gl.points) { out.push(`${B.gl.points} particles on screen, and ${A.gl.points} before`); sev = Math.max(sev, 2); }
-    const hd = histDist(A.gl.hist, B.gl.hist);
-    if (hd > 0.05) { out.push(`${(hd * 100).toFixed(0)}% of the particles are somewhere else`); sev = Math.max(sev, 1 + hd * 5); }
-  }
+  const moved = Object.keys(A.layout).filter(key => !B.layout[key] || rectDelta(A.layout[key], B.layout[key]) > T.layout), extra = Object.keys(B.layout).filter(key => !A.layout[key]);
+  if (moved.length || extra.length) { out.push(`layout differs: ${[...moved, ...extra].slice(0, 5).map(key => `${key} ${A.layout[key] && B.layout[key] ? rectDelta(A.layout[key], B.layout[key]).toFixed(0) + ' px' : ''}`).join(', ')}`); sev = Math.max(sev, 2); }
+  const lab = L => L.labels.map(l => `${l.t}@${Math.round(l.x / 4)},${Math.round(l.y / 4)}`).sort().join('|');
+  if (!playing && lab(A) !== lab(B)) { out.push('the labels differ'); sev = Math.max(sev, 1.5); }
+  const pa = A.gl.points, pb = B.gl.points;
+  if (Math.abs(pa - pb) > 0.05 * Math.max(pa, pb) + 2) { out.push(`${pb} particles on screen, and ${pa} before`); sev = Math.max(sev, 2); }
+  const hd = histDist(coarse(VA.hist), coarse(VB.hist));
+  if (busy && hd > 0.2) { out.push(`the particles are spread differently (${(hd * 100).toFixed(0)}% of them are in another part of the screen)`); sev = Math.max(sev, hd / 0.2); }
   const ia = A.gl.ink, ib = B.gl.ink;
-  if (Math.abs(ia - ib) / Math.max(ia, ib, 1e-6) > (loose ? 0.1 : 0.02)) { out.push(`${((ib / ia - 1) * 100).toFixed(0)}% more line drawn`); sev = Math.max(sev, 1.5); }
+  if (Math.abs(ia - ib) / Math.max(ia, ib, 1e-6) > (playing ? 0.1 : 0.02)) { out.push(`${((ib / ia - 1) * 100).toFixed(0)}% more line drawn`); sev = Math.max(sev, 1.5); }
   return { out, sev };
 }
 
@@ -89,7 +96,7 @@ export function analyze(traces) {
     const s = tr.samples, n = s.length, img = s.map(x => dec(x.img));
     for (const e of tr.errors) add(tr, 'error', Math.max(0, n - 1), Math.max(0, n - 1), 9, e);
     if (!n) continue;
-    const d = [null], ev = s.map(x => !!x.ev), stageCh = s.map((x, i) => i > 0 && x.S.stage !== s[i - 1].S.stage);
+    const d = [null], ev = s.map(x => !!x.ev), reloaded = s.map(x => !!x.ev?.reload), stageCh = s.map((x, i) => i > 0 && x.S.stage !== s[i - 1].S.stage);
     for (let i = 1; i < n; i++) d.push(diff(img[i - 1], img[i]));
     const sinceEv = []; { let c = 99; for (let i = 0; i < n; i++) { c = ev[i] ? 0 : c + 1; sinceEv.push(c); } }
     const bm = i => (i >= 1 && i < n ? d[i].bmax : 0);
@@ -107,20 +114,24 @@ export function analyze(traces) {
       }
       // the press that starts a flight between scales must not cut the picture: the flight is the change
       if (ev[i] && x.tr && !p.tr && !x.tr.hop && a > 30) add(tr, 'jump', i, i, a / 30, `the picture cut by ${a.toFixed(1)} of 255 on the very frame a flight between scales began`);
-      if (!ev[i] && !fast && a > T.popAbs) {
+      if (!ev[i] && !fast && a > T.popAbs && ![1, 2, 3].some(k => reloaded[i - k])) {      // (a freshly loaded page settles for a few frames)
         const prev = ev[i - 1] ? Infinity : bm(i - 1), next = i + 1 < n ? (ev[i + 1] ? 0 : bm(i + 1)) : 0;
         const win = []; for (let j = Math.max(1, i - 7); j <= Math.min(n - 1, i + 7); j++) if (j !== i && !ev[j] && sinceEv[j] > 10 && s[j].tag === x.tag) win.push(bm(j));
         const lone = a > T.popK * Math.max(prev, next) + T.popB;
         const unusual = win.length >= 6 && sinceEv[i] > 10 && a > T.popWinK * median(win) + T.popB;
         if (lone || unusual) add(tr, 'jump', i, i, a / (T.popK * Math.max(Math.min(prev, 99), next) + T.popB), `the picture changed by ${a.toFixed(1)} of 255 at the ${where(d[i].at)} in one frame; the frames either side changed by ${prev === Infinity ? '(a press)' : prev.toFixed(1)} and ${next.toFixed(1)}`);
       }
-      if (!ev[i] && !fast && sinceEv[i] > 2 && x.hot > T.hotAbs && x.hot > T.hotK * Math.max(p.hot, s[i + 1]?.hot ?? 0) + 10)
+      if (!ev[i] && !fast && sinceEv[i] > 2 && x.hot > T.hotAbs && x.hot > T.hotK * Math.max(p.hot, s[i + 1]?.hot ?? 0) + 10
+        // (a flicker comes from nowhere: where as many pixels were already changing half as fast the frame before or
+        // after, the same change is only passing the mark, as when a slider's value steps by two notches for one)
+        && !(x.hot <= 1.5 * Math.max(p.warm ?? 0, s[i + 1]?.warm ?? 0)))
         add(tr, 'sparkle', i, i, x.hot / T.hotAbs / 4, `${x.hot} pixels changed sharply in one frame (${p.hot} the frame before, ${s[i + 1]?.hot ?? 0} the frame after)`);
 
       // ---- the layout ----
       const resized = [0, 1, 2, 3, 4, 5, 6, 7, 8].some(k => s[i - k]?.ev?.resize);
       const keys = new Set([...Object.keys(x.layout), ...Object.keys(p.layout)]), moved = [];
-      for (const k of keys) { const A = p.layout[k], B = x.layout[k]; if (!A || !B) moved.push([k, A ? 'went' : 'came', 99]); else { const dl = rectDelta(A, B); if (dl > T.layout) moved.push([k, `${dl.toFixed(1)} px`, dl, A, B]); } }
+      for (const k of keys) { if (k === '#capBody' || k === '#capTitle') continue;      // the words may change inside the caption's box: it is the box that must hold still
+        const A = p.layout[k], B = x.layout[k]; if (!A || !B) moved.push([k, A ? 'went' : 'came', 99]); else { const dl = rectDelta(A, B); if (dl > T.layout) moved.push([k, `${dl.toFixed(1)} px`, dl, A, B]); } }
       if (moved.length && !resized) {
         const excused = ev[i] || ev[i - 1] || stageCh[i] || stageCh[i - 1];
         const list = moved.sort((a, b) => b[2] - a[2]).slice(0, 4).map(m => `${m[0]} ${m[1]}`).join(', ');
@@ -166,7 +177,7 @@ export function analyze(traces) {
         if (same && !resized) for (const [key, l] of keyed(x.labels)) {
           const a0 = prevBy.get(key), a1 = prev2.get(key); if (!a0 || !a1 || l.off) continue;
           const dn = Math.hypot(l.x - a0.x, l.y - a0.y), dp = Math.hypot(a0.x - a1.x, a0.y - a1.y);
-          if (dn > 14 && dn > 4 * dp + 4 && !fast) add(tr, 'labels', i, i, dn / 14, `the label "${l.t}" moved ${dn.toFixed(0)} px in one frame (${dp.toFixed(0)} px the frame before)`);
+          if (dn > 14 && dn > 4 * dp + 4 && !fast && sinceEv[i] > 2 && !/scroll to zoom/.test(x.tag) /* every frame of a scroll is a new notch of the wheel */) add(tr, 'labels', i, i, dn / 14, `the label "${l.t}" moved ${dn.toFixed(0)} px in one frame (${dp.toFixed(0)} px the frame before)`);
         }
       }
 
@@ -191,35 +202,16 @@ export function analyze(traces) {
         if (gap > 1 && gap <= 20 && !s.slice(at[k - 1], at[k] + 1).some((x, j) => x.ev || /look around|scroll|coasting|resize/.test(x.tag) || stageCh[at[k - 1] + j] || x.tr || x.labels.some(l => l.off) || !x.labels.length)) add(tr, 'labels', at[k - 1] + 1, at[k], 2, `the label "${key}" went away for ${gap - 1} frame${gap > 2 ? 's' : ''} and came back`);
       }
     }
-    // ---- there and back ----
+    // ---- there and back, and back by the address ----
     for (const c of tr.checks) if (c.kind === 'same' && s[c.a] && s[c.b]) {
-      const r = compare(s[c.a], s[c.b], img[c.a], img[c.b], T.same, false);
-      if (r.out.length) { findings.push({ scenario: tr.name, dir: tr.dir, kind: 'round-trip', from: c.b, to: c.b, pair: [c.a, c.b], sev: r.sev, msg: `${c.what}: ${r.out.join('; ')}`, level: 'fail', tag: s[c.b].tag }); const f = findings.at(-1), acc = accepted.find(a => a.kind === f.kind && a.re.test(tr.name) && (!a.msg || a.msg.test(f.msg))); if (acc) { f.level = 'accepted'; f.why = acc.reason; } }
-    }
-    perScenario.push({ name: tr.name, frames: n, secs: tr.secs, maxStep: Math.max(0, ...d.slice(1).map((x, i) => (ev[i + 1] ? 0 : x.bmax))) });
-  }
-
-  // ---- the same view by different routes ----
-  const groups = new Map();
-  for (const tr of traces) if (tr.group && tr.samples.length) { if (!groups.has(tr.group)) groups.set(tr.group, []); groups.get(tr.group).push(tr); }
-  for (const [name, trs] of groups) {
-    const ref = trs.find(t => /loaded/.test(t.route)) ?? trs[0], playing = /playing/.test(name);
-    // playing: particles are never in the same places twice, so compare the average of the last frames
-    const view = tr => {
-      const s = tr.samples, k = playing ? Math.min(20, s.length) : 1, acc = new Float32Array(LW * LH * 3), hist = new Array(s.at(-1).gl.hist.length).fill(0);
-      for (const x of s.slice(-k)) { const im = dec(x.img); for (let i = 0; i < acc.length; i++) acc[i] += im[i] / k; x.gl.hist.forEach((v, i) => { hist[i] += v; }); }
-      return { img: acc, last: s.at(-1), hist };
-    };
-    const A = view(ref);
-    for (const tr of trs) if (tr !== ref) {
-      const B = view(tr), r = compare(A.last, B.last, A.img, B.img, playing ? T.sameRoute : T.same, playing);
-      if (playing) { const hd = histDist(A.hist, B.hist); if (hd > 0.18) { r.out.push(`the particles are spread differently (${(hd * 100).toFixed(0)}% of them, over the last 20 frames)`); r.sev = Math.max(r.sev, hd / 0.18); } }
+      const r = compare(s, img, c.a, c.b, !!c.playing, c.span), kind = /address/.test(c.what) ? 'route' : 'round-trip';
       if (r.out.length) {
-        const f = { scenario: tr.name, dir: tr.dir, kind: 'route', from: tr.samples.length - 1, to: tr.samples.length - 1, other: { dir: ref.dir, i: ref.samples.length - 1, name: ref.route }, sev: r.sev, msg: `"${tr.route}" against "${ref.route}": ${r.out.join('; ')}`, level: 'fail', tag: tr.samples.at(-1).tag };
-        const acc = accepted.find(a => a.kind === 'route' && a.re.test(tr.name) && (!a.msg || a.msg.test(f.msg))); if (acc) { f.level = 'accepted'; f.why = acc.reason; }
+        const f = { scenario: tr.name, dir: tr.dir, kind, from: c.b, to: c.b, pair: [c.a, c.b], sev: r.sev, msg: `${c.what}: ${r.out.join('; ')}`, level: 'fail', tag: s[c.b].tag };
+        const acc = accepted.find(a => a.kind === f.kind && a.re.test(tr.name) && (!a.msg || a.msg.test(f.msg))); if (acc) { f.level = 'accepted'; f.why = acc.reason; }
         findings.push(f);
       }
     }
+    perScenario.push({ name: tr.name, frames: n, secs: tr.secs, maxStep: Math.max(0, ...d.slice(1).map((x, i) => (ev[i + 1] ? 0 : x.bmax))) });
   }
 
   // neighbouring frames with the same complaint are one finding

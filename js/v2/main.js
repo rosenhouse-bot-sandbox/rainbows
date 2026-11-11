@@ -53,7 +53,7 @@ function writeHash() {
     const q = new URLSearchParams({ s: STAGES[S.stage].id, m: S.mode, f: S.focus, sun: S.sun, nm: S.lambda });
     if (S.stage === DROP) { q.set('bow', S.bowpos); if (S.exag) q.set('wide', 1); if (S.second) q.set('two', 1); }
     if (S.stage === ATOMS) { q.set('tilt', S.tilt); if (S.bfield) q.set('b', 1); }
-    if (S.stage === SURFACE) { q.set('x', S.cross); q.set('a', S.theta); q.set('p', S.pol); }
+    if (S.stage === SURFACE || S.stage === ATOMS) { q.set('x', S.cross); q.set('a', S.theta); q.set('p', S.pol); }      // (the Molecules scale keeps what the Surface above it was set to)
     history.replaceState(null, '', '#' + q);
   }, 300);
 }
@@ -139,7 +139,7 @@ function go(to) {
   const dir = to > S.stage ? 1 : -1, dur = RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5);
   tr = { hi: hiS, q: dir > 0 ? 0 : 1, dir, v: dir / dur, dur, capWait: 0 };
   // the marked drop keeps falling during the flight: set the Drop scene to where it will be on arrival
-  if (to === DROP && S.stage === RAIN) { const th = STAGES[RAIN].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
+  if (to === DROP && S.stage === RAIN) { tr.was = { bowpos: S.bowpos, exag: S.exag }; const th = STAGES[RAIN].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
   hopping = far;
   $('labels').classList.add('off');
   syncNav();
@@ -191,6 +191,43 @@ $('pause').addEventListener('click', () => setPaused(!paused));
 function resetView() { const c = cams[S.stage], d = STAGES[S.stage].cam; c.gy = d.yaw; c.gp = d.pitch; c.gd = d.dist; }
 
 let lastCap = '';
+// The caption keeps the height of the longest thing it can say at this scale, so that a press which
+// changes the words never moves the controls under it out from under the pointer. Every setting of
+// the buttons and tick boxes is tried, and each slider along its travel, in a hidden copy.
+let capKey = '', fontsIn = 0;
+function reserveCaption(st) {
+  const cap = $('cap'), w = cap.clientWidth, key = [S.stage, w, fontsIn].join();
+  if (key === capKey || !w) return;
+  capKey = key;
+  const groups = [], texts = new Map();
+  for (const k in segs) if (st.controls.includes(k)) groups.push([k, [...new Set([...document.querySelectorAll(`[data-${k}]`)].map(b => b.dataset[k]))]]);
+  for (const k of ['exag', 'second', 'bfield']) if (st.controls.includes(k)) groups.push([k, [false, true]]);
+  const add = o => { const c = st.caption(Object.assign(Object.create(S), o)); texts.set(c.title + '\n' + c.body, c); };
+  const walk = (i, o) => { if (i === groups.length) return add(o); for (const v of groups[i][1]) walk(i + 1, { ...o, [groups[i][0]]: v }); };
+  walk(0, {});
+  for (const id in sliders) if (st.controls.includes(id)) { const el = $(id); for (let j = 0; j <= 8; j++) add({ [id]: +el.min + (el.max - el.min) * j / 8 }); }
+  const probe = cap.cloneNode(true);
+  for (const el of [probe, ...probe.querySelectorAll('[id]')]) el.removeAttribute('id');
+  probe.removeAttribute('aria-live'); probe.setAttribute('aria-hidden', 'true');
+  probe.style.cssText = `position:absolute;visibility:hidden;pointer-events:none;min-height:0;width:${w}px`;
+  $('panel').appendChild(probe);
+  const t = probe.querySelector('h2'), b = probe.querySelector('p'); let h = 0;
+  for (const c of texts.values()) { t.textContent = c.title; b.textContent = c.body; h = Math.max(h, probe.offsetHeight); }
+  probe.remove();
+  cap.style.minHeight = h + 'px';
+}
+document.fonts?.addEventListener?.('loadingdone', () => { fontsIn++; if (R) syncUI(); });
+// The numbers under the controls never shrink while a scale is on show: a row that wraps or a line
+// that comes and goes would otherwise resize the panel, and on a phone move everything in it.
+let roKey = '', roMin = 0;
+$('readout').addEventListener('toggle', () => { roMin = 0; holdReadout(); }, true);      // opening or closing a section is a change of size that was asked for
+function holdReadout() {
+  const ro = $('readout'), key = [S.stage, ro.clientWidth].join();
+  if (key !== roKey) { roKey = key; roMin = 0; }
+  ro.style.minHeight = '';
+  roMin = Math.max(roMin, ro.offsetHeight);
+  ro.style.minHeight = roMin ? roMin + 'px' : '';
+}
 function syncUI(light) {
   const st = STAGES[S.stage];
   $('lambda').min = st.lambdaMin ?? 400;
@@ -209,6 +246,7 @@ function syncUI(light) {
   [...nav.children].forEach((b, i) => b.setAttribute('aria-current', String(i === S.stage)));
   syncNav();
   $('scaleText').textContent = st.scaleNote || '';
+  reserveCaption(st);
   const cap = st.caption(S), ck = S.stage + cap.title + cap.body;
   if (ck !== lastCap && !held) {       // the caption is a live region: only touch it when it really changes
     $('stageNo').textContent = `Scale ${S.stage + 1} of ${STAGES.length}`; $('stageScale').textContent = st.scale;
@@ -218,6 +256,7 @@ function syncUI(light) {
   const open = [...$('readout').querySelectorAll('details[open]')].map(d => d.dataset.k);      // rebuilt below: keep what was opened
   $('readout').innerHTML = st.readout ? st.readout(S) : '';
   for (const d of $('readout').querySelectorAll('details')) d.open = open.includes(d.dataset.k);
+  holdReadout();
   $('hint').textContent = wide ? (st.hint || 'Drag to look around · scroll to zoom') + ' · or arrow keys, + and −' : (st.hintSmall || 'Drag to look around · pinch to zoom');
   writeHash();
 }
@@ -230,6 +269,7 @@ function layout() {
   offXg = wide ? (pr.right + 8) / cssW : 0;
   offYg = wide ? 0 : clamp((cssH - pr.top) / cssH, 0, 0.5) * 0.92;
   if (first || RM.matches || was !== wide) { offX = offXg; offY = offYg; }
+  if (R && inited.size) reserveCaption(STAGES[S.stage]);      // the caption's width may have changed
 }
 window.addEventListener('resize', layout);
 new ResizeObserver(layout).observe($('panel'));
@@ -401,7 +441,9 @@ function frame(now) {
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
     if (deeper ? tr.q >= 1 && !(tr.hop && tr.out) : tr.q <= 0) {
-      const done = to; tr = null; S.stage = done; syncUI(); $('panel').classList.remove('swap');
+      const done = to;
+      if (tr.was && done === RAIN) Object.assign(S, tr.was);      // turned back before reaching the drop: nothing about it was changed
+      tr = null; S.stage = done; syncUI(); $('panel').classList.remove('swap');
       if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }
   } else {
@@ -411,7 +453,7 @@ function frame(now) {
   }
   const st = STAGES[S.stage];
   drawLabels(st.labels ? st.labels(D, labelView) : [], labelView);
-  if (st.liveReadout && (readoutClock += dt) > 0.25 && !tr) { readoutClock = 0; $('readout').innerHTML = st.readout(S); }
+  if (st.liveReadout && (readoutClock += dt) > 0.25 && !tr) { readoutClock = 0; $('readout').innerHTML = st.readout(S); holdReadout(); }
 }
 
 if (!R) { $('fail').hidden = false; }

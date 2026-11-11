@@ -27,12 +27,14 @@ function heroes(S, T) {
   for (const [x, z, ph] of HEROES) {
     let lo = 0.2, hi = 12;
     const target = 41.6 * DEG;
-    if (angleAt([x, hi, z], s) < target) continue;
     for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (angleAt([x, m, z], s) < target) lo = m; else hi = m; }
-    if (lo < 0.6 || lo > 8.2) continue;
+    // a drop whose crossing of the bow is leaving the rain (too high, or into the ground) fades out
+    // as the Sun moves, and is not there one moment and gone the next
+    const edge = sstep(0.6, 1.4, lo) * (1 - sstep(7.2, 8.2, lo));
+    if (edge <= 0) continue;
     const u = (T / 16 + ph) % 1, y = lo + 0.55 - FALL * 16 * u;
     const P = [x, y, z], th = angleAt(P, s), c = O.sampleBow(tab, th / DEG), m = Math.max(c[0], c[1], c[2], 1e-4);
-    out.push({ P, th, col: c.map(v => v / Math.max(m, 0.25)), level: Math.min(1, m / 0.25), lam: O.wavelengthAt(th), u, fade: Math.min(1, u * 8, (1 - u) * 8) });
+    out.push({ P, th, col: c.map(v => v / Math.max(m, 0.25)), level: Math.min(1, m / 0.25), lam: O.wavelengthAt(th), u, fade: Math.min(1, u * 8, (1 - u) * 8) * edge });
   }
   return out;
 }
@@ -80,9 +82,11 @@ export default {
   readout(S) {
     const top = (B1 / DEG - S.sun), top2 = (B2 / DEG - S.sun);
     const rows = lastHeroes.map((h, i) => `<dt>Marked drop ${i + 1} · ${(h.th / DEG).toFixed(1)}°</dt><dd>${h.lam ? colourName(h.lam) + ' ' + Math.round(h.lam) + ' nm' : h.th > 0.74 ? 'dark' : 'pale white'}</dd>`).join('');
+    // always one row for each marked drop, so the list never changes length while the Sun slider is held
+    const blank = Array.from({ length: HEROES.length - lastHeroes.length }, (_, i) => `<dt>Marked drop ${lastHeroes.length + i + 1}</dt><dd>not crossing the bow</dd>`).join('');
     return `<dl><dt>Top of the main bow</dt><dd>${top > 0 ? top.toFixed(1) + '° up' : 'below the horizon'}</dd>
 <dt>Top of the outer bow</dt><dd>${top2 > 0 ? top2.toFixed(1) + '° up' : 'below the horizon'}</dd>
-${rows}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd></dl>`;
+${rows}${blank}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd></dl>`;
   },
   liveReadout: true,
   init(R) {
@@ -102,6 +106,9 @@ void main(){
   if(c.w < 0.05){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
   float truePx = 0.02*uP11*uRes.y*0.5/c.w, px = max(truePx, 1.0*uPx);
   vC *= min(1.0, truePx*truePx/(px*px)*6.0);      // seen from far off, a drop keeps its share of light, not a whole pixel
+  // A drop falling past right in front of the camera would cover much of the view for a frame or two, a
+  // flash of colour from nowhere. Like anything that close to a lens it is out of focus: it thins as it spreads.
+  vC *= min(1.0, pow(0.04*uRes.y/truePx, 2.0));
   // From a distance a falling drop is drawn as a streak, head down. Close enough to have a size of
   // its own it is what it is: a sphere, as the Drop scale shows it.
   vTail = 1.0 - smoothstep(2.5, 8.0, truePx);
@@ -160,7 +167,7 @@ void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vU
     const tgE = s[1] < -1e-3 ? Math.min(40, EYE[1] / -s[1]) : 40;
     R.seg(EYE, V.mad(EYE, s, tgE), [0.7, 0.8, 1], 0.5 * here, 1.3);
     R.flushLines({ dash: [0.3, 0, 0.5] });
-    if (tgE < 40) { R.arc(V.add(V.mad(EYE, s, tgE), [0, 0.02, 0]), [1, 0, 0], [0, 0, 1], 0.35, 0, 6.2832, [0.7, 0.8, 1], 0.7 * here, 1.6, 28); R.flushLines(); }
+    if (tgE < 40) { R.arc(V.add(V.mad(EYE, s, tgE), [0, 0.02, 0]), [1, 0, 0], [0, 0, 1], 0.35, 0, 6.2832, [0.7, 0.8, 1], 0.7 * here * (1 - sstep(30, 40, tgE)), 1.6, 28); R.flushLines(); }
 
     // marked drops: the cone each throws back, and the one ray of it that finds the eye
     // (drawn by the Drop scale's own code, in the drop's own axes, so the two scales agree line for line)
@@ -176,10 +183,11 @@ void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vU
       const aE = (f === 'eye' ? 0.5 : 0.14) * here;
       for (let k = -24; k <= 24; k++) {
         const c = CONE[(k + 24) % 3], d = coneDir(s, c.th, k * 0.075);
-        if (d[1] < -0.03) continue;
+        const dip = sstep(-0.09, -0.03, d[1]);      // lines that would run into the ground fade out as the Sun climbs
+        if (dip <= 0) continue;
         const L = d[1] < -1e-3 ? Math.min(1400, EYE[1] / -d[1]) : 1400;
-        R.seg(EYE, V.mad(EYE, d, Math.min(L, 40)), c.col, aE, 1.3, aE * 0.5, k);
-        if (L > 40 && close < 1) R.seg(V.mad(EYE, d, 40), V.mad(EYE, d, L), c.col, aE * 0.5 * (1 - close), 1.3, 0.02 * aE, k + 40);      // the far reach only in the wide view
+        R.seg(EYE, V.mad(EYE, d, Math.min(L, 40)), c.col, aE * dip, 1.3, aE * 0.5 * dip, k);
+        if (L > 40 && close < 1) R.seg(V.mad(EYE, d, 40), V.mad(EYE, d, L), c.col, aE * 0.5 * (1 - close) * dip * sstep(40, 60, L), 1.3, 0.02 * aE * dip, k + 40);      // the far reach only in the wide view
       }
       R.flushLines({ dash: [1.2, -T * 2.5, 0.6] });
     }

@@ -72,7 +72,7 @@ neighbours:
 | A label jumps or flickers | a label moves far in one frame, or goes away briefly and comes back |
 | The flight is not continuous | the speed along a flight between scales changes abruptly |
 | There and back | with the animation paused, dragging a slider away and back, or zooming in part-way and backing out, does not return the same picture, state, layout, labels and particles |
-| By the route taken | the same address reached by loading it, by dragging to it and by pressing to it gives different views |
+| The address does not bring back the view | after dragging or pressing to a view, loading the address the page wrote for it in a fresh page gives a different state, layout, picture or spread of particles |
 | A NaN or infinity | a non-finite number was sent to WebGL, or a shader wrote one into a render target (where the bloom turns it into a white blob for a frame) |
 
 A press is allowed to cut. A drag is not, and neither is doing nothing.

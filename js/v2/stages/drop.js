@@ -64,6 +64,13 @@ let prog = null, cache = null, cacheKey = '', photons = [], photonKey = '';
 const A = [0, 0, 0], B = [0, 0, 0];
 const rand = rng(11);
 
+// How far outside the drop the view from outside starts giving way to the view from inside, in drop
+// radii: 3 µm with the camera at the Surface scale's distance from the crossing, wider from further off
+// (where a flight is moving faster), and never wide enough to show at the Drop scale's own distances.
+export function skinBlend(R, S) {
+  const a = S.crossPhi ?? crossAngle(S.cross), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
+  return Math.min(0.3, Math.max(0.003, 0.6 * (d - 0.025)));
+}
 function build(S) {
   const orders = S.second ? 2 : 1, thetaE = eyeAngle(S);
   const c = { thetaE, fan: [], cone: [], disc: [], eye: [], eyeCum: [], eyeCol: [0, 0, 0], desc: null };
@@ -137,8 +144,12 @@ export function drawFar(R, S, h, toEye, gain = 1, glint = gain, xf = p => p, uni
   for (const r of farRays) R.seg(xf(r.p), xf(r.q), r.col, 0.7 * aC, 1.2, 0);
   const o = xf([0, 0, 0]);
   R.seg(o, toEye, h.col, (0.25 + 0.75 * h.level) * aE, 2.4);
-  R.pt(o, [0.8, 0.9, 1], 0.7 * h.fade * glint, 6 * unit);
-  R.pt(o, h.col, h.level * aE / gain * glint, 20 * unit);
+  // The glow stands in for a drop too small to see. From close by it would fill the view (a marked drop
+  // falling past the camera during a flight was a coloured flash for one frame), so past a quarter of
+  // its distance across it thins out as it spreads.
+  const wide = 20 * unit / Math.max(1e-9, V.len(V.sub(R.view.eye, o))), thin = Math.min(1, (0.25 / wide) ** 2);
+  R.pt(o, [0.8, 0.9, 1], 0.7 * h.fade * glint * thin, 6 * unit);
+  R.pt(o, h.col, h.level * aE / gain * glint * thin, 20 * unit);
 }
 
 function drawRay(R, ray, alpha, show, w = 1.5) {
@@ -246,17 +257,22 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform float uBody;
+uniform float uBody, uSkin;
 void main(){ vec3 ro = uEye, rd = rayDir();
   float b = dot(ro, rd), c = dot(ro, ro)-1.0, h = b*b-c;
-  if(h < 0.0){ o = vec4(0.0); return; }
-  h = sqrt(h); vec3 n1 = normalize(ro + rd*(-b-h)), n2 = normalize(ro + rd*(-b+h));      // (seen from metres away, rounding would push these off the sphere)
+  if(h < 0.0 || sqrt(h) <= b){ o = vec4(0.0); return; }      // the sight line misses the drop, or the drop is behind the camera
+  h = sqrt(h); float tN = -b-h, tF = -b+h; vec3 n1 = normalize(ro + rd*(-b-h)), n2 = normalize(ro + rd*(-b+h));      // (seen from metres away, rounding would push these off the sphere)
   vec3 sun = vec3(-1.0, 0.0, 0.0);
   float f1 = pow(clamp(1.0-dot(n1,-rd), 0.0, 1.0), 3.0);
-  vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1);
-  col += vec3(1.0,0.95,0.85)*pow(max(dot(reflect(rd,n1), sun),0.0), 90.0)*2.5;          // the Sun's glint
+  // A flight to a crossing can carry the camera through the skin. From outside the near skin is seen,
+  // from inside the far skin (at the same slant, so with the same sheen). The two are blended over the
+  // last stretch outside (uSkin wide), and skin right at the eye is not drawn, so that nothing changes
+  // at once as the camera passes through.
+  float wo = smoothstep(0.0, uSkin, sqrt(c + 1.0) - 1.0);
+  vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1)*mix(1.0 - exp(-2.0*tF/uSkin), 1.0, wo);
+  col += vec3(1.0,0.95,0.85)*pow(max(dot(reflect(rd,n1), sun),0.0), 90.0)*2.5*wo;          // the Sun's glint
   col += vec3(0.5,0.7,1.0)*pow(max(dot(reflect(rd,-n2), -sun),0.0), 30.0)*0.25;         // light gathered at the back
-  col += vec3(0.25,0.4,0.7)*0.05*smoothstep(0.0, 2.0, 2.0*h);
+  col += vec3(0.25,0.4,0.7)*0.05*smoothstep(0.0, 2.0, tF - max(tN, 0.0));      // the water looked through
   o = vec4(col*uFade*uBody, 0.0); }`);
   },
 
@@ -276,7 +292,9 @@ void main(){ vec3 ro = uEye, rd = rayDir();
     // the normal at the back, with the angle of incidence
     const hb = c.desc.hits[1];
     R.seg(V.mul([hb[0], hb[1], 0], 0.45), V.mul([hb[0], hb[1], 0], 1.5), [0.7, 0.8, 1], 0.4, 1.2);
-    eyeGlyph(R, eyeAt(c), [0, 0, 1], [-e[1], e[0], 0], 0.4, f === 'sun' ? [0.5, 0.5, 0.5] : c.eyeCol.map(x => x * c.eyeLevel + 0.08), f === 'sun' ? 0.4 : 1);
+    // (Flying in from the rain the camera comes from the eye's side and passes close by this marker;
+    // its glow would fill the view for a frame, so it fades out within a few drop radii of the camera.)
+    eyeGlyph(R, eyeAt(c), [0, 0, 1], [-e[1], e[0], 0], 0.4, f === 'sun' ? [0.5, 0.5, 0.5] : c.eyeCol.map(x => x * c.eyeLevel + 0.08), (f === 'sun' ? 0.4 : 1) * sstep(0.8, 2.5, V.len(V.sub(R.view.eye, eyeAt(c)))));
     R.flushLines({ gain: near }); R.flushPoints({ gain: near });
     if (far * (R.zoom?.cover ?? 1) > 0) {
       const t = dive.M.theta;
@@ -337,7 +355,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
               if (l < L[k] || k + 1 >= L.length) { pk = -1; continue; }
               const t = (l - L[k]) / (L[k + 1] - L[k]), p0 = br.P[k], p1 = br.P[k + 1];
               B[0] = p0[0] + (p1[0] - p0[0]) * t; B[1] = p0[1] + (p1[1] - p0[1]) * t;
-              let a = vis(br.I[k]) * gain;
+              let a = vis(br.I[k]) * gain * sstep(0, 0.5, l);       // a new crest grows in where the light arrives, not all at once
               if (k === L.length - 2) a *= Math.max(0, 1 - (l - L[k]) / EXT);       // fade as it leaves
               if (f === 'eye' && o === 1) { const d = (br.theta - c.thetaE) / tolE; a *= Math.exp(-d * d) * (j >= nR / 2 ? 1 : 0); }
               if (pk === k && (a > 0.004 || pa > 0.004)) R.seg(A, B, col, pa * 0.7, 1.4, a * 0.7);
@@ -351,7 +369,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
     }
 
     const gl = R.gl;
-    gl.useProgram(prog.p); R.setRayUniforms(prog, T); gl.uniform1f(prog.u.uBody, 1);
+    gl.useProgram(prog.p); R.setRayUniforms(prog, T); gl.uniform1f(prog.u.uBody, 1); gl.uniform1f(prog.u.uSkin, skinBlend(R, S));
     R.fullscreen(prog, 'add');
   },
 };

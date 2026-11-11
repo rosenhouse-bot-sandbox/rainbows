@@ -30,7 +30,7 @@ if (!flag('analyze')) {
   try { chromium = createRequire(import.meta.url)('playwright').chromium; }
   catch { try { chromium = createRequire('/opt/node-tools/')('playwright').chromium; } catch { console.error('Playwright is not installed. Install it outside the repository: npm install -g playwright && npx playwright install chromium'); process.exit(2); } }
 
-  if (!flag('keep')) fs.rmSync(out, { recursive: true, force: true });      // --keep: rerun some scenarios and report on them with the rest of the last run
+  if (!flag('keep') && !flag('list')) fs.rmSync(out, { recursive: true, force: true });      // --keep: rerun some scenarios and report on them with the rest of the last run
   fs.mkdirSync(path.join(out, 'traces'), { recursive: true });
   const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.json': 'application/json' };
   const srv = http.createServer((q, s) => {
@@ -103,7 +103,17 @@ if (!flag('analyze')) {
     async state() { return this.page.evaluate(() => ({ ...window.__rainbows.S, busy: window.__rainbows.busy })); }
     // remember this frame; same() later says the page should by then look and be exactly as it was
     mark(name) { this.marks[name] = this.samples.length - 1; }
-    same(name, what) { this.checks.push({ kind: 'same', a: this.marks[name], b: this.samples.length - 1, what }); }
+    same(name, what, o = {}) { this.checks.push({ kind: 'same', a: this.marks[name], b: this.samples.length - 1, what, ...o }); }
+    // load the address the page has written for where it is now, in a fresh page with a fresh clock
+    async reload() {
+      await new Promise(r => setTimeout(r, 500));      // the address bar is written a moment after the last change
+      const url = await this.page.evaluate(() => location.href);
+      await this.page.goto('about:blank'); await this.page.goto(url);
+      await this.page.waitForFunction(() => window.__smooth?.ready(), null, { timeout: 120000, polling: 100 });
+      if (this.sc.paused) { const b = await this.box('#pause'); await this.page.mouse.move(b.x + b.w / 2, b.y + b.h / 2); await this.page.mouse.down(); await this.page.mouse.up(); }
+      await this.page.evaluate(() => window.__smooth.skip(4, 1000 / 60));
+      this.event(`load ${url.split('#')[1]}`, { resize: true, reload: true });
+    }
     expect(ok, what) { if (!ok) this.errors.push(what); }
   }
 

@@ -81,7 +81,7 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn, uLit;
+uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn, uLit, uSkin;
 const float RD = ${RD.toFixed(1)};
 const vec3 BOX = vec3(${BOX.map(x => x.toFixed(2)).join(',')});
 float sg(float a){ return exp(-a*a); }       // a beam with a fairly flat top and a definite edge
@@ -99,20 +99,19 @@ vec3 field(vec3 p){
   float xt = q.x + q.y*uD.w, g = tm*gz*sg(xt*xt*c2);
   return vec3(g*cos(uB.x*(uB.y*q.x - uB.z*q.y) - uC.w), g*g, uW.z);
 }
-// The drop's surface along a ray: x is how far to it (negative if the ray misses), y how far the ray
-// runs through water, z whether the camera is itself under water. The sphere's centre is RD below the origin; the forms used keep their
-// precision though the camera is a few units from a sphere a thousand across.
-vec3 dropHit(vec3 ro, vec3 rd){
-  float c = dot(ro,ro) + 2.0*RD*ro.y, b = dot(ro,rd) + RD*rd.y, h = b*b - c;
-  if(c <= 0.0){ float t = sqrt(max(h,0.0)) - b; return vec3(t, t, 1.0); }          // the camera is under water
-  if(h <= 0.0 || b >= 0.0) return vec3(-1.0, 0.0, 0.0);
-  h = sqrt(h); return vec3(c/(h - b), 2.0*h, 0.0);
-}
 // lines of a square net with cells "cell" across, kept about a pixel wide and faded out before they blur together
 float net(vec2 g, float cell){
   vec2 q = g/cell, w = fwidth(q), d = abs(fract(q - 0.5) - 0.5);
   vec2 l = 1.0 - smoothstep(w*0.6, w*1.6, d);
   return max(l.x, l.y)*(1.0 - smoothstep(0.08, 0.3, max(w.x, w.y)));
+}
+// The drop's skin with its net of lines, where a sight line meets it at P.
+vec3 skin(vec3 P, vec3 rd){
+  vec3 nrm = vec3(P.x, P.y + RD, P.z)/RD;
+  vec2 g = RD*vec2(atan(P.x, P.y + RD), atan(P.z, P.y + RD));
+  float line = max(net(g, 2.0), max(net(g, 20.0), net(g, 200.0)));
+  float graze = pow(1.0 - abs(dot(nrm, rd)), 4.0);
+  return vec3(0.16,0.34,0.7)*(0.05 + 0.11*line + 0.45*graze);
 }
 // whether a stretch of a sight line stays clear of a beam: d holds its two ends' distances from the
 // beam's axis, m is how far out the beam reaches
@@ -151,15 +150,19 @@ void main(){
   }
   // The drop itself, to scale: its skin carries a net of 2 µm squares near the beam, 20 µm and 200 µm
   // ones further off, and shines where it is seen edge-on, at the horizon.
-  vec3 hit = dropHit(ro, rd);
-  if(hit.x > 0.0){
-    vec3 P = ro + rd*hit.x, nrm = vec3(P.x, P.y + RD, P.z)/RD;
-    vec2 g = RD*vec2(atan(P.x, P.y + RD), atan(P.z, P.y + RD));
-    float line = max(net(g, 2.0), max(net(g, 20.0), net(g, 200.0)));
-    float graze = pow(1.0 - abs(dot(nrm, rd)), 4.0);
-    col += vec3(0.16,0.34,0.7)*(0.05 + 0.11*line + 0.45*graze)*uOwn;
-    // from inside the drop the skin is a window on the dark air beyond: the water in between is kept faint
-    col += vec3(0.010,0.028,0.070)*mix(1.5, 0.45, hit.z)*(1.0 - exp(-hit.y/7.0))*uOwn;
+  // (The sphere's centre is RD below the origin; the forms used keep their precision though the
+  // camera is a few units from a sphere a thousand across.) From outside, the near skin is seen with
+  // the water behind it; from inside, the far skin is a window on the dark air beyond and the water in
+  // between is kept faint. A flight can carry the camera through the skin, so the two views are blended
+  // over its last few µm outside (uSkin: wider from far off, to match the Drop scale), and skin right at the eye is not drawn: nothing changes at once there.
+  float cc = dot(ro,ro) + 2.0*RD*ro.y, bb = dot(ro,rd) + RD*rd.y, hh = bb*bb - cc;
+  float tFar = sqrt(max(hh, 0.0)) - bb;
+  if(hh > 0.0 && tFar > 0.0){
+    float wo = smoothstep(0.0, uSkin, cc/(2.0*RD)), tNear = max(cc, 0.0)/tFar;
+    vec3 s = vec3(0.0);
+    if(wo > 0.0) s += wo*skin(ro + rd*tNear, rd);
+    if(wo < 1.0) s += (1.0 - wo)*(1.0 - exp(-2.0*tFar/uSkin))*skin(ro + rd*tFar, rd);
+    col += (s + vec3(0.010,0.028,0.070)*mix(0.45, 1.5, wo)*(1.0 - exp(-(tFar - tNear)/7.0)))*uOwn;
   }
   o = vec4(col*uFade, 0.0); }`);
   },
@@ -183,6 +186,7 @@ void main(){
     // twice. Flying on into the molecules they go first.
     const z = R.zoom, own = !z ? 1 : z.lo ? z.cover : 1 - sstep(0.15, 0.5, z.k);
     gl.uniform1f(prog.u.uOwn, own);
+    gl.uniform1f(prog.u.uSkin, Math.min(300, Math.max(3, 0.6 * (V.len(R.view.eye) - 25))));
     // From far off this whole scene is a speck on the drop's skin, and everything in it would pile up
     // into one bright patch there. So how much of it is drawn goes by how big it looks (`near`: 1 from
     // closer than 80 µm, falling with distance): the beam's glow and the number of photons grow in

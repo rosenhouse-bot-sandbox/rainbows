@@ -166,11 +166,11 @@
     const px = small.getImageData(0, 0, LW, LH).data, rgb = new Uint8Array(LW * LH * 3);
     for (let i = 0, j = 0; i < px.length; i += 4) { rgb[j++] = px[i]; rgb[j++] = px[i + 1]; rgb[j++] = px[i + 2]; }
     // fine detail: the largest change of any one pixel of the mid-size frame, and how many changed a lot
-    const m = mid.getImageData(0, 0, MW, MH).data; let peak = 0, hot = 0;
-    if (prevMid) for (let i = 0; i < m.length; i += 4) { const d = Math.max(Math.abs(m[i] - prevMid[i]), Math.abs(m[i + 1] - prevMid[i + 1]), Math.abs(m[i + 2] - prevMid[i + 2])); if (d > peak) peak = d; if (d > 70) hot++; }
+    const m = mid.getImageData(0, 0, MW, MH).data; let peak = 0, hot = 0, warm = 0;
+    if (prevMid) for (let i = 0; i < m.length; i += 4) { const d = Math.max(Math.abs(m[i] - prevMid[i]), Math.abs(m[i + 1] - prevMid[i + 1]), Math.abs(m[i + 2] - prevMid[i + 2])); if (d > peak) peak = d; if (d > 70) hot++; if (d > 30) warm++; }
     prevMid = m;
     let s = ''; for (let i = 0; i < rgb.length; i++) s += String.fromCharCode(rgb[i]);
-    return { rgb: btoa(s), peak, hot };
+    return { rgb: btoa(s), peak, hot, warm };
   }
   const midJpeg = () => mid.canvas.toDataURL('image/jpeg', 0.82).split(',')[1];      // (encoded at once: the asynchronous encoder waits for idle time)
   const realFrame = () => new Promise(r => realRAF(() => setTimeout(r, 0)));
@@ -190,7 +190,7 @@
       const cam = r ? r.cams.map(c => [c.yaw, c.pitch, c.dist]) : null;
       const sliders = {}; document.querySelectorAll('input[type=range]').forEach(el => { if (el.getClientRects().length) sliders[el.id] = +el.value; });
       const ta = Date.now(), layout = layoutSample(), tb = Date.now(), labels = labelSample(), tc = Date.now(), gl = drawSample(), td = Date.now(), jpg = midJpeg(), te = Date.now();
-      const out = { t: vnow, S, tr, cam, sliders, layout, labels, gl, img: img.rgb, peak: img.peak, hot: img.hot, jpg, bad }; out.ms = [t1 - t0, t2 - t1, t3 - t2, tb - ta, tc - tb, td - tc, te - td];
+      const out = { t: vnow, S, tr, cam, sliders, layout, labels, gl, img: img.rgb, peak: img.peak, hot: img.hot, warm: img.warm, jpg, bad }; out.ms = [t1 - t0, t2 - t1, t3 - t2, tb - ta, tc - tb, td - tc, te - td];
       bad = [];
       return out;
     },

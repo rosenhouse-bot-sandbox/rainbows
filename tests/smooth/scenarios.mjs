@@ -9,6 +9,9 @@
 // a tiny seeded generator, for the scenario that presses things at random
 const rng = seed => () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
 const SEG_KEY = { mode: 'm', focus: 'f', cross: 'x', pol: 'p' };      // how the address bar spells each button group
+// Flights are stepped a little faster than 30 a second: at 30 or slower the page takes the machine
+// for a slow one and starts drawing at a lower resolution, which is a change of picture all of its own.
+const FLY = 0.029;
 const qs = o => Object.entries(o).filter(([, v]) => v != null).map(([k, v]) => `${k}=${v}`).join('&');
 
 export function scenarios(model, { quick = false } = {}) {
@@ -59,7 +62,7 @@ export function scenarios(model, { quick = false } = {}) {
   // presses made in mid-flight: backing out part-way must return to exactly the picture left behind,
   // and a change of mind twice over must still arrive
   const reverse = i => ({
-    name: `reverse mid-flight ${ST[i].name} to ${ST[i + 1].name}`, hash: `s=${ST[i].id}`, dt: 1 / 30, paused: true, cost: pairCost(i) * 330,
+    name: `reverse mid-flight ${ST[i].name} to ${ST[i + 1].name}`, hash: `s=${ST[i].id}`, dt: FLY, paused: true, cost: pairCost(i) * 330,
     async run(h) {
       await h.frames(10); h.mark('start');
       await h.click('#next', 45, 'zooming in'); await h.click('#prev'); await h.land('turned back part-way', 700, 20);
@@ -73,7 +76,7 @@ export function scenarios(model, { quick = false } = {}) {
   if (!q) L.push(flight(last - 1, { view: 'phone' }), flight(0, { view: 'phone' }));
   const crossAt = ST.findIndex(st => st.segs.cross), CX = crossAt >= 0 ? ST[crossAt].segs.cross : [], cx = v => `[data-cross="${v}"]`;
   L.push({
-    name: 'reduced motion: every scale and back', hash: `s=${ST[0].id}`, dt: 1 / 30, reduced: true, cost: 60,
+    name: 'reduced motion: every scale and back', hash: `s=${ST[0].id}`, dt: FLY, reduced: true, cost: 60,
     async run(h) {
       await h.frames(6);
       for (let i = 0; i < last; i++) { await h.click('#next'); await h.land(`to ${ST[i + 1].name}`, 200, 4); if (i + 1 === crossAt) await h.click(cx(CX.at(-1)), 10); }
@@ -82,7 +85,7 @@ export function scenarios(model, { quick = false } = {}) {
     },
   });
   if (!q) L.push({
-    name: 'jump from the first scale to the last and back', hash: `s=${ST[0].id}`, dt: 1 / 30, cost: 600,
+    name: 'jump from the first scale to the last and back', hash: `s=${ST[0].id}`, dt: FLY, cost: 600,
     async run(h) {
       await h.frames(6);
       await h.click(`#stages button:nth-child(${last + 1})`); await h.land('first to last', 1500);
@@ -92,7 +95,7 @@ export function scenarios(model, { quick = false } = {}) {
     },
   });
   if (CX.length >= 3) L.push({
-    name: `${ST[crossAt].name}: flying between crossings`, hash: qs({ s: ST[crossAt].id, x: CX[0] }), dt: 1 / 30, cost: secs(ST[crossAt]) * 800,
+    name: `${ST[crossAt].name}: flying between crossings`, hash: qs({ s: ST[crossAt].id, x: CX[0] }), dt: FLY, cost: secs(ST[crossAt]) * 800,
     async run(h) {
       await h.frames(8);
       await h.click(cx(CX[1])); await h.land(`${CX[0]} to ${CX[1]}`);
@@ -106,7 +109,7 @@ export function scenarios(model, { quick = false } = {}) {
     },
   });
   L.push({
-    name: 'presses at random moments', hash: `s=${ST[1].id}`, dt: 1 / 30, cost: 400,
+    name: 'presses at random moments', hash: `s=${ST[1].id}`, dt: FLY, cost: 400,
     async run(h) {
       const r = rng(7); let heading = 1;
       await h.frames(5);
@@ -143,33 +146,39 @@ export function scenarios(model, { quick = false } = {}) {
     async run(h) { await h.frames(8); await h.resize('phone', 40); await h.resize('desk', 40); },
   });
 
-  // ---- the same view reached by different routes must be the same view ----
-  const route = (group, name, hash, run, o = {}) => L.push({ name: `route: ${group} / ${name}`, group, route: name, hash, ...o, run });
+  // ---- the address bar must bring back the view it was written for ----
+  // Get somewhere by hand (drag a slider to its end, press a button), then load the address the page
+  // wrote for it in a fresh page and run the same number of frames. The two must be the same view:
+  // the same state, layout and labels, the same picture when paused, the same spread of particles.
+  const route = (name, hash, how, { paused, st, N = 30 }) => L.push({
+    name: `route: ${name} (${paused ? 'paused' : 'playing'})`, hash, paused, cost: secs(st) * (2 * N + 30),
+    async run(h) {
+      await h.frames(6); await how(h);
+      await h.frames(N - h.samples.length, 'arrived by hand'); h.mark('by hand');
+      await h.reload(); await h.frames(N, 'loaded from the address');
+      h.same('by hand', 'loading the address the page wrote', { playing: !paused, span: Math.min(120, N - 45) });
+    },
+  });
   for (const st of ST) {
+    const base = { s: st.id, ...(st.segs.focus?.includes('eye') ? { f: 'eye' } : {}) }, c = secs(st);
     for (const [k, id] of st.sliders.entries()) {
       const key = st.hashKey[id], r = st.range[id]; if (!key || (q && k > 0)) continue;
-      const base = { s: st.id, ...(st.segs.focus?.includes('eye') ? { f: 'eye' } : {}) }, c = secs(st);
-      // paused from the first frame, so nothing but the route differs
-      let g = `${st.name}, ${id} at its lowest (paused)`;
-      route(g, 'loaded there', qs({ ...base, [key]: r.min }), async h => { await h.frames(30); }, { paused: true, cost: c * 30 });
-      route(g, 'slider dragged there', qs({ ...base, [key]: r.max }), async h => { await h.drag(id, r.max, r.min, 20); await h.frames(30); }, { paused: true, cost: c * 50 });
-      // playing: the same number of frames on both routes, so the clocks agree
-      const N = c > 0.5 ? 70 : 180;
-      g = `${st.name}, ${id} at its lowest (playing)`;
-      route(g, 'loaded there', qs({ ...base, [key]: r.min }), async h => { await h.frames(N); }, { cost: c * N });
-      route(g, 'slider dragged there', qs({ ...base, [key]: r.max }), async h => { await h.frames(9); await h.drag(id, r.max, r.min, 20); await h.frames(N - 30); }, { cost: c * N });
+      const how = h => h.drag(id, r.max, r.min, 20, `fast drag of ${id} to its lowest`);
+      route(`${st.name}, ${id} dragged to its lowest`, qs({ ...base, [key]: r.max }), how, { paused: true, st, N: 100 });
+      route(`${st.name}, ${id} dragged to its lowest`, qs({ ...base, [key]: r.max }), how, { paused: false, st, N: c > 0.5 ? 70 : 180 });
     }
     for (const [k, vs] of Object.entries(st.segs)) {
       if (!SEG_KEY[k] || k === 'cross' || vs.length < 2 || (q && k !== 'mode')) continue;
-      const g = `${st.name}, ${k} ${vs.at(-1)} (paused)`, c = secs(st);
-      route(g, 'loaded there', qs({ s: st.id, [SEG_KEY[k]]: vs.at(-1) }), async h => { await h.frames(30); }, { paused: true, cost: c * 30 });
-      route(g, 'pressed there', qs({ s: st.id, [SEG_KEY[k]]: vs[0] }), async h => { await h.click(`[data-${k}="${vs.at(-1)}"]`, 30); }, { paused: true, cost: c * 30 });
+      route(`${st.name}, ${k} ${vs.at(-1)} pressed`, qs({ s: st.id, [SEG_KEY[k]]: vs[0] }), h => h.click(`[data-${k}="${vs.at(-1)}"]`), { paused: true, st, N: 40 });
     }
-    if (st.segs.cross && !q) {
-      const g = `${st.name}, crossing ${CX[1]} (playing)`, c = secs(st);
-      route(g, 'loaded there', qs({ s: st.id, x: CX[1] }), async h => { await h.frames(260); }, { dt: 1 / 30, cost: c * 260 });
-      route(g, 'flown there', qs({ s: st.id, x: CX[0] }), async h => { await h.frames(4); await h.click(cx(CX[1])); await h.frames(256); }, { dt: 1 / 30, cost: c * 260 });
-    }
+    if (st.segs.cross && !q) L.push({
+      name: `route: ${st.name}, flown to crossing ${CX[1]} (playing)`, hash: qs({ s: st.id, x: CX[0] }), dt: FLY, cost: c * 560,
+      async run(h) {
+        await h.frames(4); await h.click(cx(CX[1])); await h.frames(256, 'flying round'); h.mark('by hand');
+        await h.reload(); await h.frames(260, 'loaded from the address');
+        h.same('by hand', 'loading the address the page wrote', { playing: true });
+      },
+    });
   }
 
   // ---- gestures a person found a problem with: keep them here so the machine finds the next one ----

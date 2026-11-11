@@ -41,6 +41,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 .scalebar b{font-family:var(--mono);font-weight:400;font-size:0.75rem;color:var(--ink2);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(3,5,12,.9)}
 .chip{padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--glass);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);color:var(--ink);font:inherit;font-size:0.8125rem;cursor:pointer}
 .chip:hover{background:rgba(234,240,255,.16)}
+#pause{min-width:5.6em;text-align:center}      /* "Pause" and "Play" take the same room, so the button does not move as it is pressed */
 .hint{position:fixed;top:calc(22px + env(safe-area-inset-top));left:0;right:0;margin:0;text-align:center;font-size:0.8125rem;color:var(--ink2);pointer-events:none;text-shadow:0 1px 3px rgba(3,5,12,.9);transition:opacity .6s}
 .hint.gone{opacity:0}
 
@@ -57,7 +58,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 .stages button[aria-current="true"]{color:var(--ink);font-weight:600}
 .stages button[aria-current="true"] i{background:var(--ink);border-color:var(--ink);transform:scale(1.35);box-shadow:0 0 12px rgba(234,240,255,.7)}
 
-.cap{display:grid;gap:3px}
+.cap{display:grid;gap:3px;align-content:start}
 .cap,.controls,.readout{transition:opacity .4s}
 .panel.swap :is(.cap,.controls,.readout){opacity:0}
 .eyebrow{font-family:var(--mono);font-size:0.6562rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
@@ -102,11 +103,12 @@ input.spec::-webkit-slider-thumb{margin-top:-6px}
 .toggle{min-height:24px;justify-content:flex-start;gap:9px;align-items:center;cursor:pointer}
 .toggle input{width:18px;height:18px;margin:0;accent-color:#9FB4FF;flex:none}
 
-.readout{font-size:0.8125rem;color:var(--ink2);display:grid;gap:10px}
+.readout{font-size:0.8125rem;color:var(--ink2);display:grid;gap:10px;align-content:start}
 .readout:empty{display:none}
 .readout dl{margin:0;padding-top:10px;border-top:1px solid var(--line);display:grid;grid-template-columns:auto 1fr;gap:3px 12px}
-.readout dt{color:var(--ink3)}
-.readout dd{margin:0;text-align:right;color:var(--ink);font-family:var(--mono);font-size:0.75rem;font-variant-numeric:tabular-nums}
+/* each row of numbers is one line whatever it says, so the list keeps its height while a slider is dragged */
+.readout dt{color:var(--ink3);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.readout dd{margin:0;text-align:right;white-space:nowrap;color:var(--ink);font-family:var(--mono);font-size:0.75rem;font-variant-numeric:tabular-nums}
 .readout h3{margin:0;font-family:var(--display);font-weight:600;font-size:0.875rem;color:var(--ink)}
 .readout p{margin:0;font-size:0.7812rem;line-height:1.4;color:var(--ink3)}
 .energy{display:grid;gap:7px;padding-top:10px;border-top:1px solid var(--line)}
