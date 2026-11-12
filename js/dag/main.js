@@ -29,11 +29,11 @@ const CONTROLS = [
   { id: 'lgap', m: 'layered', stage: 4, label: 'Space between layers', min: 20, max: 100 },
   { id: 'dir', stage: { layered: 2, search: 2 }, label: 'Direction', options: [['down', 'Down'], ['right', 'Right']] },
 ];
-const P = { g: 'topology', m: 'layered', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 6, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
+const P = { g: 'topology', m: 'layered', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
 const STAGE_NAME = { input: 'Input', cycles: 'Turn', layers: 'Layers', order: 'Sort', place: 'Align', route: 'Route', boxes: 'Group', search: 'Search' };
 const NOTE = {
   layered: 'The five steps of ELK Layered, written again for this page. This is not ELK’s own code.',
-  search: 'TALA is closed source. This stands in for it, built from what its makers have published: boxes first, a seeded search, edges at right angles.',
+  search: 'This is not TALA’s code. It is a simpler search written for this page that shares TALA’s outline: boxes first, several seeds scored and the best kept, edges at right angles.',
 };
 
 let graph = null, layout = null, stage = 0, q = 0, mix = 1, from = null, shown = null;

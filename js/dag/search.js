@@ -1,8 +1,8 @@
-// A layout by search, standing in for TALA. TALA is closed source, so this is not its algorithm.
-// It is built only from what Terrastruct has published about TALA: it is not tied to layers, it
-// treats containers (boxes of nodes) as first-class, it draws edges as horizontal and vertical
-// runs, and it "searches with heuristics" with "some randomness at each step", so a different seed
-// can give a different layout.
+// A layout by search, standing in for TALA. This is not TALA's code and not its algorithm. (TALA
+// was closed source until September 2026 and is now MPL-2.0, shipped inside D2 from v0.9.0.) This
+// shares only the outline its makers describe: it is not tied to layers, it treats containers
+// (boxes of nodes) as first-class, it draws edges as horizontal and vertical runs, and it runs
+// several seeds and keeps the layout that scores best.
 //
 // Here: nodes sit on a grid inside their group's box, and the boxes sit on a grid of their own.
 // A try starts from a random arrangement and swaps two nodes, or two boxes, again and again,
