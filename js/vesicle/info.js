@@ -3,6 +3,7 @@
 const W = 'https://en.wikipedia.org/wiki/';
 const I = {
   vesicle: ['Synaptic vesicle', 'A 40 nm bubble of membrane that stores neurotransmitter. A nerve terminal holds hundreds, and each one releases its contents in a single all-or-nothing event.', 'Synaptic_vesicle'],
+  pump: ['Proton pump', 'The V-ATPase burns ATP to pump protons into the vesicle. That acid, pH 5.5, is what the glutamate transporters run on, and what keeps pHluorin dark. A vesicle carries only one or two, and they are the largest things on it.', 'V-ATPase'],
   stalk: ['Hemifusion stalk', 'An hourglass-shaped bridge in which only the facing halves of the two bilayers have merged. Lipids can cross it; the contents cannot.', 'Lipid_bilayer_fusion'],
   pore: ['Fusion pore', 'The first water-filled channel between the vesicle interior and the outside, about 2 nm wide. It can flicker open and shut before it widens.', 'Exocytosis'],
   glutamate: ['Glutamate', 'The main excitatory neurotransmitter of the brain. One vesicle carries roughly 1,500 to 2,000 molecules.', 'Glutamate_(neurotransmitter)'],

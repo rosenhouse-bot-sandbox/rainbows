@@ -105,6 +105,10 @@ presynaptic membrane, drawn lipid by lipid and to scale in nanometres.
   with synaptobrevin still free and syntaxin and SNAP-25 waiting on the membrane), then scrubs
   from a docked vesicle through SNARE zippering, the hemifusion stalk,
   the opening and widening of the fusion pore, to full collapse into the membrane.
+- The vesicle carries more than its fusion machinery: about 30 synaptophysins, 10 glutamate
+  transporters, 10 Rab3 and a proton pump, in the numbers counted on an average vesicle (Takamori
+  et al., 2006). They ride into the cell membrane with its lipids. Shapes are schematic, and they
+  are not counted as scatterers by the reflection camera.
 - **Vesicle diameter** resizes the vesicle (and its glutamate load, at 150 mM).
 - **Cutaway, orbit, tilt, distance** fly the camera; drag, pinch and scroll work too.
 - Lipids keep the colour of the membrane they started in, so you can watch the two mix: the

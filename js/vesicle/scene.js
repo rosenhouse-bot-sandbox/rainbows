@@ -21,6 +21,7 @@ export const COLORS = {
   synaptotagmin: [0.72, 0.48, 0.96], calcium: [1.0, 0.90, 0.28], glutamate: [1.0, 0.36, 0.74],
   phluorin: [0.30, 1.0, 0.40], emission: [0.45, 1.0, 0.35],
   channel: [0.86, 0.70, 0.34], ampa: [0.20, 0.72, 0.66], nmda: [0.86, 0.50, 0.30],
+  pump: [0.62, 0.70, 0.82], physin: [0.95, 0.56, 0.64], vglut: [0.72, 0.80, 0.30], rab: [0.93, 0.92, 0.84],
   sodium: [0.62, 0.92, 1.0], adhesion: [0.62, 0.62, 0.74],
 };
 
@@ -172,6 +173,13 @@ export class Scene {
     }
     this.links = [];
     for (let i = 0; i < 12; i++) { const a = r() * TAU, rr = 48 + r() * 60; this.links.push({ a, r: rr, bend: (r() - 0.5) * 3, ph: r() * 9 }); }
+    // The rest of the vesicle's coat, in the numbers counted on an average synaptic vesicle
+    // (Takamori et al., 2006): about 30 synaptophysins, 10 glutamate transporters, 10 Rab3 and one
+    // or two proton pumps. They sit on the upper three quarters, clear of the fusion machinery.
+    this.coat = [];
+    const kinds = [...Array(30).fill('physin'), ...Array(10).fill('vglut'), ...Array(10).fill('rab')];
+    kinds.forEach((kind, i) => { const j = (i * 19) % kinds.length; this.coat.push({ kind, u: Math.sqrt(0.06 + 0.70 * (j + r()) / kinds.length), phi: j * 2.39996 + 0.6 * r(), g1: r.gauss(), g2: r.gauss(), rot: r() * TAU }); });
+    this.coat.push({ kind: 'pump', u: 0.33, phi: CUT_CENTRE + 2.2, g1: r.gauss(), g2: r.gauss(), rot: 0 });
   }
 
   buildScenery() {
@@ -370,6 +378,40 @@ export class Scene {
       if (!anchors.snare || sn.phi % TAU > 2.9 && sn.phi % TAU < 3.6) anchors.snare = add(C0, dir, Lb * 0.6);
     });
 
+    // The rest of the coat rides on the vesicle and spreads into the cell membrane with its lipids.
+    this.coat.forEach((pr) => {
+      const site = freeSite(S, pr, p), A = at(0, site[0], site[1]);
+      if (!kept(A.p[0], A.p[2])) return;
+      const nrm = A.n, t0 = norm(cross(nrm, Math.abs(nrm[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0])), t1 = cross(nrm, t0);
+      const cr = Math.cos(pr.rot), sr = Math.sin(pr.rot), e1 = add(shade(t0, cr), t1, sr), e2 = add(shade(t0, -sr), t1, cr);
+      const P = (a, b, h) => add(add(add(A.p, e1, a), e2, b), nrm, h);      // a, b across the membrane, h out of it
+      if (pr.kind === 'physin') {
+        // Synaptophysin: four helices through the membrane and a low cap on the cytoplasmic side.
+        CAT = 16; const c = C.physin;
+        for (const s of [-0.75, 0.75]) for (let h = -3.6; h <= 0.2; h += 0.95) ball(P(s, s * 0.4, h), 0.62, shade(c, 0.8));
+        ball(P(0, 0, 0.9), 1.0, c);
+      } else if (pr.kind === 'vglut') {
+        // The glutamate transporter: a twelve-helix barrel, almost all of it inside the membrane.
+        CAT = 17; const c = C.vglut;
+        for (const h of [-3.3, -1.9, -0.5]) for (const s of [-0.9, 0.9]) ball(P(s, 0, h), 1.15, shade(c, 0.85));
+        ball(P(0, 0, 0.8), 1.2, c);
+      } else if (pr.kind === 'rab') {
+        // Rab3: a small switch protein held to the surface by two lipid tails.
+        CAT = 18; const c = C.rab;
+        ball(P(0, 0, 0.5), 0.34, shade(c, 0.8)); ball(P(0.2, 0, 1.3), 0.34, shade(c, 0.8)); ball(P(0.4, 0, 2.9), 1.5, c);
+      } else {
+        // The proton pump (V-ATPase): a ring in the membrane, a stalk, and a head ten nanometres
+        // across that stands well clear of everything else on the vesicle.
+        CAT = 15; const c = C.pump;
+        for (let k = 0; k < 8; k++) for (const h of [-3.0, -1.2]) ball(P(2.3 * Math.cos(k * PI / 4), 2.3 * Math.sin(k * PI / 4), h), 1.0, shade(c, 0.78));
+        for (let h = 0.4; h <= 5.2; h += 1.2) ball(P(0, 0, h), 1.15, shade(c, 0.9));
+        for (let k = 0; k < 6; k++) { ball(P(2.9 * Math.cos(k * PI / 3), 2.9 * Math.sin(k * PI / 3), 8.3), 2.3, shade(c, k % 2 ? 1.0 : 0.88)); ball(P(2.5 * Math.cos(k * PI / 3 + 0.5), 2.5 * Math.sin(k * PI / 3 + 0.5), 11.0), 2.0, shade(c, k % 2 ? 0.9 : 1.0)); }
+        ball(P(0, 0, 9.6), 2.4, c);
+        for (const s of [-1, 1]) for (let h = 1.0; h <= 8.0; h += 1.4) ball(P(4.6 * s, 0.6, h), 0.5, shade(c, 0.75));
+        anchors.pump = P(0, 0, 12.5);
+      }
+    });
+
     CAT = 0;
     if (vitro) {
       CAT = 5;
@@ -512,7 +554,7 @@ export class Scene {
       { id: 'stalk', q: p >= PH.STALK - 0.02 && p < PH.PORE ? [0, S.rho, 0] : null },
       { id: 'pore', q: p >= PH.PORE && p < 0.66 ? [0, S.rho, 0] : null },
       { id: 'glutamate', q: p < 0.4 ? (cut > 25 ? [-S.Rin * 0.45, S.hV + S.Rin * 0.2, 0] : null) : [-14 - 30 * sstep(0.45, 0.9, p), -CLEFT / 2, -6] },
-      { id: 'snare', q: anchors.snare }, { id: 'syt', q: p < 0.62 ? anchors.syt : null }, { id: 'channel', q: anchors.channel },
+      { id: 'pump', q: p < PH.OMEGA ? anchors.pump : null }, { id: 'snare', q: anchors.snare }, { id: 'syt', q: p < 0.62 ? anchors.syt : null }, { id: 'channel', q: anchors.channel },
     ];
     const cellSide = [{ id: 'reserve', q: this.reserve }, { id: 'mito', q: this.mito }];
     if (!vitro) this.labels = [...here,
