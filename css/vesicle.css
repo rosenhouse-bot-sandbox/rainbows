@@ -151,16 +151,21 @@ body.infer #sizeNote{display:none}
 .mathClose{position:sticky;top:0;float:right;width:34px;height:34px;margin:-6px -8px 0 8px;border-radius:50%;border:1px solid var(--line);background:#141a30;color:var(--ink);font-size:20px;line-height:1;cursor:pointer}
 
 /* The microscope's camera, picture in picture */
-.pip{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));bottom:20px;width:232px;margin:0;padding:10px;display:grid;gap:7px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
+.pip{position:fixed;z-index:2;right:calc(16px + env(safe-area-inset-right));bottom:20px;width:232px;max-height:calc(100% - 84px);overflow-y:auto;scrollbar-width:thin;grid-auto-rows:max-content;margin:0;padding:10px;display:grid;gap:7px;background:var(--glass);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:16px}
 .pip figcaption{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
 .pip figcaption b{font-weight:500;color:var(--ink)}
 .pip figcaption span{letter-spacing:.02em;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pipImg{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#000}
-#cam{width:100%;height:100%;display:block}
+#cam,#camZoom{width:100%;height:100%;display:block}
+.pipBox{position:absolute;border:1px solid rgba(255,255,255,.75);pointer-events:none}
 .pipScale{position:absolute;left:8px;right:8px;bottom:7px;display:grid;gap:3px;justify-items:start;pointer-events:none}
 .pipScale i{display:block;height:2px;background:#fff}
 .pipScale em{font-family:var(--mono);font-style:normal;font-size:10px;color:#fff;text-shadow:0 0 3px #000}
-#trace{width:100%;height:42px;display:block}
+#trace{width:100%;height:48px;display:block;min-width:0}
+.pipTrace{display:grid;grid-template-columns:auto 1fr;gap:2px 3px;align-items:center}
+.pipTrace span{font-family:var(--mono);font-size:9px;line-height:1;letter-spacing:.04em;color:var(--ink3)}
+.axY{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center}
+.axX{grid-column:2;text-align:center}
 .pip p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
 
 @media (max-width:899px){
@@ -177,6 +182,7 @@ body.infer #sizeNote{display:none}
   .pip{top:calc(92px + env(safe-area-inset-top));bottom:auto;width:124px;padding:7px;gap:5px;border-radius:13px}
   .pip p,.pip figcaption span{display:none}
   #trace{height:30px}
+  .pipTrace span{font-size:8px}
   .scalebar{top:calc(52px + env(safe-area-inset-top))}
   .hint{top:calc(22px + env(safe-area-inset-top));padding:0 60px}
   .tag{font-size:11px}

@@ -338,7 +338,7 @@ function placeLabels() {
 }
 
 // ---- the microscope camera (in vitro) -------------------------------------------------------------
-const camera = new Camera($('cam'), $('trace'));
+const camera = new Camera($('cam'), $('trace'), $('camZoom'));
 let pipRect = $('pip').getBoundingClientRect(), camTick = 0, curveKey = '', curve = null, curveAt = 0;
 function drawCamera(now) {
   const o = scene.opt, reshuffle = now - camTick > 85;
@@ -356,7 +356,9 @@ function drawCamera(now) {
   if (reshuffle) pipRect = $('pip').getBoundingClientRect();
 }
 $('pipBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%';
-$('pipNote').textContent = `Every vesicle near the glass shows up, blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Ours is at the centre; the trace follows it.`;
+$('zoomBar').style.width = (1000 / (CAM.zoom * CAM.nm) * 100) + '%';
+{ const b = $('pipBox').style, e = (CAM.px - CAM.zoom) / 2 / CAM.px * 100 + '%'; b.left = b.right = b.top = b.bottom = e; }
+$('pipNote').textContent = `Top: the whole lit field, where every vesicle near the glass shows up, blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre of the same image, magnified on our vesicle. The trace follows its spot.`;
 
 // ---- inference (third view) ----------------------------------------------------------------------
 // The hidden truth for a given event. The diameter comes from the size slider; the rest are drawn

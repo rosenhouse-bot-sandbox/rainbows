@@ -119,9 +119,11 @@ export function beamPath(o) {
 // ---- the camera image ----------------------------------------------------------------------------
 // What a camera behind the objective records: every fluorophore becomes a diffraction-limited
 // blur about 175 nm wide, sampled by 65 nm pixels, with photon shot noise on top.
-export const CAM = { px: 128, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA };
+// zoom: side, in pixels, of the central crop shown magnified in the second display.
+export const CAM = { px: 128, zoom: 48, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA };
 export class Camera {
-  constructor(canvas, trace) {
+  constructor(canvas, trace, zoom) {
+    this.canvas = canvas; this.zctx = zoom ? zoom.getContext('2d') : null;
     this.ctx = canvas.getContext('2d'); this.img = this.ctx.createImageData(CAM.px, CAM.px);
     this.f = new Float32Array(CAM.px * CAM.px); this.trace = trace; this.tctx = trace.getContext('2d');
     this.r = rng(99); this.curve = null; this.noise = new Float32Array(CAM.px * CAM.px);
@@ -149,11 +151,13 @@ export class Camera {
       d[i * 4] = 255 * Math.pow(t, 2.6) * 0.85; d[i * 4 + 1] = 255 * Math.min(1, t * 1.08); d[i * 4 + 2] = 255 * Math.pow(t, 1.9) * 0.55; d[i * 4 + 3] = 255;
     }
     this.ctx.putImageData(this.img, 0, 0);
+    // The second display is the middle of the very same frame, magnified: no new information.
+    if (this.zctx) { const z = CAM.zoom, o = (n - z) / 2; this.zctx.drawImage(this.canvas, o, o, z, z, 0, 0, z, z); }
   }
   // curve: fluorescence at the fusion site against progress; p marks where we are.
   drawTrace(curve, p) {
     const c = this.tctx, w = this.trace.width, h = this.trace.height, n = curve.length;
-    const max = Math.max(1e-6, ...curve) * 1.12, X = (i) => 2 + (w - 4) * i / (n - 1), Yv = (v) => h - 3 - (h - 8) * v / max;
+    const max = Math.max(1e-6, ...curve) * 1.12, X = (i) => 4 + (w - 6) * i / (n - 1), Yv = (v) => h - 5 - (h - 10) * v / max;
     c.clearRect(0, 0, w, h);
     c.beginPath(); curve.forEach((v, i) => (i ? c.lineTo(X(i), Yv(v)) : c.moveTo(X(i), Yv(v))));
     c.lineWidth = 2; c.strokeStyle = 'rgba(110,255,140,.95)'; c.stroke();
@@ -161,5 +165,7 @@ export class Camera {
     const fi = p * (n - 1), i0 = Math.min(n - 2, Math.floor(fi)), v = curve[i0] + (curve[i0 + 1] - curve[i0]) * (fi - i0);
     c.beginPath(); c.moveTo(X(fi), 0); c.lineTo(X(fi), h); c.lineWidth = 1; c.strokeStyle = 'rgba(234,240,255,.35)'; c.stroke();
     c.beginPath(); c.arc(X(fi), Yv(v), 3.5, 0, 2 * PI); c.fillStyle = '#EAF0FF'; c.fill();
+    // The axes: intensity up the left edge, time along the bottom.
+    c.beginPath(); c.moveTo(1, 0); c.lineTo(1, h - 1); c.lineTo(w, h - 1); c.lineWidth = 2; c.strokeStyle = 'rgba(234,240,255,.45)'; c.stroke();
   }
 }

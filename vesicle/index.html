@@ -145,10 +145,19 @@
 <figure class="pip" id="pip" hidden>
   <figcaption><b>Camera</b><span id="pipInfo">TIRF</span></figcaption>
   <div class="pipImg">
-    <canvas id="cam" width="128" height="128" aria-label="Simulated microscope image of the fusion site"></canvas>
+    <canvas id="cam" width="128" height="128" aria-label="Simulated microscope image of the whole lit field around the fusion site"></canvas>
+    <i class="pipBox" id="pipBox"></i>
     <div class="pipScale"><i id="pipBar"></i><em>1 µm</em></div>
   </div>
-  <canvas id="trace" width="336" height="84" aria-label="Fluorescence at the fusion site over the course of fusion"></canvas>
+  <div class="pipImg">
+    <canvas id="camZoom" width="48" height="48" aria-label="The same image magnified on the vesicle at the centre"></canvas>
+    <div class="pipScale"><i id="zoomBar"></i><em>1 µm</em></div>
+  </div>
+  <div class="pipTrace">
+    <span class="axY" aria-hidden="true">Intensity</span>
+    <canvas id="trace" width="336" height="96" aria-label="Spot intensity at the fusion site against time over the course of fusion"></canvas>
+    <span class="axX" aria-hidden="true">Time</span>
+  </div>
   <p id="pipNote"></p>
 </figure>
 
