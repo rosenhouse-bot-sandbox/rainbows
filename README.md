@@ -193,3 +193,49 @@ every push to `main`. In the repository settings, set Pages → Source to
 - `drafts/`: review boards from each design round.
 - `tests/smooth/`: the smooth-interaction tests for Rainbows (`run.mjs` drives the page, `inject.js` is the
   stepped clock and the probes, `scenarios.mjs` the gestures, `analyze.mjs` the checks and the report).
+
+## Optics workshop
+
+A game at `optics/`: build things that bend light on a bench where every ray is really traced.
+Each challenge has a brief, one to three things to change, and a goal measured from the trace.
+Meet the goal and let go, and the panel says what you just built and why it works.
+
+| Challenge | You change | It teaches |
+| --- | --- | --- |
+| Burning glass | Where the lens sits, how strongly its faces curve | Focus and focal length |
+| Eyeglasses | The power of a spectacle lens in front of a nearsighted eye | Spreading lenses, dioptres |
+| Camera lens | The shape of a 50 mm lens and its iris | Spherical aberration, and sharpness against brightness |
+| Solar tower | The tilt of three heliostat mirrors | The law of reflection |
+
+- The white knobs in the picture can be dragged with a mouse or a finger. Every setting is also a
+  slider in the panel, so the whole game can be played from the keyboard. The iris and the mirrors
+  move by a fixed small amount for each pixel of drag, so a thumb can set them finely.
+- Nothing moves unless you move it. There is no animation, so nothing to pause.
+- Solved challenges are remembered in the browser (`localStorage`); the address bar tracks the
+  challenge after `#`.
+
+Code: `js/optics/trace.js` is the ray tracer, `glass.js` the refractive indices, `levels.js` the
+challenges (their text, their scenes and their scoring), `main.js` the page. `css/optics.css` is the
+stylesheet. `node tests/optics/run.mjs` plays every challenge in a real browser with a mouse, a
+finger and the keyboard.
+
+The physics:
+
+- The tracer is exact in the plane: each ray meets each spherical face where it really is and bends
+  by Snell's law. No thin-lens or small-angle approximation is made, so spherical aberration appears
+  because it is in the geometry. Focal lengths shown are the thick-lens (lensmaker's) values.
+- Glass indices come from the makers' Sellmeier fits (N-BK7 gives 1.5168 at 587.6 nm). The spectacle
+  plastic is a two-term fit through CR-39's index and Abbe number. Air is taken as 1.
+- For the lens challenges the light comes from a point on the axis, so the spot on the target is
+  round. Each traced ray stands for a ring of light, and is weighted by its height in the beam.
+  "Blur" is twice the root-mean-square radius of the spot. The camera's sensor is placed where that
+  is smallest.
+- The eye is the textbook "reduced eye": one spherical surface of radius 5.55 mm into a fluid of
+  index 4/3, with a 3 mm pupil, made 23.45 mm long so that it is nearsighted.
+
+Simplifications, which the panel also states where they matter: one wavelength (550 nm), so no
+colour fringes yet; light on the axis only, so no coma or astigmatism; no reflection losses at the
+glass; the Sun is a point, not a half-degree disc; the spectacle lens is equally curved on both
+faces, where a real one is a meniscus; the solar field is a flat slice with three mirrors. The
+inset that magnifies the spot compresses brightness (a square root) so that a wide blur can still be
+seen.

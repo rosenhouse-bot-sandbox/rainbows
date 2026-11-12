@@ -10,8 +10,9 @@ experience is and where its code lives.
   it needs Node and a Playwright installed outside the repository.)
 - Run it with `python3 -m http.server 8000` from the repository root. ES modules do not load from
   `file://`.
-- Each experience is self-contained: `v2/` (Rainbows) and `vesicle/` have their own page, stylesheet
-  (`css/`) and modules (`js/`). Do not change one while working on another.
+- Each experience is self-contained: `v2/` (Rainbows), `vesicle/` and `optics/` (Optics workshop)
+  have their own page, stylesheet (`css/`) and modules (`js/`). Do not change one while working on
+  another.
 - Physics claims must be true. Numbers shown on screen come from the model in code
   (`js/v2/optics.js` for v2), not from text typed into a caption. Where a picture simplifies or
   exaggerates, say so on screen and in the README.
@@ -64,6 +65,9 @@ Before pushing:
   depends on the route taken. Read `tests/smooth/out/report.md` and look at `contact.png`. A new
   finding is yours to fix, or to record in `tests/smooth/accepted.json` with the reason it is
   meant. `tests/smooth/README.md` says what the tests can and cannot see.
+- For the Optics workshop, run `node tests/optics/run.mjs`. It plays every challenge with a mouse, a
+  finger and the keyboard, and fails if one cannot be won. A new challenge needs a known solution
+  added to `PLAYS` there. Numbers in a challenge's text must match what the trace gives.
 - A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
   `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone
