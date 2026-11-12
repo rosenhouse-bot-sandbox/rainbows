@@ -133,14 +133,15 @@ export class Camera {
   // emit: [[x, z, brightness, spread]...] in nm, where spread is how far a vesicle's tags have
   // wandered (it widens the blur and lowers the peak); bg: out-of-focus background.
   // Returns without drawing unless a new frame is due: the picture only changes once per exposure.
-  render(emit, bg, reshuffle) {
+  // blur: how much wider than its best the objective's blur is (1 when this camera is in focus).
+  render(emit, bg, reshuffle, blur = 1) {
     if (!reshuffle && this.drawn) return;
     this.drawn = true;
-    const n = CAM.px, f = this.f, s = CAM.sigma / CAM.nm, half = n / 2;
+    const n = CAM.px, f = this.f, s0 = CAM.sigma / CAM.nm, s = s0 * blur, half = n / 2;
     f.fill(bg);
     for (const [x, z, b0, spread] of emit) {
       if (b0 < 1e-4) continue;
-      const sw = spread ? Math.hypot(s, spread / CAM.nm) : s, k = 1 / (2 * sw * sw), b = b0 * s * s / (sw * sw);
+      const sw = spread ? Math.hypot(s, spread / CAM.nm) : s, k = 1 / (2 * sw * sw), b = b0 * s0 * s0 / (sw * sw);
       const cx = x / CAM.nm + half - 0.5, cy = z / CAM.nm + half - 0.5, R = Math.min(20, Math.ceil(sw * 3.5));
       if (cx < -R || cy < -R || cx > n + R || cy > n + R) continue;
       for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(n - 1, Math.ceil(cy + R)); j++)

@@ -114,6 +114,10 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 input.laser::-webkit-slider-runnable-track{background:linear-gradient(90deg,#19b8ff var(--v),rgba(25,184,255,.22) var(--v))}
 input.laser::-moz-range-progress{background:#19b8ff}
 input.irm{--irm:#ff5a14}
+.seg{display:flex;align-items:center;gap:4px;margin-top:8px;font-size:13.5px;color:var(--ink2)}
+.seg span{margin-right:auto}
+.seg button{padding:5px 9px;border-radius:8px;border:1px solid var(--line);background:rgba(234,240,255,.05);color:var(--ink2);font:inherit;font-size:12.5px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:rgba(234,240,255,.18);color:var(--ink)}
 input.irm::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--irm) var(--v),rgba(234,240,255,.17) var(--v))}
 input.irm::-moz-range-progress{background:var(--irm)}
 .key.plain{border-top:0;padding-top:0;margin-top:-7px}
@@ -200,6 +204,7 @@ body.infer #sizeNote{display:none}
   .pip{top:calc(92px + env(safe-area-inset-top));bottom:auto;width:124px;padding:7px;gap:5px;border-radius:13px}
   .pip p,.pip figcaption span{display:none}
   #trace,#irmTrace{height:30px}
+  .pip{z-index:1}
   .pip.dual{width:214px}
   .pipHead{font-size:8px;letter-spacing:0}
   .pipTrace span{font-size:8px}

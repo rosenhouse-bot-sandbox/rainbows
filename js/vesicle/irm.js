@@ -17,37 +17,90 @@
 // What scatters: the lipid bilayer (index 1.48, 4 nm thick) against cytoplasm (1.36), and the
 // watery inside of the vesicle (taken as 1.335, like the medium) against that same cytoplasm.
 // These two have opposite signs, so a large vesicle scatters less than its membrane alone would.
+//
+// One objective serves both cameras, and no lens focuses every colour at the same depth. See
+// focalShift and pupil below for what that does to each picture.
 import { shape, D } from './profile.js';
-import { N_GLASS, N_CELL, NA, GAP, CAM, LENS_Y, GLASS_TOP } from './vitro.js';
+import { N_GLASS, N_CELL, NA, GAP, CAM, LENS_Y, GLASS_TOP, LAMBDA_EM } from './vitro.js';
 import { rng } from './glx.js';
 
 export const N_MEDIUM = 1.335, N_LIPID = 1.48, MEM = 4;     // medium and vesicle interior; bilayer; its thickness in nm
 export const IRM = { lambda: 630, min: 560, max: 720 };     // nm; above 560 it stays clear of the pHluorin emission band
 export const WELL = 2e4;                                    // photoelectrons per pixel per millisecond from the reference wave
 export const SHOW_MS = 10;                                  // exposure of one displayed frame
-export const SPAN = 0.015;                                  // the display's full grey range is -SPAN .. +SPAN of the background
+export const SPAN = 0.02;                                   // the display's full grey range is -SPAN .. +SPAN of the background
 const PI = Math.PI;
 
-export function irmOptics(lambda) {
+// ---- one objective, two colours ------------------------------------------------------------------
+// Axial chromatic aberration. An apochromat brings three colours to exactly the same focus (here
+// the classic 436, 546 and 656 nm lines) and wanders a little in between. The simplest curve with
+// that property is a cubic through the three, scaled so the largest error between the outer lines
+// is APO.peak. Real objectives differ in detail; this one is illustrative, not a maker's data.
+export const APO = { lines: [436, 546, 656], peak: 100 };   // nm
+const cubic = (l) => (l - APO.lines[0]) * (l - APO.lines[1]) * (l - APO.lines[2]);
+let cubicMax = 0; for (let l = APO.lines[0]; l <= APO.lines[2]; l++) cubicMax = Math.max(cubicMax, Math.abs(cubic(l)));
+export const focalShift = (nm) => -APO.peak * cubic(nm) / cubicMax;      // nm; positive is deeper into the sample
+
+// Bessel function J0 (Abramowitz and Stegun 9.4.1 and 9.4.3, good to about 1e-7).
+function J0(x) {
+  x = Math.abs(x);
+  if (x < 3) { const t = x * x / 9; return 1 + t * (-2.2499997 + t * (1.2656208 + t * (-0.3163866 + t * (0.0444479 + t * (-0.0039444 + t * 0.00021))))); }
+  const t = 3 / x;
+  const f = 0.79788456 + t * (-0.00000077 + t * (-0.0055274 + t * (-0.00009512 + t * (0.00137237 + t * (-0.00072805 + t * 0.00014476)))));
+  const th = x - 0.78539816 + t * (-0.04166397 + t * (-0.00003954 + t * (0.00262573 + t * (-0.00054125 + t * (-0.00029333 + t * 0.00013558)))));
+  return f * Math.cos(th) / Math.sqrt(x);
+}
+// The microscope's blur for a wave's amplitude, from its pupil: every direction the objective
+// accepts (rho = 0 on the axis to 1 at the edge of the aperture) adds in, and when the camera is
+// focused dz away from the object the steeper directions fall behind in phase by
+//     k n dz ( sqrt(1 - (rho NA / n)^2) - 1 )
+// measured against the axial direction, which is the one the reference wave travels in. Returns
+// the complex blur h(r) in nm^-2, tabulated by radius; its integral over the image is 1 whatever
+// the focus, so defocus moves contrast between the centre and the rings without removing any.
+export const PSF_DR = 10, PSF_N = 126;                                   // nm per sample; out to 1.25 um
+const NRHO = 120;
+export function pupil(lambda, dz) {
+  const re = new Float64Array(PSF_N), im = new Float64Array(PSF_N), s = NA / N_GLASS, kd = 2 * PI * N_GLASS * dz / lambda, q = 2 * PI * NA / lambda;
+  const cr = new Float64Array(NRHO), ci = new Float64Array(NRHO);
+  for (let j = 0; j < NRHO; j++) { const rho = (j + 0.5) / NRHO, ph = kd * (Math.sqrt(1 - rho * rho * s * s) - 1), w = rho / NRHO * q * NA / lambda; cr[j] = Math.cos(ph) * w; ci[j] = Math.sin(ph) * w; }
+  for (let i = 0; i < PSF_N; i++) {
+    let a = 0, b = 0; const x = q * i * PSF_DR / NRHO;
+    for (let j = 0; j < NRHO; j++) { const J = J0(x * (j + 0.5)); a += cr[j] * J; b += ci[j] * J; }
+    re[i] = a; im[i] = b;
+  }
+  return { re, im };
+}
+const at = (t, r) => { const x = r / PSF_DR, i = Math.floor(x); return i >= PSF_N - 1 ? 0 : t[i] + (t[i + 1] - t[i]) * (x - i); };
+
+// focus: where the shared objective is focused, from 0 (on the fluorescence) to 1 (on the reflection).
+export function irmOptics(lambda, focus = 0) {
   const k0 = 2 * PI / lambda;
   // The undisturbed stack: glass, GAP of medium, the flat cell membrane, cytoplasm.
   const rGM = (N_GLASS - N_MEDIUM) / (N_GLASS + N_MEDIUM), rMC = (N_MEDIUM - N_CELL) / (N_MEDIUM + N_CELL);
   const film = k0 * MEM * (N_LIPID * N_LIPID - N_CELL * N_CELL) / (2 * N_CELL), ph = 2 * k0 * N_MEDIUM * GAP;
   const re = rGM + rMC * Math.cos(ph) - film * Math.sin(ph), im = rMC * Math.sin(ph) + film * Math.cos(ph);
-  const sigmaA = Math.SQRT2 * 0.21 * lambda / NA;           // blur of the wave's amplitude: sqrt(2) wider than of an intensity
-  return { lambda, k0, re, im, I: re * re + im * im, glass: rGM * rGM, sigmaA, fwhm: 2.355 * sigmaA, fringe: lambda / (2 * N_CELL) };
+  // The two colours focus `apart` nm from each other; the focus setting shares that out.
+  const apart = focalShift(lambda) - focalShift(LAMBDA_EM), dz = apart * (1 - focus), dzF = -apart * focus;
+  const h = pupil(lambda, dz), h0 = pupil(lambda, 0), f = pupil(LAMBDA_EM, dzF), f0 = pupil(LAMBDA_EM, 0);
+  // Fluorescence adds as intensity: its blur keeps its light but spreads, by the drop in its peak (the Strehl ratio).
+  const strehl = (f.re[0] * f.re[0] + f.im[0] * f.im[0]) / (f0.re[0] * f0.re[0]);
+  let half = 0; while (half < PSF_N - 1 && h0.re[half] > h0.re[0] / 2) half++;
+  return { lambda, focus, k0, re, im, I: re * re + im * im, glass: rGM * rGM, fringe: lambda / (2 * N_CELL), apart, dz, dzF,
+    h, peak: h0.re[0], fwhm: 2 * half * PSF_DR, strehl, blurF: 1 / Math.sqrt(strehl),
+    // Contrast at radius r (nm) from the centre of a spot with complex strength c (see moment).
+    spot: (c, r) => c[0] * at(h.re, r) - c[1] * at(h.im, r) };
 }
 
-// How strongly, and how widely, one fusion site changes the picture at progress p for a vesicle of
-// midplane radius R. Returns out[0]: the contrast integrated over the image plane, in nm^2 (the
-// spot's fractional change in brightness times its area; negative is darker), and out[1]: the
-// variance in nm^2 that the site's own width adds to the blur.
+// How strongly one fusion site changes the picture at progress p for a vesicle of midplane radius
+// R. The site is far smaller than the blur, so it is treated as a point with one complex strength
+// c = out[0] + i out[1], in nm^2: the picture's fractional change at radius r is Re(c h(r)). In
+// focus h is real, and out[0] is the spot's contrast times its area (negative is darker).
 const NC = 96, NF = 64;
 export function moment(o, p, R, out) {
   const S = shape(p, R), lift = S.neck < -D ? S.extra : 0;
   const dLip = (N_LIPID * N_LIPID - N_CELL * N_CELL) * MEM, dLum = N_MEDIUM * N_MEDIUM - N_CELL * N_CELL;
   const kz = 2 * o.k0 * N_CELL, ph0 = 2 * o.k0 * N_MEDIUM * GAP;
-  let qr = 0, qi = 0, wsum = 0, w2 = 0, r0 = 0, y0 = 0, first = true;
+  let qr = 0, qi = 0, r0 = 0, y0 = 0, first = true;
   const step = (r, y) => {
     if (!first && (r > 0 || r0 > 0)) {
       const rm = (r + r0) / 2, ym = (y + y0) / 2, ri = Math.max(0, rm - MEM / 2);
@@ -55,8 +108,6 @@ export function moment(o, p, R, out) {
       const lumen = dLum * PI * ri * ri * (y0 - y);                      // watery volume enclosed at this height
       const c = Math.cos(ph0 + kz * ym), s = Math.sin(ph0 + kz * ym);
       qr += (shell + lumen) * c; qi += (shell + lumen) * s;
-      const a = Math.abs(shell), b = Math.abs(lumen);
-      wsum += a + b; w2 += a * rm * rm / 2 + b * ri * ri / 4;
     }
     r0 = r; y0 = y; first = false;
   };
@@ -66,11 +117,11 @@ export function moment(o, p, R, out) {
     step(Math.max(0, S.c - S.rho * Math.sin(ps)), S.rho - S.rho * Math.cos(ps) + (ps > PI / 2 ? lift : 0));
   }
   // The disc of flat membrane that the neck has replaced is no longer there.
-  if (S.c > 0) { const hole = dLip * PI * S.c * S.c; qr -= hole * Math.cos(ph0); qi -= hole * Math.sin(ph0); wsum += hole; w2 += hole * S.c * S.c / 4; }
+  if (S.c > 0) { const hole = dLip * PI * S.c * S.c; qr -= hole * Math.cos(ph0); qi -= hole * Math.sin(ph0); }
   // Scattered wave M = i k0 / (2 n) * q; picture = |reference + M * blur|^2, to first order in M.
   const g = o.k0 / (2 * N_CELL), mr = -g * qi, mi = g * qr;
   out[0] = 2 * (o.re * mr + o.im * mi) / o.I;
-  out[1] = wsum > 0 ? w2 / wsum : 0;
+  out[1] = 2 * (o.re * mi - o.im * mr) / o.I;
   return out;
 }
 
@@ -90,19 +141,20 @@ export class IrmCamera {
     this.img = this.ctx.createImageData(CAM.px, CAM.px); this.f = new Float32Array(CAM.px * CAM.px);
     this.noise = new Float32Array(CAM.px * CAM.px); this.r = rng(57);
   }
-  // spots: [[x, z, contrast moment in nm^2, extra variance in nm^2]...]
+  // spots: [[x, z, strength (real part), strength (imaginary part)]...], as returned by moment
   render(o, spots, reshuffle) {
     if (!reshuffle && this.drawn) return;                              // like the other camera: one new picture per exposure
     this.drawn = true;
-    const n = CAM.px, f = this.f, half = n / 2, px2 = CAM.nm * CAM.nm;
+    const n = CAM.px, f = this.f, half = n / 2;
     f.fill(0);
-    for (const [x, z, c, w] of spots) {
-      const v = (o.sigmaA * o.sigmaA + w) / px2, a = c / px2 / (2 * PI * v), k = 1 / (2 * v), R = Math.ceil(Math.sqrt(v) * 3.5);
+    const R = Math.ceil(PSF_N * PSF_DR / CAM.nm), c = [0, 0];
+    for (const [x, z, cr, ci] of spots) {
       const cx = x / CAM.nm + half - 0.5, cy = z / CAM.nm + half - 0.5;
       if (cx < -R || cy < -R || cx > n + R || cy > n + R) continue;
+      c[0] = cr; c[1] = ci;
       for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(n - 1, Math.ceil(cy + R)); j++)
         for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(n - 1, Math.ceil(cx + R)); i++)
-          f[j * n + i] += a * Math.exp(-((i - cx) * (i - cx) + (j - cy) * (j - cy)) * k);
+          f[j * n + i] += o.spot(c, CAM.nm * Math.hypot(i - cx, j - cy));
     }
     if (reshuffle) for (let i = 0; i < n * n; i++) this.noise[i] = this.r.gauss();
     const d = this.img.data, sd = 1 / Math.sqrt(WELL * SHOW_MS);       // shot noise of the reference wave
@@ -139,6 +191,6 @@ export function irmBeam(lambda) {
 // Contrast at the centre of the spot for a whole event, for the trace.
 export function contrastCurve(o, R, n = 72) {
   const out = [], m = [0, 0];
-  for (let i = 0; i < n; i++) { moment(o, i / (n - 1), R, m); out.push(m[0] / (2 * PI * (o.sigmaA * o.sigmaA + m[1]))); }
+  for (let i = 0; i < n; i++) out.push(o.spot(moment(o, i / (n - 1), R, m), 0));
   return out;
 }

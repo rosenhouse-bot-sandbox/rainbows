@@ -95,6 +95,13 @@
         <label for="wl"><span>Reflection wavelength</span><b id="wlV">630 nm</b></label>
         <input id="wl" class="irm" type="range" min="560" max="720" step="5" value="630">
         <small id="wlNote"></small>
+        <div class="seg" role="group" aria-label="Which camera the shared objective is focused for">
+          <span>Focus on</span>
+          <button data-focus="0" aria-pressed="true">Fluorescence</button>
+          <button data-focus="0.5" aria-pressed="false">Halfway</button>
+          <button data-focus="1" aria-pressed="false">Reflection</button>
+        </div>
+        <small id="focusNote"></small>
       </div>
     </div>
     <div class="ctl">

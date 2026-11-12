@@ -63,11 +63,9 @@ function look(t, R, c, fused) {
 let PORE_TAB = null; const IRM_TABS = new Map();
 function irmTables(lambda) {
   if (!IRM_TABS.has(lambda)) {
-    const o = irmOptics(lambda), m = [0, 0], px2 = CAM.nm * CAM.nm;
-    IRM_TABS.set(lambda, {
-      c: tabulate((p, R) => moment(o, p, R, m)[0] / px2),                                // integrated contrast, in pixels^2
-      v: tabulate((p, R) => (o.sigmaA * o.sigmaA + moment(o, p, R, m)[1]) / px2),        // blur variance, in pixels^2
-    });
+    const o = irmOptics(lambda), m = [0, 0];
+    // The site's complex strength in the reflection picture (see moment in irm.js), in nm^2.
+    IRM_TABS.set(lambda, { re: tabulate((p, R) => moment(o, p, R, m)[0]), im: tabulate((p, R) => moment(o, p, R, m)[1]) });
     if (IRM_TABS.size > 12) IRM_TABS.delete(IRM_TABS.keys().next().value);
   }
   return IRM_TABS.get(lambda);
@@ -75,13 +73,17 @@ function irmTables(lambda) {
 
 export class Experiment {
   // set: { dt (ms per frame), power (photons per lit tag per ms at full field), angle, prior (width scale),
-  //        irm (is the reflection camera recording too), lambda (its wavelength in nm) }
+  //        irm (is the reflection camera recording too), lambda (its wavelength in nm),
+  //        focus (where the shared objective is focused: 0 on the fluorescence, 1 on the reflection) }
   constructor(set) {
     this.set = set; this.opt = optics(set.angle);
     this.nf = Math.round(T_TOTAL / set.dt);
     // Background photons per pixel per ms: out-of-focus glow that scales with the laser and with how deep the light reaches.
     this.bg = 0.004 * set.power * (this.opt.tir ? Math.min(2.5, this.opt.depth / 100) : 8) + 0.002;
-    this.sp2 = Math.pow(CAM.sigma / CAM.nm, 2);
+    // With both cameras on one objective, whichever is not in focus is blurred (see irm.js).
+    const io = set.irm ? irmOptics(set.lambda, set.focus || 0) : null;
+    this.sp2 = Math.pow(CAM.sigma * (io ? io.blurF : 1) / CAM.nm, 2);
+    if (io) { this.hre = new Float64Array(NB); this.him = new Float64Array(NB); for (let c = 0; c < NB; c++) { const r = Math.sqrt(R2[c]) * CAM.nm; this.hre[c] = io.spot([1, 0], r); this.him[c] = -io.spot([0, 1], r); } }
     this.out = new Float64Array(4);
     PORE_TAB = PORE_TAB || tabulate(poreWidth);
     this.irm = set.irm ? irmTables(set.lambda) : null;
@@ -107,7 +109,7 @@ export class Experiment {
     }
     out[0] = n * this.set.power * q * E; out[1] = v / (CAM.nm * CAM.nm); out[2] = c;
     // The reflection camera: how strongly this shape changes the picture, and how wide a spot it makes.
-    if (this.irm) { out[3] = look(this.irm.c, R, c, t > tf); out[4] = look(this.irm.v, R, c, t > tf); }
+    if (this.irm) { out[3] = look(this.irm.re, R, c, t > tf); out[4] = look(this.irm.im, R, c, t > tf); }
     return out;
   }
   // Expected photons in the whole spot, and its variance, for frame f (averaged over the exposure).
@@ -135,8 +137,7 @@ export class Experiment {
     for (let p = 0; p < ROI * ROI; p++) stat[p] = 0.01 * r2.gauss();
     for (let f = 0; f < nf; f++) {
       this.frame(truth, f, o);
-      const a = o[2] / (2 * Math.PI * o[3]), kk = 1 / (2 * o[3]);
-      for (let p = 0; p < ROI * ROI; p++) { const c = CLASS[p], y = stat[p] + a * Math.exp(-R2[c] * kk) + this.sdI * r2.gauss(); imgI[f * ROI * ROI + p] = y; KI[f * NB + c] += y; }
+      for (let p = 0; p < ROI * ROI; p++) { const c = CLASS[p], y = stat[p] + o[2] * this.hre[c] - o[3] * this.him[c] + this.sdI * r2.gauss(); imgI[f * ROI * ROI + p] = y; KI[f * NB + c] += y; }
     }
     this.imgI = imgI; this.KI = KI;
   }
@@ -154,7 +155,7 @@ export class Experiment {
       this.frame(u, f, o);
       const a = o[0] / (2 * Math.PI * o[1]), kk = 1 / (2 * o[1]), base = f * NB;
       for (let c = 0; c < NB; c++) { const lam = b + a * Math.exp(-R2[c] * kk); L += K[base + c] * LN(lam) - MULT[c] * lam; }
-      if (irm) { const aI = o[2] / (2 * Math.PI * o[3]), kI = 1 / (2 * o[3]); for (let c = 0; c < NB; c++) m[base + c] = aI * Math.exp(-R2[c] * kI); }
+      if (irm) { const hr = this.hre, hi = this.him, cr = o[2], ci = o[3]; for (let c = 0; c < NB; c++) m[base + c] = cr * hr[c] - ci * hi[c]; }
     }
     if (irm) {
       const KI = this.KI; let G = 0;
@@ -192,9 +193,9 @@ export class Experiment {
   // Expected change in the reflection picture between the first frame and frame f.
   expectedIrm(u, f, img) {
     const o = this.out;
-    this.frame(u, 0, o); const a0 = o[2] / (2 * Math.PI * o[3]), k0 = 1 / (2 * o[3]);
-    this.frame(u, f, o); const a = o[2] / (2 * Math.PI * o[3]), kk = 1 / (2 * o[3]);
-    for (let p = 0; p < ROI * ROI; p++) { const r2 = R2[CLASS[p]]; img[p] += a * Math.exp(-r2 * kk) - a0 * Math.exp(-r2 * k0); }
+    this.frame(u, 0, o); const r0 = o[2], i0 = o[3];
+    this.frame(u, f, o);
+    for (let p = 0; p < ROI * ROI; p++) { const c = CLASS[p]; img[p] += (o[2] - r0) * this.hre[c] - (o[3] - i0) * this.him[c]; }
   }
 }
 
