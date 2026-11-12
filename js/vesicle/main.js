@@ -1,7 +1,7 @@
 // Vesicle fusion: page state, camera, input and the frame loop.
 import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
-import { PH } from './profile.js';
+import { PH, ARRIVE, APPROACH } from './profile.js';
 import { INFO } from './info.js';
 import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles, progressOf } from './infer.js';
 import { IrmCamera, irmOptics, moment, contrastCurve, hue, css, IRM, APO, SPAN, SPAN_DIFF, WELL, N_MEDIUM, N_LIPID } from './irm.js';
@@ -15,6 +15,9 @@ const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const phone = matchMedia('(max-width: 899px)');
 
 const STAGES = [
+  { at: -ARRIVE, name: 'Arrival', title: 'A vesicle arrives',
+    body: `A synaptic vesicle packed with glutamate is brought down the last ${APPROACH} nanometres to the release site. Its synaptobrevin strands still hang free. On the membrane below, syntaxin and SNAP-25 wait for them.`,
+    vitro: `A vesicle comes down the last ${APPROACH} nanometres toward the membrane on the glass. Its pHluorin tags are quenched, so the fluorescence camera sees almost nothing. A reflection camera needs no dye, and its spot changes with every nanometre of height.` },
   { at: 0, name: 'Docked', title: 'Docked and loaded',
     body: 'A synaptic vesicle packed with glutamate waits a few nanometres above the cell membrane. Half-zipped SNARE proteins hold it there, ready to fire.',
     vitro: 'The vesicle waits just above the membrane, about 50 nanometres over the glass. Its pHluorin tags sit in acid and stay dark, so the camera sees almost nothing.' },
@@ -57,7 +60,7 @@ const INF_STAGES = [
 const FAR = new Set(['reserve', 'mito', 'psd']);
 
 const st = {
-  p: +params.get('p') || 0, diam: +params.get('d') || 42,
+  p: params.has('p') ? +params.get('p') || 0 : -ARRIVE, diam: +params.get('d') || 42,
   az: params.has('az') ? +params.get('az') : 24, el: params.has('el') ? +params.get('el') : 9,
   dist: +params.get('dist') || 165, cut: params.has('cut') ? +params.get('cut') : 110,
   vitro: params.get('mode') === 'vitro', angle: +params.get('angle') || 68,
@@ -73,6 +76,7 @@ const modeName = () => (st.infer ? 'infer' : st.vitro ? 'vitro' : 'vivo');
 
 // The view is mirrored into the address bar after '#', so any state can be bookmarked or shared.
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const whole = (p) => (p + ARRIVE) / (1 + ARRIVE);          // progress as a fraction of the whole event, arrival included
 const HASH = {
   mode: [() => modeName(), (v) => { st.infer = v === 'infer'; st.vitro = v !== 'vivo'; }],
   t: [() => Math.round(st.t), (v) => { st.t = clamp(+v || 0, 0, T_TOTAL); }],
@@ -81,7 +85,7 @@ const HASH = {
   prior: [() => st.prior, (v) => { st.prior = clamp(+v || 1, 0.5, 2); }],
   seed: [() => st.seed, (v) => { st.seed = Math.max(1, Math.round(+v) || 1); }],
   truth: [() => (st.truth ? 1 : 0), (v) => { st.truth = v === '1'; }],
-  p: [() => +st.p.toFixed(3), (v) => { st.p = clamp(+v || 0, 0, 1); }],
+  p: [() => +st.p.toFixed(3), (v) => { st.p = clamp(+v || 0, -ARRIVE, 1); }],
   size: [() => st.diam, (v) => { st.diam = clamp(Math.round(+v) || 42, 30, 90); }],
   angle: [() => +st.angle.toFixed(1), (v) => { st.angle = clamp(+v || 68, 50, 79); }],
   irm: [() => (st.irm ? 1 : 0), (v) => { st.irm = v === '1'; }],
@@ -146,7 +150,7 @@ function syncUI() {
     const el = $(id); if (document.activeElement !== el || !el.matches(':active')) el.value = v;
     fill(el); $(id + 'V').textContent = text;
   };
-  if (st.infer) set('prog', st.t / T_TOTAL * 1000, Math.round(st.t) + ' ms'); else set('prog', st.p * 1000, Math.round(st.p * 100) + '%');
+  if (st.infer) set('prog', st.t / T_TOTAL * 1000, Math.round(st.t) + ' ms'); else set('prog', st.p * 1000, Math.round(whole(st.p) * 100) + '%');
   set('size', st.diam, st.diam + ' nm');
   set('cut', st.cut, st.cut ? Math.round(st.cut) + '°' : 'off');
   set('orbit', st.az, Math.round(st.az) + '°');
@@ -198,7 +202,7 @@ function syncUI() {
     [...$('ticks').children].forEach((t, k) => t.classList.toggle('on', k <= i));
   }
 }
-STAGES.forEach((s) => { const t = document.createElement('i'); t.style.left = (s.at * 100) + '%'; $('ticks').append(t); });
+STAGES.forEach((s) => { const t = document.createElement('i'); t.style.left = (whole(s.at) * 100) + '%'; $('ticks').append(t); });
 
 const stopSpin = () => { st.spin = false; $('spin').checked = false; };
 $('prog').addEventListener('input', (e) => { if (st.infer) st.t = e.target.value / 1000 * T_TOTAL; else st.p = e.target.value / 1000; st.play = false; syncUI(); });
@@ -221,7 +225,7 @@ function applyIrm() {
   $('pipNote').textContent = on
     ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. ` + (st.sub
       ? `A frame taken before our vesicle arrived has been subtracted, so mid-grey means no change since then, and black and white are ${+(SPAN_DIFF * 100).toFixed(1)}% of the background darker and brighter. Vesicles that were already docked cancel out. Ours shows alone, and fades to nothing as it merges into the flat membrane.`
-      : `Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`)
+      : `Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Each spot is a vesicle seen through the flat membrane, not a dent in it, and it shows whether its tags are lit or not. A real cell would add a static mottle of its own, left out here.`)
     : `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
 }
 $('irm').addEventListener('change', (e) => { st.irm = e.target.checked; applyIrm(); stageIdx = -1; delete shown.wl; syncUI(); resize(); pipRect = $(st.infer ? 'inf' : 'pip').getBoundingClientRect(); });
@@ -236,6 +240,7 @@ function setMode(mode) {
   $('pip').hidden = !vitro || infer; $('inf').hidden = !infer; $('ctl-infer').hidden = !infer; $('ticks').hidden = infer;
   $('ctl-angle').hidden = !vitro; $('ctl-irm').hidden = !vitro; applyIrm(); $('keyVitro').hidden = !vitro; $('keyVivo').hidden = vitro; $('keyInfer').hidden = !infer;
   $('sub').textContent = infer ? 'working back from the video' : vitro ? 'watched on a TIRF microscope' : 'how a synapse releases its signal';
+  $('prog').min = infer ? 0 : -ARRIVE * 1000; delete shown.prog;
   $('progL').textContent = infer ? 'Video time' : 'Fusion progress'; $('sizeL').textContent = infer ? 'True vesicle diameter' : 'Vesicle diameter';
   $('truth').checked = st.truth;
   stageIdx = -1; for (const k in shown) delete shown[k];
@@ -272,7 +277,7 @@ for (const li of document.querySelectorAll('.key li[data-cat]')) {
 }
 $('play').addEventListener('click', () => {
   if (!st.play && st.infer && st.t > T_TOTAL - 2) st.t = 0;
-  if (!st.play && !st.infer && st.p > 0.995) st.p = 0;
+  if (!st.play && !st.infer && st.p > 0.995) st.p = -ARRIVE;
   st.play = !st.play; syncUI();
 });
 $('power').addEventListener('input', (e) => { st.power = +e.target.value; syncUI(); });
@@ -403,7 +408,7 @@ function drawCamera(now) {
   if (reshuffle) $('pipPeak').textContent = camera.peak;
   const key = st.diam + '|' + st.angle;
   if (key !== curveKey && now - curveAt > 160) { curveKey = key; curveAt = now; curve = scene.fluorCurve(st.diam / 2 - 2.4); }
-  if (curve) camera.drawTrace(curve, st.p);
+  if (curve) camera.drawTrace(curve, whole(st.p));
   if (st.irm) drawIrm(reshuffle);
   if (reshuffle) pipRect = $('pip').getBoundingClientRect();
 }
@@ -437,7 +442,7 @@ function drawIrm(reshuffle) {
   }
   irmCam.render(irmO, irmSpots, reshuffle, st.sub);
   if (ck !== irmCurveKey) { irmCurveKey = ck; irmCurve = contrastCurve(irmO, R); }
-  irmCam.drawTrace(irmCurve, st.p, 'rgba(234,240,255,.95)');
+  irmCam.drawTrace(irmCurve, whole(st.p), 'rgba(234,240,255,.95)');
 }
 $('irmBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%'; $('irmZoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';
 { const b = $('irmBox').style, e = (CAM.px - CAM.zoom) / 2 / CAM.px * 100 + '%'; b.left = b.right = b.top = b.bottom = e; }
@@ -557,5 +562,5 @@ function frame(now) {
 document.addEventListener('visibilitychange', () => { frames = 0; slow = 0; last = performance.now(); });
 setMode(modeName());
 if (fromLink) { $('spin').checked = st.spin; $('lab').checked = st.labels; $('labels').classList.toggle('off', !st.labels); syncUI(); }
-if (!reduced && !fromLink && !params.has('p') && !params.has('t') && !params.has('still')) setTimeout(() => { if (st.p === 0 && st.t === 0) { st.play = true; syncUI(); } }, 1400);
+if (!reduced && !fromLink && !params.has('p') && !params.has('t') && !params.has('still')) setTimeout(() => { if (st.p === -ARRIVE && st.t === 0) { st.play = true; syncUI(); } }, 1400);
 requestAnimationFrame(frame);

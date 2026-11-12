@@ -1,7 +1,7 @@
 // Builds and draws the synapse: lipids, proteins, transmitter and the hazy surroundings.
 // Units are nanometres. y points into the sending cell; the cleft is below y = 0.
 import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
-import { compute, surf, outline, D, CLEFT, TABW, BAREA, PH } from './profile.js';
+import { compute, surf, outline, D, CLEFT, TABW, BAREA, PH, ARRIVE } from './profile.js';
 import * as SH from './shaders.js';
 import { irmBeam } from './irm.js';
 import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
@@ -185,6 +185,7 @@ export class Scene {
       const a = r() * TAU, rr = 520 * Math.sqrt(r()), y = 62 + 480 * Math.pow(r(), 1.25), rad = 19 + r() * 5;
       const p = [rr * Math.cos(a), y, rr * Math.sin(a)];
       if (Math.hypot(p[0], p[1] - 10, p[2]) < 98) continue;
+      if (Math.hypot(p[0], p[2]) < 62 && y < 250) continue;        // the way down to the release site stays clear
       if (ves.some(v => Math.hypot(v[0] - p[0], v[1] - p[1], v[2] - p[2]) < v[3] + rad + 5)) continue;
       ves.push([...p, rad]);
       if (!this.reserve && p[2] < -90 && y > 110 && y < 190 && Math.abs(p[0]) < 120) this.reserve = [p[0], p[1] + rad, p[2]];
@@ -315,6 +316,10 @@ export class Scene {
     // the membrane anchors is what drags the two bilayers together.
     const Lb = 11.5, zip = lerp(0.42, 1, sstep(0.02, PH.STALK + 0.02, p));
     const wCis = sstep(PH.PORE + 0.02, 0.6, p), wOut = sstep(0.56, 1, p), wJoin = sstep(PH.PORE, 0.56, p);
+    // While the vesicle is still on its way the SNAREs have not met: syntaxin and SNAP-25 wait as a
+    // bundle on the plasma membrane, and synaptobrevin hangs free from the vesicle. They engage
+    // once it is close enough for the strands to reach.
+    const apart = sstep(5, 24, S.approach);
     this.snares.forEach((sn) => {
       const phi = sn.phi + sn.dphi * wOut;
       const rs = lerp(9, 5.5, sstep(0, PH.STALK, p)) + sn.rOut * Math.pow(wOut, 1.4);
@@ -326,8 +331,8 @@ export class Scene {
       if (!shown) return;
       const er = [Math.cos(phi), 0, Math.sin(phi)], et = [-Math.sin(phi), 0, Math.cos(phi)];
       // Before fusion the bundle lies in the wedge between the membranes; afterwards it rests on one.
-      const M = mixv(Sx.p, B.p, 0.5), rM = Math.hypot(M[0], M[2]), r2 = rM + 7;
-      const vy = S.hV - Math.sqrt(Math.max(0, (S.Rc + D) * (S.Rc + D) - r2 * r2));
+      const M = mixv(mixv(Sx.p, B.p, 0.5), add(Sx.p, [0, 1, 0], 5), apart), rM = Math.hypot(M[0], M[2]), r2 = rM + 7;
+      const vy = S.hV - S.approach * apart - Math.sqrt(Math.max(0, (S.Rc + D) * (S.Rc + D) - r2 * r2));
       const dirT = norm(add(add([0, 0, 0], er, 7), [0, 1, 0], (Math.max(vy, D + 3) + D) / 2 - M[1]));
       const S2 = at(0, Av + PI * (rs + Lb) * (rs + Lb), phi);
       const Q1 = add(Sx.p, Sx.n, 2.5), Q2 = add(S2.p, S2.n, 2.5);
@@ -346,6 +351,8 @@ export class Scene {
         for (let i = 0; i <= 27; i++) {
           const s = i / 27; let q = bundle(j, s), rad = 0.58;
           if (s > zip) { const u = (s - zip) / (1 - zip); q = add(q, off, u * u * (3 - 2 * u)); rad = 0.36; }
+          // Synaptobrevin, not yet engaged: a loose strand reaching out from the vesicle.
+          if (j === 2 && apart > 0) q = mixv(q, add(add(B.p, B.n, 1.2 + (1 - s) * Lb * 0.85), et, 2.2 * Math.sin(3.1 * s + sn.phi * 5) * (1 - s)), apart);
           ball(q, rad, cols[j], 0, [3, 4, 5, 4][j]);
           if (i === 27) tips.push(q);
         }
@@ -533,7 +540,7 @@ export class Scene {
     this.gapBottom = vitro ? -GAP + 1.4 : -CLEFT + D + 1.4;
     this.vitro = vitro; this.belief = st.belief || null;
     if (this.belief) this.labels.push({ id: 'ghost', q: [-(Math.min(S.Rc, 60) + D + 4) * 0.72, Math.max(6, Math.min(top * 0.72, 70)), 0], max: 2500, free: true });
-    this.focusY = Math.max(-3, Math.min(13, 0.3 * top - 2));
+    this.focusY = Math.max(-3, Math.min(13, 0.3 * (top - S.approach) - 2)) + 0.45 * S.approach;   // follow the vesicle part of the way up while it arrives
     this.kept = kept;
   }
 
@@ -738,7 +745,7 @@ export class Scene {
     if (!this.curveCache || this.curveCache.R !== R) {
       const pts = [], tmp = new Float64Array(6); let tab = null;
       for (let i = 0; i < n; i++) {
-        const p = i / (n - 1), S = compute(p, R, tab); tab = S.tab;
+        const p = -ARRIVE + (1 + ARRIVE) * i / (n - 1), S = compute(p, R, tab); tab = S.tab;
         pts.push({ unq: sstep(PH.PORE, PH.PORE + 0.04, p), sites: this.free.map((fr) => { const s = freeSite(S, fr, p); surf(S, 0, s[0], s[1], tmp); return [Math.hypot(tmp[0] - tmp[3] * 7.4, tmp[2] - tmp[5] * 7.4), tmp[1] - tmp[4] * 7.4]; }) });
       }
       this.curveCache = { R, pts };

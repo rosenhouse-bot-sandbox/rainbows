@@ -21,6 +21,9 @@ export const RHO0 = 3.2;       // nm, meridional radius of the neck when it firs
 export const CLEFT = 20;       // nm, midplane to midplane across the synaptic cleft
 export const TABW = 2048;      // samples per lookup row
 export const BAREA = Math.PI * 30 * 30;   // nm^2 of plasma membrane covered by the second row
+// Before it docks the vesicle has to get there. Progress runs from -ARRIVE up to 0 while it comes
+// down the last APPROACH nanometres; from 0 on, everything is as before.
+export const ARRIVE = 0.14, APPROACH = 120;
 export const PH = { CA: 0.10, STALK: 0.22, PORE: 0.36, DILATE: 0.50, OMEGA: 0.70, MERGED: 0.92 };
 const PI = Math.PI, NC = 220, NF = 160;
 
@@ -30,7 +33,8 @@ export function shape(p, R) {
   else if (p < PH.STALK) n = -RHO0 + (RHO0 - D) * sstep(PH.CA, PH.STALK, p);
   else if (p < PH.PORE) n = -D + 2 * D * sstep(PH.STALK, PH.PORE, p);
   else n = D + 1.6 * sstep(PH.PORE, PH.DILATE, p);
-  const extra = 5 * (1 - sstep(0, PH.CA, p));          // docking gap that the SNAREs close
+  const approach = APPROACH * sstep(0, 1, Math.min(1, Math.max(0, -p / ARRIVE)));   // height still to come down before docking
+  const extra = approach + 5 * (1 - sstep(0, PH.CA, p));   // plus the docking gap that the SNAREs close
   const th50 = PI - Math.asin((D + 1.6 + RHO0) / (R + RHO0));
   let theta, rho = RHO0;
   if (p <= PH.DILATE) theta = PI - Math.asin(Math.max(0, n + RHO0) / (R + RHO0));
@@ -43,7 +47,7 @@ export function shape(p, R) {
   // Past the omega stage the cap keeps its area and spreads, so its radius of curvature grows.
   const Rc = theta >= PI / 2 ? R : R / Math.sqrt(1 - Math.cos(theta));
   const c = (Rc + rho) * Math.sin(theta), h = rho - (Rc + rho) * Math.cos(theta);
-  return { p, R, theta, rho, Rc, c, h, extra, neck: c - rho };
+  return { p, R, theta, rho, Rc, c, h, extra, approach, neck: c - rho };
 }
 
 function poly() { return { r: [], y: [], nr: [], ny: [], a: [0] }; }

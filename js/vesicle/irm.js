@@ -20,7 +20,7 @@
 //
 // One objective serves both cameras, and no lens focuses every colour at the same depth. See
 // focalShift and pupil below for what that does to each picture.
-import { shape, D } from './profile.js';
+import { shape, D, ARRIVE } from './profile.js';
 import { N_GLASS, N_CELL, NA, GAP, CAM, LENS_Y, GLASS_TOP, LAMBDA_EM } from './vitro.js';
 import { rng } from './glx.js';
 
@@ -204,9 +204,9 @@ export function irmBeam(lambda) {
   return [{ a: [0, LENS_Y - 70e6, 0], b: [0, GLASS_TOP, 0], w: 30e3, c: hue(lambda), k: 0.8 }];
 }
 
-// Contrast at the centre of the spot for a whole event, for the trace.
+// Contrast at the centre of the spot for a whole event, arrival included, for the trace.
 export function contrastCurve(o, R, n = 72) {
   const out = [], m = [0, 0];
-  for (let i = 0; i < n; i++) out.push(o.spot(moment(o, i / (n - 1), R, m), 0));
+  for (let i = 0; i < n; i++) out.push(o.spot(moment(o, -ARRIVE + (1 + ARRIVE) * i / (n - 1), R, m), 0));
   return out;
 }

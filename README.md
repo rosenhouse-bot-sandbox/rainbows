@@ -101,7 +101,9 @@ fewer pixels to keep the frame rate.
 A second experience, at `vesicle/`: a real-time 3D model of a synaptic vesicle fusing with the
 presynaptic membrane, drawn lipid by lipid and to scale in nanometres.
 
-- **Fusion progress** scrubs from a docked vesicle through SNARE zippering, the hemifusion stalk,
+- **Fusion progress** starts with the vesicle's arrival (the last 120 nm down to the release site,
+  with synaptobrevin still free and syntaxin and SNAP-25 waiting on the membrane), then scrubs
+  from a docked vesicle through SNARE zippering, the hemifusion stalk,
   the opening and widening of the fusion pore, to full collapse into the membrane.
 - **Vesicle diameter** resizes the vesicle (and its glutamate load, at 150 mM).
 - **Cutaway, orbit, tilt, distance** fly the camera; drag, pinch and scroll work too.
@@ -146,7 +148,8 @@ through the same objective:
   blur into one spot about 2% dark, which stays after ours has merged. **Subtract a frame from
   before the vesicle arrived** shows the change since that baseline instead (±1.5%, with the
   baseline's own shot noise carried along): vesicles already docked cancel, ours shows alone and
-  fades to nothing as it merges. How the vesicle got there is not modelled; the event starts docked.
+  fades to nothing as it merges. During the arrival the spot swings from bright to dark as the
+  vesicle comes down through part of a fringe. The inference view still starts from a docked vesicle.
 - The wavelength is longer than the laser's to stay clear of the pHluorin band, not because long
   wavelengths resolve more: within the slider's range, shorter light gives a sharper, stronger spot.
 - **One objective, two colours.** No lens focuses every colour at the same depth. The objective
