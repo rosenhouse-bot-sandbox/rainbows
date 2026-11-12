@@ -218,7 +218,7 @@ export const LEVELS = [
     id: 'camera', nav: 'Camera', unit: 'mm', scale: 'Lens 26 mm across',
     title: 'A sharp, bright camera lens',
     task: 'Find a lens shape that is sharp without closing the iris past f/4.',
-    brief: 'One 50 mm lens, a distant point of light, and a sensor that slides itself to the best focus. Wide open the picture is bright but soft. Closing the iris sharpens it and throws light away. Drag a white knob to open or close the iris.',
+    brief: 'One 50 mm lens, a distant point of light, and a sensor that slides itself to the best focus. Wide open the picture is bright but soft. Closing the iris sharpens it and blocks more of the light. Drag a white knob to open or close the iris.',
     learned: 'Rays through the edge of a spherical lens bend too much and cross early: spherical aberration. It grows steeply with the opening, so closing the iris cures it, at the cost of light. Shape matters as well. With the curved face toward the distant scene both faces share the bending, and the blur is about a quarter of what the same glass gives turned round. Real camera lenses stack several elements so the errors of one cancel those of the next. Only light along the axis is traced here; blur off the axis and other wavelengths are for later challenges.',
     key: [['k-ray', 'Light from a far-off point (550 nm)'], ['k-glass', 'Crown glass lens, 50 mm'], ['k-stop', 'Iris'], ['k-target', 'Sensor'], ['k-inset', 'Inset: a night scene as this sensor records it, magnified: stars, two of them close together, and a lit window. The bar is as wide as the blur you are allowed.']],
     bounds: [-46, -20, 64, 20],

@@ -116,12 +116,12 @@ export default {
 
   caption(S) {
     const c = setup(S);
-    if (S.cross === 'enter') return { title: 'Slowed, squeezed and turned',
-      body: 'Crests cannot be created or lost at the surface, so each one in the air must join one in the water. Light is slower in water, so the crests there sit closer together, and the only way they can still match along the surface is to tilt. That tilt is refraction. A small part of the wave reflects.' };
-    if (S.cross === 'back') return { title: 'The back wall is a leaky mirror',
+    if (S.cross === 'enter') return { title: 'Slower, closer crests, a new direction',
+      body: 'Crests cannot be created or lost at the surface, so each one in the air must join one in the water. Light is slower in water, so the crests there are closer together, and they can still match along the surface only if they travel in a different direction. That change of direction is refraction. A small part of the wave reflects.' };
+    if (S.cross === 'back') return { title: 'The back wall reflects only a little',
       body: `The rainbow ray meets the back of the drop at about 40°, short of the ${(c.crit / DEG).toFixed(1)}° critical angle. So this is ordinary partial reflection: most of the light escapes into the air, and only about one part in twenty of sunlight reflects to carry on toward the bow. A ray inside a sphere meets the wall at the same angle it was bent to on the way in, which is always below critical.` };
     return { title: 'Out again, bending toward you',
-      body: 'Leaving the water, the crests speed up, spread apart and swing away from the perpendicular. This last bend is the mirror image of the first, and it sets the direction in which each wavelength finally travels to your eye.' };
+      body: 'Leaving the water, the crests speed up, spread apart and turn away from the perpendicular. This last bend is the first one in reverse, and it sets the direction in which each wavelength finally travels to your eye.' };
   },
   readout(S) {
     const c = setup(S), d = x => (x / DEG).toFixed(1) + '°';
@@ -132,7 +132,7 @@ export default {
 <dt>Wavelength in water</dt><dd>${(S.lambda / c.n).toFixed(0)} nm</dd>
 <dt>Reflected</dt><dd>${(c.F.R * 100).toFixed(1)}% (other polarisation ${(other.R * 100).toFixed(1)}%)</dd>`;
     rows += `<dt>Transmitted, leaving at</dt><dd>${((1 - c.F.R) * 100).toFixed(1)}% at ${d(c.F.thetaT)}</dd>
-<dt>Red would leave at</dt><dd>${d(bend(nr))}</dd><dt>Violet would leave at</dt><dd>${d(bend(nv))}</dd>`;
+<dt>700 nm would leave at</dt><dd>${d(bend(nr))}</dd><dt>400 nm would leave at</dt><dd>${d(bend(nv))}</dd>`;
     return `<dl>${rows}</dl><p>The drop is drawn cut open along the plane of the ray: the bright line is its surface seen edge-on, with the water's cut face on one side and air on the other. The light itself is a round beam, in front of the cut as well as behind it.</p>` + (S.pol === 'p' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
   },
   labels(S) {

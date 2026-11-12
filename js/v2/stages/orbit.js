@@ -24,11 +24,11 @@ export default {
   },
 
   caption(S) {
-    if (S.focus === 'eye') return { title: 'One thin bundle is yours',
+    if (S.focus === 'eye') return { title: 'Your rainbow uses the sunlight near you',
       body: 'Of all the sunlight falling on the Earth, your rainbow is made by the light arriving right around you. It always appears opposite the Sun, as a circle 42° out from the line that runs from the Sun through your head.' };
     return S.mode === 'wave'
       ? { title: 'Sunlight arrives as flat waves',
-        body: 'The Sun is 150 million kilometres away, so by the time its light reaches us the wave crests are flat sheets, all facing the same way. That shared direction is what lets millions of separate drops act together.' }
+        body: 'The Sun is 150 million kilometres away, so by the time its light reaches us the wave crests are flat sheets, all facing the same way. Because every drop is lit from the same direction, millions of separate drops send light back at the same angle.' }
       : { title: 'Sunlight arrives in parallel',
         body: 'The Sun is 150 million kilometres away, so its light reaches the Earth as parallel rays, all travelling the same way to within half a degree. Every raindrop is lit from exactly the same direction. Lower the Sun and see where you must stand.' };
   },

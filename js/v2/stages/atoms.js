@@ -1,8 +1,8 @@
 // Stage 6: why each colour is slowed by a different amount. Not to scale: in real water there are
 // about a thousand layers of molecules in one wavelength; here each drawn molecule stands for over a hundred layers.
 //
-// The model is the Lorentz oscillator that gives optics.nWater: each molecule's electron cloud is held
-// by a spring that rings at an ultraviolet frequency ω0, and light at ω drives it with amplitude
+// The model is the Lorentz oscillator that gives optics.nWater: each molecule's electrons are pulled back
+// toward its nuclei in proportion to their displacement, with natural frequency ω0 in the ultraviolet, and light at ω drives it with amplitude
 // ∝ 1/(ω0² − ω²). The surface is the plane x = 0, with water at x > 0; light arrives at an angle you set.
 import { V, DEG, rng, sstep } from '../gl.js';
 import * as O from '../optics.js';
@@ -34,7 +34,7 @@ function setup(S) {
 const pct = x => (x * 100).toFixed(1) + '%';
 
 // ---- the two moving pictures in the panel ----
-const EXTRA = 10;          // how many times too big the spring picture draws a cloud's extra swing
+const EXTRA = 10;          // how many times too big the electron picture draws the extra displacement
 const LAYER = 550 / 8;     // nm between the layers drawn in the wavelet picture
 const lagAt = l => 2 * Math.PI * (O.nWater(l) - 1) * LAYER / l;      // radians one drawn layer sets the wave back
 function fit(cv) {
@@ -46,22 +46,14 @@ function fit(cv) {
   return { g, w, h };
 }
 const INK = 'rgba(234,240,255,', CLOUD_CSS = 'rgb(140,190,255)', CORE_CSS = 'rgb(255,150,120)';
-// One molecule in red light and one in violet: the cloud on its springs, the push, and how far it goes.
-function drawSpring(cv, T) {
-  const f = fit(cv); if (!f) return; const { g, w, h } = f, cy = h / 2 + 4, R0 = 15, reach = 44;
-  [[700, 'Red, 700 nm', 0.27], [400, 'Violet, 400 nm', 0.73]].forEach(([l, name, at]) => {
+// One molecule in 700 nm light and one in 400 nm: its electrons (a disc), the field, and how far they move.
+function drawElectrons(cv, T) {
+  const f = fit(cv); if (!f) return; const { g, w, h } = f, cy = h / 2 + 4, R0 = 15;
+  [[700, '700 nm', 0.27], [400, '400 nm', 0.73]].forEach(([l, name, at]) => {
     const cx = w * at, col = O.cssRGB(O.wlRGB(l)), extra = O.energySplit(l).response - 1;
     const amp = R0 * (1 + EXTRA * extra), push = Math.cos(2 * Math.PI * T * 550 / l / 2.2), y = cy + amp * push;       // the cloud goes against the field
     g.fillStyle = INK + '.75)'; g.fillText(name, cx, 12);
-    // the frame the springs hang from, and the springs
-    g.strokeStyle = INK + '.35)'; g.lineWidth = 1.5;
-    for (const s of [-1, 1]) {
-      g.beginPath(); g.moveTo(cx - 16, cy + s * reach); g.lineTo(cx + 16, cy + s * reach); g.stroke();
-      g.beginPath(); const y0 = cy + s * reach, y1 = y + s * 11, n = 9;
-      for (let i = 0; i <= n; i++) g.lineTo(cx + (i === 0 || i === n ? 0 : (i % 2 ? 5 : -5)), y0 + (y1 - y0) * i / n);
-      g.stroke();
-    }
-    // how far a slow push would take the cloud's middle
+    // how far a steady field would move the middle of the electrons
     g.setLineDash([3, 3]); g.strokeStyle = INK + '.45)'; g.lineWidth = 1;
     for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + 14, cy + s * R0); g.lineTo(cx + 40, cy + s * R0); g.stroke(); }
     g.setLineDash([]);
@@ -91,7 +83,7 @@ function drawSum(cv, S, T) {
   g.setLineDash([4, 4]); g.strokeStyle = INK + '.5)'; g.lineWidth = 1.2; trace(x => Math.cos(k * (x - x0) - wt), x0, w, y1, u1); g.setLineDash([]);
   g.strokeStyle = col; g.lineWidth = 2.4; trace(x => Math.cos(k * (x - x0) - wt), 0, x0, y1, u1);
   for (let j = 0; j <= layers.length; j++) trace(x => Math.cos(k * (x - x0) - wt + j * lag), j ? layers[j - 1] : x0, j < layers.length ? layers[j] : w, y1, u1);
-  // what each layer of clouds gives off: the difference it makes to the wave that reaches it
+  // what each layer of molecules gives off: the difference it makes to the wave that reaches it
   // (one layer in three is drawn, or they hide one another)
   g.strokeStyle = CLOUD_CSS; g.lineWidth = 1.3; g.globalAlpha = 0.85;
   layers.forEach((xj, i) => i % 3 === 1 && trace(x => (Math.cos(k * (x - x0) - wt + (i + 1) * lag) - Math.cos(k * (x - x0) - wt + i * lag)) * Math.min(1, (x - xj) / 6), xj, w, y2, u2));
@@ -116,8 +108,8 @@ export default {
 
   // One caption for the whole scale. It sits above the sliders, so it must not change length while one is dragged.
   caption() {
-    return { title: 'Why violet is slowed more than red',
-      body: 'Light shakes the electron cloud of every water molecule it passes, and each shaken cloud gives off a little light of its own. The two moving pictures below show what that does. Slowed crests arriving at an angle must turn to stay joined at the surface. That turn is the bend.' };
+    return { title: 'Why short wavelengths are slowed more',
+      body: 'The electric field of light pushes the electrons of every water molecule it passes back and forth, and electrons moved back and forth give off light of their own. The two moving pictures below show how that slows the wave. Slowed crests arriving at an angle must change direction to stay joined at the surface. That change is refraction.' };
   },
   // Every number here sits in a cell of its own, so the text never re-wraps as the sliders move.
   readout(S) {
@@ -128,41 +120,41 @@ export default {
     const x2 = 48 + 34 * Math.cos(a), y2 = 48 - 34 * Math.sin(a);
     const key = (c, text, dot) => `<li><i class="${dot ? 'dot' : ''}" style="background:${c}"></i><span>${text}</span></li>`;
     const more = n => ((O.energySplit(n).response - 1) * 100).toFixed(1) + '%';
-    const figs = `<figure class="fig"><canvas data-fig="spring" role="img" aria-label="Two water molecules side by side, one in red light and one in violet. Each electron cloud is held by springs and is pushed up and down by the light. The violet one swings faster and further."></canvas>
-<figcaption>A cloud is held to its molecule as if by springs, and the light's field pushes it up and down. Violet pushes closer to the springs' own rhythm, so the cloud swings further: ${more(400)} further than a slow push would take it, against ${more(700)} for red. The dashed marks are the slow push. The extra beyond them is drawn ${EXTRA} times too big.</figcaption></figure>
-<figure class="fig"><canvas data-fig="sum" role="img" aria-label="A wave crossing from air into water. In the water it falls further and further behind a dashed copy of itself that carries on as if there were no water. Below, each layer of clouds sends out a small wave of its own, a quarter turn late."></canvas>
-<figcaption>Above: the wave (bold) beside the wave as it would be with no water (dashed). Below: the small wave a layer of shaken clouds gives off, a quarter turn late (one layer in three is drawn). Adding each one in sets the wave back a little more, ${(lagAt(l) / DEG).toFixed(0)}° a layer at this colour. Each layer drawn stands for about ${Math.round(LAYER / 0.31 / 10) * 10} real ones, and reflection is left out.</figcaption></figure>`;
+    const figs = `<figure class="fig"><canvas data-fig="electrons" role="img" aria-label="Two water molecules side by side, one in 700 nm light and one in 400 nm light. Each is drawn as a red dot for its nuclei and a blue disc for its electrons. The disc moves up and down, opposite to an arrow showing the light's electric field. In the 400 nm light it moves faster and further."></canvas>
+<figcaption>Blue disc: a water molecule's electrons. Red dot: its nuclei. The arrow is the light's electric field. It pushes the negatively charged electrons the opposite way, and their attraction to the nuclei pulls them back. Left alone, displaced electrons would oscillate at an ultraviolet frequency. The frequency of 400 nm light is nearer to that than the frequency of 700 nm light, so it moves them further: ${more(400)} further than a steady field of the same strength would, against ${more(700)} at 700 nm. The dashed marks show how far the steady field moves them. The extra beyond the marks is drawn ${EXTRA} times too big.</figcaption></figure>
+<figure class="fig"><canvas data-fig="sum" role="img" aria-label="A wave crossing from air into water. In the water it falls further and further behind a dashed copy of itself that carries on as if there were no water. Below, each layer of molecules gives off a small wave of its own, a quarter of a cycle behind."></canvas>
+<figcaption>Above: the wave (bold) beside the wave as it would be with no water (dashed). Below: the small wave that the moving electrons in one layer of molecules give off, a quarter of a cycle behind (one layer in three is drawn). Adding each one delays the wave a little more, ${(lagAt(l) / DEG).toFixed(0)}° of phase per layer at this wavelength. Each layer drawn stands for about ${Math.round(LAYER / 0.31 / 10) * 10} real ones, and reflection is left out.</figcaption></figure>`;
     return `${figs}<ul class="scenekey">
-${key(col, '<b>Electric field E</b>: the light, swinging up and down')}
-${S.bfield ? key(css(BCOL), '<b>Magnetic field B</b>: swings side to side, in step with E') : ''}
-${key(css(CLOUD), '<b>Electron cloud</b> of a water molecule, pushed by E', 1)}
-${key(css(CORE), '<b>The rest of the molecule</b>, too heavy to follow', 1)}
+${key(col, '<b>Electric field E</b> of the light, pointing up, then down')}
+${S.bfield ? key(css(BCOL), '<b>Magnetic field B</b>: points side to side, in step with E') : ''}
+${key(css(CLOUD), '<b>Electrons</b> of a water molecule, drawn as one disc, pushed by E', 1)}
+${key(css(CORE), '<b>Nuclei</b> of the molecule, too heavy to move visibly', 1)}
 <li><i class="dash"></i><span><b>Dashed, on the floor</b>: the way straight on, and the perpendicular to the surface</span></li></ul>
 <div class="phasor"><svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="34" fill="none" stroke="rgba(234,240,255,.18)"/>
 <line x1="48" y1="48" x2="82" y2="48" stroke="rgba(234,240,255,.45)" stroke-width="2" stroke-dasharray="3 3"/>
 <path d="M ${48 + 20} 48 A 20 20 0 ${lag1000 > 180 ? 1 : 0} 1 ${48 + 20 * Math.cos(a)} ${48 - 20 * Math.sin(a)}" fill="none" stroke="${col}" stroke-width="1.5"/>
 <line x1="48" y1="48" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${col}" stroke-width="3" stroke-linecap="round"/></svg>
-<div><h3>How far 1000 layers of molecules set the wave back</h3>
+<div><h3>Phase delay from 1000 layers of molecules</h3>
 <dl><dt>This wavelength</dt><dd>${lag1000.toFixed(0)}°</dd>
-<dt>Red, 700 nm</dt><dd>${(O.lagPerLayerDeg(700) * 1000).toFixed(0)}°</dd>
-<dt>Violet, 400 nm</dt><dd>${(O.lagPerLayerDeg(400) * 1000).toFixed(0)}°</dd></dl></div></div>
+<dt>700 nm, seen as red</dt><dd>${(O.lagPerLayerDeg(700) * 1000).toFixed(0)}°</dd>
+<dt>400 nm, seen as violet</dt><dd>${(O.lagPerLayerDeg(400) * 1000).toFixed(0)}°</dd></dl></div></div>
 <dl><dt>Seen as</dt><dd>${l < 400 ? 'nothing: ultraviolet' : colourName(l)}</dd>
 <dt>Arrives at, continues at</dt><dd>${th.toFixed(1)}° → ${(Math.asin(Math.sin(th * DEG) / e.n) / DEG).toFixed(1)}°</dd>
 <dt>Speed of the crests in water</dt><dd>${e.vPhase.toFixed(4)} c</dd>
-<dt>Cloud swing, against a slow push</dt><dd>× ${e.response.toFixed(3)}</dd></dl>
+<dt>Electron movement, against a steady field's</dt><dd>× ${e.response.toFixed(3)}</dd></dl>
 <details data-k="energy" class="energy"><summary>Where the wave's energy is</summary>
 ${bar('Air', [[0.5, C.el], [0.5, C.mg]])}
 ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magnetic, C.mg]])}
-<dl><dt><i style="background:${C.el}"></i>Electric field</dt><dd>${pct(e.electric)}</dd><dt><i style="background:${C.st}"></i>Stretched molecules</dt><dd>${pct(e.stretch)}</dd>
+<dl><dt><i style="background:${C.el}"></i>Electric field</dt><dd>${pct(e.electric)}</dd><dt><i style="background:${C.st}"></i>Displaced electrons</dt><dd>${pct(e.stretch)}</dd>
 <dt><i style="background:${C.mo}"></i>Moving electrons</dt><dd>${pct(e.motion)}</dd><dt><i style="background:${C.mg}"></i>Magnetic field</dt><dd>${pct(e.magnetic)}</dd>
 <dt>Energy travels at</dt><dd>${e.vEnergy.toFixed(4)} c</dd></dl>
-<p>In air the energy is half electric and half magnetic, and all of it travels. In water, part of the electric half is held in molecules being stretched. Energy parked in matter is going nowhere, so the wave as a whole moves slower. Nearer the ultraviolet, more is parked.</p></details>
+<p>In air the energy is half electric and half magnetic, and all of it travels. In water, part of the energy is stored in the molecules, in the displacement and the motion of their electrons. Stored energy does not travel, so the energy as a whole moves slower. At shorter wavelengths more is stored.</p></details>
 <p>Not to scale: each molecule drawn stands for about ${Math.round(DX / (lamD(l) / e.n) * (l / e.n) / 0.31 / 10) * 10} layers of real ones, 0.31 nm apart. The few percent of the light that reflects off the surface is left out. The water is drawn cut open along the plane of the bend, as at the Surface scale.</p>`;
   },
   // Called every frame while this scale is showing: the readout is rebuilt whenever a control moves,
   // so the canvases are looked up afresh. T is the scene's clock, which Pause stops.
   figures(root, S, T) {
-    for (const cv of root.querySelectorAll('canvas[data-fig]')) cv.dataset.fig === 'spring' ? drawSpring(cv, T) : drawSum(cv, S, T);
+    for (const cv of root.querySelectorAll('canvas[data-fig]')) cv.dataset.fig === 'electrons' ? drawElectrons(cv, T) : drawSum(cv, S, T);
   },
   labels(S) {
     const c = setup(S), at = (d, k, up = 0, b = null, kb = 0) => { const p = V.mul(d, k); if (b) { p[0] += b[0] * kb; p[2] += b[2] * kb; } p[1] += up; return p; };

@@ -12,7 +12,7 @@ A rebuild at `v2/`, in three dimensions at every scale, from the whole Earth dow
 | Rain | 1 km to 1 m | A field with the Sun behind you: the bows on the far rain, and 30 000 near drops, each coloured by what it sends to your eye |
 | Drop | 1 mm | One drop traced in 3D: every route the light takes, with its share of the energy |
 | Surface | 1 µm | The exact field where light crosses the water's surface, on the drop's own curving skin |
-| Molecules | 1 nm | One wave crossing into water at an angle you set, and the electron clouds it shakes: why each wavelength is slowed, and so bent, by a different amount |
+| Molecules | 1 nm | One wave crossing into water at an angle you set, and the electrons its field moves: why each wavelength is slowed, and so bent, by a different amount |
 
 - **Follow the light** picks out what comes from the Sun, or only what ends up in your eye.
 - **Show light as** switches between particles (rays and photons) and waves (crests), where both make sense.
@@ -67,7 +67,7 @@ The physics, all in `js/v2/optics.js`:
   never totally reflected. The Surface scale says so, and its angle slider stops short of the
   critical angle for light inside the water.
 - The last scale draws one thing: the light's electric field entering the water, with two rows of
-  water molecules beside it whose electron clouds swing against the field. The magnetic field is a
+  water molecules beside it, each drawn as a dot for its nuclei and a disc for its electrons, which the field moves the opposite way. The magnetic field is a
   toggle, the energy split is folded away under "Where the wave's energy is", and the few percent
   of light that reflects is left out, which the panel says. Each molecule drawn stands for over a
   hundred layers of real ones.
@@ -78,11 +78,12 @@ The physics, all in `js/v2/optics.js`:
   both sides of the cut. From far off the cutting plane is out beyond the drop and closes in as the
   camera does (`cutAt`), and the Drop scale's sphere is cut by the same plane on the flight in.
 - The Molecules panel carries two moving pictures drawn from the model, on the scene's clock, so
-  Pause stops them. One shows a cloud on its springs in red and in violet light; the cloud's extra
-  swing over a slow push (2.1% and 6.8%) is drawn ten times too big, which the caption says. The
-  other shows the wave falling behind the wave there would be with no water as each layer of clouds
-  adds its own small wave a quarter turn late. Each layer drawn stands for about 220 real ones and
-  sets the wave back by exactly 220 times what one real layer does; reflection is left out.
+  Pause stops them. One shows a molecule's electrons (a disc) moved by the field of 700 nm and of 400 nm light; how
+  much further they move than in a steady field of the same strength (2.1% and 6.8%) is drawn ten
+  times too big, which the caption says. The other shows the wave falling behind the wave there
+  would be with no water as each layer of molecules adds its own small wave a quarter of a cycle
+  behind. Each layer drawn stands for about 220 real ones and delays the wave by exactly 220 times
+  what one real layer does; reflection is left out.
 - The last scale is the Surface scale's own patch of the drop seen from the same camera, closer:
   the flight between the two never turns, the drop's skin and blue water are drawn by the same
   shader code in both, and the water stays on the side it was on. The light drawn is polarised with
