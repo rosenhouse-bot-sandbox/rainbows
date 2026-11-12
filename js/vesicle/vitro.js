@@ -120,17 +120,22 @@ export function beamPath(o) {
 // What a camera behind the objective records: every fluorophore becomes a diffraction-limited
 // blur about 175 nm wide, sampled by 65 nm pixels, with photon shot noise on top.
 // zoom: side, in pixels, of the central crop shown magnified in the second display.
-export const CAM = { px: 128, zoom: 48, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA };
+// photons: how many photons a pixel collects in one frame at brightness 1 (a fully lit vesicle on
+// the glass peaks near 180); read: the sensor's read noise in electrons, added to every pixel.
+export const CAM = { px: 128, zoom: 24, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA, photons: 80, read: 1.5 };
 export class Camera {
   constructor(canvas, trace, zoom) {
     this.canvas = canvas; this.zctx = zoom ? zoom.getContext('2d') : null;
     this.ctx = canvas.getContext('2d'); this.img = this.ctx.createImageData(CAM.px, CAM.px);
     this.f = new Float32Array(CAM.px * CAM.px); this.trace = trace; this.tctx = trace.getContext('2d');
-    this.r = rng(99); this.curve = null; this.noise = new Float32Array(CAM.px * CAM.px);
+    this.r = rng(99); this.curve = null; this.count = new Int32Array(CAM.px * CAM.px); this.peak = 0;
   }
   // emit: [[x, z, brightness, spread]...] in nm, where spread is how far a vesicle's tags have
   // wandered (it widens the blur and lowers the peak); bg: out-of-focus background.
+  // Returns without drawing unless a new frame is due: the picture only changes once per exposure.
   render(emit, bg, reshuffle) {
+    if (!reshuffle && this.drawn) return;
+    this.drawn = true;
     const n = CAM.px, f = this.f, s = CAM.sigma / CAM.nm, half = n / 2;
     f.fill(bg);
     for (const [x, z, b0, spread] of emit) {
@@ -142,17 +147,26 @@ export class Camera {
         for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(n - 1, Math.ceil(cx + R)); i++)
           f[j * n + i] += b * Math.exp(-((i - cx) * (i - cx) + (j - cy) * (j - cy)) * k);
     }
-    if (reshuffle) for (let i = 0; i < n * n; i++) this.noise[i] = this.r.gauss();
-    const d = this.img.data;
+    // One exposure. Light arrives as whole photons, so each pixel records a Poisson-distributed
+    // count around its expected value (shot noise), plus a little read noise from the sensor.
+    const d = this.img.data, r = this.r, G = CAM.photons, z0 = (n - CAM.zoom) / 2, z1 = z0 + CAM.zoom;
+    let peak = 0;
     for (let i = 0; i < n * n; i++) {
-      // Shot noise grows as the square root of the signal; read noise is a small constant.
-      const v = Math.max(0, f[i] + this.noise[i] * (0.11 * Math.sqrt(f[i]) + 0.012));
-      const t = Math.pow(Math.min(1, v / 2.3), 0.72);
+      const lam = f[i] * G;
+      let c = 0;
+      if (lam < 30) { const L = Math.exp(-lam); for (let q = r(); q > L; q *= r()) c++; }
+      else c = Math.round(lam + Math.sqrt(lam) * r.gauss());
+      c = Math.max(0, Math.round(c + CAM.read * r.gauss()));
+      this.count[i] = c;
+      const x = i % n, y = (i - x) / n;
+      if (c > peak && x >= z0 && x < z1 && y >= z0 && y < z1) peak = c;
+      const t = Math.pow(Math.min(1, c / (2.3 * G)), 0.72);
       d[i * 4] = 255 * Math.pow(t, 2.6) * 0.85; d[i * 4 + 1] = 255 * Math.min(1, t * 1.08); d[i * 4 + 2] = 255 * Math.pow(t, 1.9) * 0.55; d[i * 4 + 3] = 255;
     }
+    this.peak = peak;
     this.ctx.putImageData(this.img, 0, 0);
     // The second display is the middle of the very same frame, magnified: no new information.
-    if (this.zctx) { const z = CAM.zoom, o = (n - z) / 2; this.zctx.drawImage(this.canvas, o, o, z, z, 0, 0, z, z); }
+    if (this.zctx) this.zctx.putImageData(this.img, -z0, -z0, z0, z0, CAM.zoom, CAM.zoom);
   }
   // curve: fluorescence at the fusion site against progress; p marks where we are.
   drawTrace(curve, p) {

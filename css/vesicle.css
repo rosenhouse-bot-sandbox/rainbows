@@ -156,7 +156,7 @@ body.infer #sizeNote{display:none}
 .pip figcaption b{font-weight:500;color:var(--ink)}
 .pip figcaption span{letter-spacing:.02em;text-transform:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pipImg{position:relative;aspect-ratio:1;border-radius:8px;overflow:hidden;background:#000}
-#cam,#camZoom{width:100%;height:100%;display:block}
+#cam,#camZoom{width:100%;height:100%;display:block;image-rendering:pixelated}
 .pipBox{position:absolute;border:1px solid rgba(255,255,255,.75);pointer-events:none}
 .pipScale{position:absolute;left:8px;right:8px;bottom:7px;display:grid;gap:3px;justify-items:start;pointer-events:none}
 .pipScale i{display:block;height:2px;background:#fff}
@@ -167,6 +167,7 @@ body.infer #sizeNote{display:none}
 .axY{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center}
 .axX{grid-column:2;text-align:center}
 .pip p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
+.pipCount b{font-family:var(--mono);font-weight:400;color:var(--ink);font-variant-numeric:tabular-nums}
 
 @media (max-width:899px){
   .inf{top:calc(54px + env(safe-area-inset-top));left:8px;right:8px;bottom:auto;width:auto;padding:8px 10px;gap:5px;grid-template-columns:1fr}

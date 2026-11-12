@@ -350,15 +350,16 @@ function drawCamera(now) {
   for (const e of scene.emitN) emit.push([e[0], e[1], e[2] * W, e[3]]);
   const bg = 0.035 + 0.05 * (o.I0 / 4) * Math.min(o.depth, 2600) / 100;
   camera.render(emit, bg, reshuffle);
+  if (reshuffle) $('pipPeak').textContent = camera.peak;
   const key = st.diam + '|' + st.angle;
   if (key !== curveKey && now - curveAt > 160) { curveKey = key; curveAt = now; curve = scene.fluorCurve(st.diam / 2 - 2.4); }
   if (curve) camera.drawTrace(curve, st.p);
   if (reshuffle) pipRect = $('pip').getBoundingClientRect();
 }
 $('pipBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%';
-$('zoomBar').style.width = (1000 / (CAM.zoom * CAM.nm) * 100) + '%';
+$('zoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';
 { const b = $('pipBox').style, e = (CAM.px - CAM.zoom) / 2 / CAM.px * 100 + '%'; b.left = b.right = b.top = b.bottom = e; }
-$('pipNote').textContent = `Top: the whole lit field, where every vesicle near the glass shows up, blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre of the same image, magnified on our vesicle. The trace follows its spot.`;
+$('pipNote').textContent = `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
 
 // ---- inference (third view) ----------------------------------------------------------------------
 // The hidden truth for a given event. The diameter comes from the size slider; the rest are drawn

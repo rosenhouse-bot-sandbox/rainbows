@@ -150,14 +150,15 @@
     <div class="pipScale"><i id="pipBar"></i><em>1 µm</em></div>
   </div>
   <div class="pipImg">
-    <canvas id="camZoom" width="48" height="48" aria-label="The same image magnified on the vesicle at the centre"></canvas>
-    <div class="pipScale"><i id="zoomBar"></i><em>1 µm</em></div>
+    <canvas id="camZoom" width="24" height="24" aria-label="The same image magnified on the vesicle at the centre"></canvas>
+    <div class="pipScale"><i id="zoomBar"></i><em>500 nm</em></div>
   </div>
   <div class="pipTrace">
     <span class="axY" aria-hidden="true">Intensity</span>
     <canvas id="trace" width="336" height="96" aria-label="Spot intensity at the fusion site against time over the course of fusion"></canvas>
     <span class="axX" aria-hidden="true">Time</span>
   </div>
+  <p class="pipCount">Brightest pixel in the zoom this frame: <b id="pipPeak">0</b> photons</p>
   <p id="pipNote"></p>
 </figure>
 
