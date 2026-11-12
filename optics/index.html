@@ -31,7 +31,6 @@
   <div class="scalebar" aria-hidden="true"><b id="scaleText"></b></div>
   <button type="button" class="chip" id="reset">Start over</button>
 </div>
-<button type="button" class="submit" id="submit" hidden>Submit your design</button>
 
 <main class="panel" id="panel">
   <header class="title">
@@ -50,9 +49,10 @@
   <div class="meters" id="meters"></div>
   <div class="controls" id="controls"></div>
 
-  <div class="step">
+  <div class="step" id="step">
     <button type="button" id="prev" class="btn">‹ Previous</button>
     <button type="button" id="next" class="btn">Next ›</button>
+    <button type="button" id="submit" class="btn primary submit" hidden>Submit</button>
   </div>
   <p class="visually-hidden" id="status" role="status"></p>
 

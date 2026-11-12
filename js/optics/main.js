@@ -90,7 +90,7 @@ function layout() {
   // the eye chart, or the magnified spot, takes a column on the left; the bench gets the rest of the width
   const top = TOP, free = w - 20 - (L.aside ? 104 : S.out.b.spot ? INSET + 8 : 0);
   const want = Math.max(free / (bx1 - bx0) * (by1 - by0), L.aside ? 96 * CHART_ASPECT : S.out.b.spot ? INSET : 0);
-  const panel = $('panel'), need = $('controls').getBoundingClientRect().bottom - panel.getBoundingClientRect().top + panel.scrollTop + 14;
+  const panel = $('panel'), need = $('controls').getBoundingClientRect().bottom - panel.getBoundingClientRect().top + panel.scrollTop + 10 + $('step').offsetHeight;   // the bar at the foot covers that much
   const sheet = clamp(Math.max(h - top - want - 12, need), h * 0.3, h - top - Math.min(want, 120) - 12);
   root.style.setProperty('--sheet', Math.round(sheet) + 'px');
 }
@@ -111,6 +111,13 @@ function paintNav() {
   const last = S.i === LEVELS.length - 1;
   $('next').setAttribute('aria-disabled', String(last || !done));   // no going on until this one is solved
   $('next').classList.toggle('primary', done && !last);
+  swap();
+}
+// The one button on the right of the bar: Submit while the goal is met and this challenge is not yet solved, Next otherwise.
+function swap() {
+  const sub = !!S.lit && !solved.has(LEVELS[S.i].id), had = document.activeElement;
+  $('submit').hidden = !sub; $('next').hidden = sub;
+  if (had === $('submit') && !sub) $('next').focus(); else if (had === $('next') && sub) $('submit').focus();
 }
 
 // Recompute and redraw. Called on every change; the trace takes about a millisecond.
@@ -122,8 +129,7 @@ function update() {
   if (!lit) S.fx = null;
   if (lit !== S.lit && S.lit !== undefined) $('status').textContent = lit ? 'Goal met. Submit your design.' : '';
   S.lit = lit;
-  $('submit').hidden = !lit;                  // the button is there only while the goal is met
-  $('panel').classList.toggle('ready', lit);  // room at the foot of the sheet, so the button covers nothing
+  swap();
   const { score, b } = S.out;
   for (const k in inputs) {
     const { inp, val, q, btns } = inputs[k], v = S.p[k];

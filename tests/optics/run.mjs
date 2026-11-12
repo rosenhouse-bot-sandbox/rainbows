@@ -128,7 +128,7 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
     check(!(await page.evaluate(() => document.getElementById('won').open || window.__optics.solved.has(window.__optics.LEVELS[window.__optics.S.i].id))), `${name}/${id}: counted as solved before Submit was pressed`);
     const sub = page.locator('#submit');
     check(await sub.isVisible(), `${name}/${id}: Submit did not appear when the goal was met`);
-    check(await page.evaluate(() => { const r = document.getElementById('submit').getBoundingClientRect(); return r.bottom <= innerHeight && r.bottom > innerHeight - 90; }), `${name}/${id}: Submit is not at the bottom of the screen`);
+    check(await page.evaluate(() => { const r = document.getElementById('submit').getBoundingClientRect(); const n = document.getElementById('next'); return r.bottom <= innerHeight && r.bottom > innerHeight - 90 && n.hidden; }), `${name}/${id}: Submit is not at the bottom of the screen`);
     await page.screenshot({ path: path.join(out, `${name}-${id}-goal.png`) });
     await (touch ? sub.tap() : sub.click());
     await page.waitForTimeout(150);
