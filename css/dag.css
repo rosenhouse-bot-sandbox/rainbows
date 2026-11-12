@@ -1,0 +1,108 @@
+/* Graph layout. The drawing fills the screen; one glass panel holds the steps, the numbers and the
+   controls (a left rail on wide screens, a bottom sheet on phones). Same look as the other pages. */
+:root{
+  --bg:#05070F; --ink:#EAF0FF; --ink2:#AAB6D6; --ink3:#7C88B0; --line:rgba(234,240,255,.14);
+  --glass:rgba(7,11,24,.72); --focus:#9FB4FF; --good:#6fe3a1; --turned:#ff5d73;
+  --display:'Bricolage Grotesque','Helvetica Neue',Arial,sans-serif;
+  --body:'Source Sans 3','Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --spectrum:linear-gradient(90deg,#7b2cff,#3b5bff,#00b0d8,#3ccf5a,#f2d41d,#ff7a1a,#e8202b);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+/* The page does not scroll; quick taps do not zoom it, but a pinch does, and a finger can then pan. */
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.45;overflow:hidden;overscroll-behavior:none;touch-action:manipulation}
+body{background:radial-gradient(1200px 800px at 70% 30%,#0b1226 0%,var(--bg) 70%)}
+#view{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#view:focus-visible{outline-offset:-4px}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+
+.back{position:fixed;top:calc(12px + env(safe-area-inset-top));left:calc(12px + env(safe-area-inset-left));width:40px;height:40px;border-radius:50%;display:grid;place-items:center;color:var(--ink);background:var(--glass);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);z-index:3}
+.back:hover{background:rgba(234,240,255,.16)}
+
+.panel{position:fixed;left:0;right:0;bottom:0;z-index:2;display:flex;flex-direction:column;gap:10px;padding:12px max(14px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--glass);backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);border-top:1px solid var(--line);border-radius:20px 20px 0 0;height:47%;overflow-y:auto;overscroll-behavior:contain}
+.panel>*{flex:none}
+.title h1,.title span{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.title h1{font-family:var(--display);font-weight:600;font-size:1.875rem;letter-spacing:-.025em;line-height:1;margin:0}
+.title span{font-size:0.875rem;color:var(--ink3)}
+
+.stages{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:2px;position:relative}
+.stages::before{content:"";position:absolute;left:8%;right:8%;top:8px;height:2px;border-radius:1px;background:var(--spectrum);opacity:.45}
+.stages button{position:relative;display:grid;justify-items:center;align-content:start;gap:4px;padding:2px 0 3px;border:0;background:transparent;color:var(--ink3);font:inherit;font-size:0.75rem;line-height:1.15;cursor:pointer;border-radius:8px;min-width:0}
+.stages button i{width:10px;height:10px;margin-top:4px;border-radius:50%;background:#1a2138;border:2px solid rgba(234,240,255,.45);transition:transform .2s}
+.stages button:hover{color:var(--ink)}
+.stages button.done i{background:var(--ink2);border-color:var(--ink2)}
+.stages button[aria-current="step"]{color:var(--ink);font-weight:600}
+.stages button[aria-current="step"] i{transform:scale(1.35);box-shadow:0 0 12px rgba(234,240,255,.7);border-color:var(--ink);background:var(--ink)}
+
+.cap{display:grid;gap:3px;align-content:start}
+.eyebrow{font-family:var(--mono);font-size:0.6562rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.cap h2{font-family:var(--display);font-weight:600;font-size:1.1875rem;letter-spacing:-.015em;line-height:1.15;margin:0}
+/* The caption keeps room for its longest text, so the controls below do not move from step to step. */
+.cap p{margin:0;font-size:0.8438rem;line-height:1.42;color:var(--ink2);max-width:62ch;text-wrap:pretty;min-height:4.26em}
+.note{margin:0;font-size:0.7812rem;line-height:1.4;color:var(--ink3);text-wrap:pretty;min-height:2.8em}
+.pick{margin:0;font-family:var(--mono);font-size:0.75rem;color:var(--ink2);min-height:1.45em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.meters{display:grid;gap:8px;grid-template-columns:repeat(3,1fr)}
+.meter{min-width:0;display:grid;gap:0;padding:7px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(234,240,255,.05)}
+.meter span{font-size:0.75rem;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meter b{font-family:var(--mono);font-weight:500;font-size:1.0625rem;color:var(--ink);font-variant-numeric:tabular-nums;white-space:nowrap}
+.meter.turned b{color:var(--turned)}
+
+.controls{display:grid;gap:10px}
+.ctl{display:grid;gap:4px}
+.lab{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:0.8125rem;color:var(--ink2);flex-wrap:nowrap}
+.lab label,.lab span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lab b{font-family:var(--mono);font-weight:500;font-size:0.7812rem;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.lab small{font-family:var(--mono);font-size:0.6562rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin-left:6px}
+
+select{width:100%;padding:9px 34px 9px 12px;border-radius:11px;border:1px solid var(--line);background:linear-gradient(45deg,transparent 50%,var(--ink2) 50%) calc(100% - 18px) 50%/6px 6px no-repeat,linear-gradient(135deg,var(--ink2) 50%,transparent 50%) calc(100% - 12px) 50%/6px 6px no-repeat,rgba(234,240,255,.06);color:var(--ink);font:inherit;font-size:0.9375rem;font-weight:600;-webkit-appearance:none;appearance:none;cursor:pointer}
+select option{background:#0b1220;color:var(--ink)}
+
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;padding:3px;border-radius:12px;background:rgba(234,240,255,.06);border:1px solid var(--line)}
+.seg button{padding:7px 4px;border-radius:9px;border:0;background:transparent;color:var(--ink2);font:inherit;font-size:0.8438rem;font-weight:600;cursor:pointer;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:rgba(234,240,255,.18);color:var(--ink);box-shadow:inset 0 0 0 1.5px rgba(234,240,255,.7)}
+
+input[type=range]{--v:0%;-webkit-appearance:none;appearance:none;width:100%;height:26px;margin:0;background:transparent;cursor:pointer;touch-action:pan-y pinch-zoom}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,rgba(234,240,255,.62) var(--v),rgba(234,240,255,.17) var(--v))}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:rgba(234,240,255,.17)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:rgba(234,240,255,.62)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:-7px;border-radius:50%;background:var(--ink);border:0;box-shadow:0 0 0 3px rgba(5,7,15,.9),0 2px 8px rgba(0,0,0,.6)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--ink);border:0;box-shadow:0 0 0 3px rgba(5,7,15,.9)}
+
+/* one small picture per try of the search; the kept one is outlined */
+.tries{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.tries figure{margin:0;display:grid;gap:2px;justify-items:center;padding:4px 2px 3px;border-radius:9px;border:1px solid var(--line);background:rgba(234,240,255,.04);min-width:0}
+.tries figure.best{border-color:var(--good);background:rgba(111,227,161,.08)}
+.tries canvas{width:100%;aspect-ratio:4/3;display:block}
+.tries figcaption{font-family:var(--mono);font-size:0.6562rem;color:var(--ink2);font-variant-numeric:tabular-nums}
+.tries figure.best figcaption{color:var(--good)}
+
+/* One bar at the foot of the panel, always in view. */
+.step{display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:8px}
+.panel>.step{order:99;position:sticky;bottom:calc(-12px - env(safe-area-inset-bottom));z-index:1;margin:auto calc(-1 * max(14px,env(safe-area-inset-right))) calc(-12px - env(safe-area-inset-bottom)) calc(-1 * max(14px,env(safe-area-inset-left)));padding:10px max(14px,env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:#070b18;border-top:1px solid var(--line)}
+.btn{padding:10px 12px;border-radius:11px;border:1px solid var(--line);background:rgba(234,240,255,.06);color:var(--ink);font:inherit;font-family:var(--display);font-weight:600;font-size:0.9375rem;cursor:pointer}
+.btn:hover:not([aria-disabled="true"]){background:rgba(234,240,255,.16)}
+.btn.primary{background:rgba(111,227,161,.2);border-color:rgba(111,227,161,.55)}
+.btn.primary:hover{background:rgba(111,227,161,.3)}
+.btn[aria-disabled="true"]{opacity:.35;cursor:default}
+
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media (forced-colors:active){.seg button[aria-pressed="true"]{outline:2px solid Highlight;outline-offset:-2px}.stages button[aria-current="step"] i{background:Highlight}.tries figure.best{outline:2px solid Highlight}}
+@media (pointer:coarse){.back{width:44px;height:44px}.btn,.seg button,select{min-block-size:44px}input[type=range]{height:44px}.stages button{min-block-size:44px}}
+
+@media (min-width:900px){
+  .panel{left:calc(16px + env(safe-area-inset-left));right:auto;top:calc(64px + env(safe-area-inset-top));bottom:max(16px,env(safe-area-inset-bottom));width:408px;height:auto;padding:18px 18px 16px;border:1px solid var(--line);border-radius:18px;gap:14px}
+  .panel>.step{bottom:-16px;margin:auto -18px -16px;padding:12px 18px 16px}
+  .title{display:grid;gap:2px}
+  .title h1,.title span{position:static;width:auto;height:auto;margin:0;overflow:visible;clip-path:none;white-space:normal}
+  .cap h2{font-size:1.375rem}
+  .cap p{font-size:0.9062rem}
+}
+@media (max-width:899px){
+  .eyebrow{display:none}
+  .stages button{font-size:0.6875rem}
+}
+@media (prefers-reduced-motion:reduce){.stages button i{transition:none}}

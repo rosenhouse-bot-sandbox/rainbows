@@ -10,8 +10,8 @@ experience is and where its code lives.
   it needs Node and a Playwright installed outside the repository.)
 - Run it with `python3 -m http.server 8000` from the repository root. ES modules do not load from
   `file://`.
-- Each experience is self-contained: `v2/` (Rainbows), `vesicle/` and `optics/` (Optics workshop)
-  have their own page, stylesheet (`css/`) and modules (`js/`). Do not change one while working on
+- Each experience is self-contained: `v2/` (Rainbows), `vesicle/`, `optics/` (Optics workshop)
+  and `dag/` (Graph layout) have their own page, stylesheet (`css/`) and modules (`js/`). Do not change one while working on
   another.
 - Physics claims must be true. Numbers shown on screen come from the model in code
   (`js/v2/optics.js` for v2), not from text typed into a caption. Where a picture simplifies or
@@ -77,6 +77,12 @@ Before pushing:
   where a protein sits. It steps through the whole event without a GPU and fails if any protein is
   on the wrong side of a membrane or pushed into one. It cannot judge what only looks wrong, so
   also step through the stages by eye.
+- For Graph layout, run `node tests/dag/run.mjs` (no browser needed): it lays out every sample graph
+  with both methods over a spread of settings and fails if nodes overlap, an edge misses its node, a
+  cycle is left, or two runs differ. Then `node tests/dag/page.mjs` presses every control at a desktop
+  and a phone size and fails on a console error or a panel wider than the screen. A new sample graph
+  goes in `SAMPLES` in `js/dag/graphs.js` and is picked up by both. The page must keep saying that it
+  runs neither ELK's nor TALA's code.
 - A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
   `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone

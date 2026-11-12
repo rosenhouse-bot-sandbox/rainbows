@@ -410,3 +410,60 @@ glass; the Sun is a point, not a half-degree disc; the spectacle lens (40 mm acr
 faces, where a real one is a meniscus; the solar field is a flat slice with three mirrors. The
 inset that magnifies the spot compresses brightness (a square root) so that a wide blur can still be
 seen.
+
+## Graph layout
+
+A page at `dag/` that draws a directed graph two ways, one step at a time. A directed graph is a
+set of nodes joined by arrows (edges). Neither method is the real library: the page says so beside
+the switch.
+
+**Layered** follows the five phases of ELK Layered (the Sugiyama method), written again here in
+`js/dag/layered.js`. It is not ELK's code, and where a phase is simpler than ELK's it is listed below.
+
+| Step | What happens | Settings |
+| --- | --- | --- |
+| Turn | Edges are turned round until no cycle is left | Greedy (Eades, Lin and Smyth), depth first, or every edge that points to an earlier node in the file |
+| Layers | Each node gets a layer after every node that points to it | Longest path; short edges; at most a set number of nodes in a layer |
+| Sort | Each layer is sorted by the average place of its neighbours, back and forth | Number of passes, 0 to 10 |
+| Align | Nodes slide along their layer until joined nodes line up | Space between nodes and between layers |
+| Route | Edges are drawn through the points that hold their place in each layer | Right angles, straight, or curved |
+
+- "Short edges" is a local search that moves a node towards the side where it has more edges. ELK
+  finds the true shortest total with the network simplex method; this can stop short of it.
+- "Width limit" fills layers in file order and sends a node one layer further when a layer is full.
+  ELK's bounded-width layering is Coffman and Graham's.
+- Sorting uses the barycentre rule only and keeps the best ordering seen. ELK adds a greedy switch
+  and random restarts.
+- Align is an isotonic regression per layer towards the average of the neighbours. ELK's default is
+  Brandes and Köpf.
+- Groups are shown by colour only. ELK can nest nodes inside nodes; this cannot.
+- Connected pieces are laid out one at a time and packed in rows; nodes with no edge go in one block.
+
+**Search** stands in for TALA, D2's layout engine, in `js/dag/search.js`. TALA is closed source,
+so this is not its algorithm. It uses only what Terrastruct has published: TALA is not tied to
+layers, treats containers as first-class, draws edges at right angles, and "searches with
+heuristics" with "some randomness at each step", so another seed can give another layout. Here
+each group is a box, nodes sit on a grid inside their box and boxes on a grid of their own. A try
+starts from a random arrangement and swaps two nodes or two boxes, keeping the swap when the
+score drops (simulated annealing: early on, some swaps that raise it are kept too). The score adds
+edge length, bends, crossings and edges that point against the chosen direction. Several seeds are
+tried, each shown as a small picture with its score, and the lowest is kept. Edges are then routed
+with an A* search over lines laid through and beside the nodes. TALA's preference for symmetry,
+its label placement and its per-container directions are not modelled.
+
+The numbers in the panel are measured from the lines as drawn (`measure` in `js/dag/common.js`):
+crossings are counted where two drawn edges cross, and edge length is in node widths.
+
+The first sample is `dag/graphs/anonymous-topology.yaml`, copied from the `lg` repository: 55 nodes
+in 9 groups. Of its 65 edges, 2 repeat an earlier one and 1 joins a node to itself; those are left
+out of the layout, and the self edge is drawn as a small loop on its node. `parseTopology` in
+`js/dag/graphs.js` reads only that file's shape, not YAML in general. The other samples are small
+graphs that each show one thing: a shortcut edge, a fan, cycles, a tangle, a tree, three groups.
+
+Hovering or tapping a node, or the arrow keys with the drawing focused, picks out the node and its
+edges. The address after `#` holds the graph, the method, the step and every setting.
+
+Code: `layered.js` and `search.js` are the two layouts, `common.js` the shared measurements and
+seeded random number, `graphs.js` the samples, `main.js` the page. `css/dag.css` is the stylesheet.
+`node tests/dag/run.mjs` checks the layouts' rules without a browser; `node tests/dag/page.mjs`
+presses every control in a real one.
