@@ -153,12 +153,19 @@ function ensure(S) {
 // most of a radius to one side of the centre. From metres away that cannot be seen; flying in, it is
 // the difference between this ray running on into the Drop scale's own and running beside it.
 const FAR_EXIT = (() => { const q = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[2]; return [q[0], q[1], 0]; })();
+// The sunlight that becomes that ray goes in at FAR_IN. It is drawn too, in the gold of sunlight, from
+// FAR_REACH radii back toward the Sun (faint there, so that it has no visible beginning): the light is
+// then one path from the Sun into the drop and on to the eye at every distance, and this scale's own
+// incoming rays grow out of a line that was already there.
+const FAR_IN = (() => { const q = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[0]; return [q[0], q[1], 0]; })(), FAR_REACH = 800;
 export function drawFar(R, S, h, toEye, T, gain = 1, glint = gain, xf = p => p, unit = 1) {
   const f = S.focus, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
   const o = xf([0, 0, 0]);
   // the ray carries arrowheads travelling toward the eye, as sunlight does: it is light arriving, not a line of sight
   const aR = (0.25 + 0.75 * h.level) * aE;
   sunRay(R, xf(FAR_EXIT), toEye, aR, aR, T, { gap: 130 * unit, size: 22 * unit, speed: 190 * unit, w: 2.4, col: h.col });
+  const aI = 0.7 * h.fade * gain;
+  sunRay(R, xf([FAR_IN[0] - FAR_REACH, FAR_IN[1], 0]), xf(FAR_IN), 0, aI, T, { gap: 130 * unit, size: 22 * unit, speed: 190 * unit, w: 2 });
   // The glow stands in for a drop too small to see. From close by it would fill the view (a marked drop
   // falling past the camera during a flight was a coloured flash for one frame), so past a quarter of
   // its distance across it thins out as it spreads.

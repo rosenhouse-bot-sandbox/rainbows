@@ -72,7 +72,7 @@ export default {
     if (S.sun > 42) return { title: 'Too high a Sun, no bow',
       body: 'The bow is a circle 42° from the point directly opposite the Sun. With the Sun more than 42° up, that whole circle lies below the horizon, which is why rainbows belong to mornings and late afternoons. Only drops close by and below your eye line can still send you colour, as a garden sprinkler does. Lower the Sun to bring the bow back.' };
     if (S.focus === 'eye') return { title: 'Only some drops are aimed at you',
-      body: 'The arrows are the light that marked drops send to your eye. A drop sends you colour only while it is 42° away from the line to your head\'s shadow, near or far. Falling through, it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
+      body: 'Gold arrows are sunlight going into a few marked drops; the coloured arrows are the light those drops send to your eye. A drop sends you colour only while it is 42° away from the line to your head\'s shadow, near or far. Falling through, it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
     if (S.focus === 'sun') return { title: 'Every drop does the same thing',
       body: 'The Sun is behind you, and its light, drawn in gold, passes over your shoulder into the rain. Each drop takes in parallel sunlight and throws a hollow cone of colour back toward the Sun, red on the outside. All the cones point the same way. Whether you see a drop as coloured depends only on whether its cone happens to pass through your eye.' };
     return { title: 'Sun behind, rain ahead',
@@ -168,7 +168,7 @@ void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vU
     R.flushLines({ dash: [0.3, 0, 0.5] });
     if (tgE < 40) { R.arc(V.add(V.mad(EYE, s, tgE), [0, 0.02, 0]), [1, 0, 0], [0, 0, 1], 0.35, 0, 6.2832, [0.7, 0.8, 1], 0.7 * here * (1 - sstep(30, 40, tgE)), 1.6, 28); R.flushLines(); }
 
-    // marked drops: a glint, and the one ray of the light each throws back that finds the eye
+    // marked drops: a glint, the sunlight going into it, and the one ray of the light it throws back that finds the eye
     // (drawn by the Drop scale's own code, in the drop's own axes, so the two scales agree line for line)
     const hs = lastHeroes = heroes(S, T);
     for (const h of hs) {
