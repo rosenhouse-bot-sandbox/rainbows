@@ -66,6 +66,36 @@ const slideX = (param, x, h, pad, ky) => ({ param, cursor: 'ew', knobs: [[x, ky]
   hit: (wx, wy, k) => (Math.abs(wy) <= h + pad + 10 / k && Math.abs(wx - x) * k <= 26 ? Math.abs(wx - x) : Infinity),
   start: (wx, wy, v) => v - wx, move: (wx, wy, c) => wx + c });
 
+// The candle bench of the first picture challenges: a candle d from the lens plane, a plate with a
+// hole D across, a lens in it or not, and a screen. Two points of the candle are traced, its tip
+// and its foot, each as a fan of light spread across the hole.
+const TIP = 10, XP = -3;
+function candle(level, p, { lens: has, D, d }) {
+  const L = lens({ x: 0, h: 8.5, R1: 41.4, R2: -41.4, mat: BK7, tag: 'part' });
+  const surfaces = [...(has ? L.surfaces : []),
+    seg(XP, D / 2, XP, 19, { act: 'absorb' }), seg(XP, -D / 2, XP, -19, { act: 'absorb' }),
+    seg(p.xs, -19, p.xs, 19, { act: 'target' })];
+  const x0 = level.bounds[0], xo = -d;
+  // a ray from a point of the candle to a height s in the plane of the plate; drawn from the candle, or from the edge of the bench
+  const fan = (yo, c, rgb, n, half) => Array.from({ length: n }, (_, i) => {
+    const s = n === 1 ? 0 : -half + 2 * half * i / (n - 1), len = Math.hypot(XP - xo, s - yo), dx = (XP - xo) / len, dy = (s - yo) / len;
+    const x = Math.max(xo, x0 - 1);
+    return { x, y: yo + (x - xo) * dy / dx, dx, dy, nm: GREEN, s, c, rgb };
+  });
+  const on = xo >= x0 + 4;
+  return { surfaces, ring: true, L, d, D,
+    draw: [...fan(TIP, 0, null, on ? 13 : 5, on ? 17 : D / 2 * 0.92), ...fan(-TIP, 1, [150, 205, 255], on ? 13 : 5, on ? 17 : D / 2 * 0.92)],
+    probe: [...fan(TIP, 0, null, 121, D / 2 * 0.999), ...fan(-TIP, 1, null, 121, D / 2 * 0.999)],
+    picture: { tip: TIP, light: (D / 16) ** 2, half: 19 },
+    items: [...(on ? [{ t: 'candle', x: xo, tip: TIP }] : []), ...(has ? [{ t: 'glass', outline: L.outline }] : []),
+      { t: 'iris', x: XP, open: D / 2, h: 19 }, { t: 'sensor', x: p.xs, h: 19 }],
+    handles: [slideX('xs', p.xs, 19, 4, -19)] };
+}
+const worst = (m) => Math.max(m.groups[0] ? m.groups[0].spread : Infinity, m.groups[1] ? m.groups[1].spread : Infinity);
+const sharpMM = (blur, goal) => ({ label: 'Sharpness', goal: `blur ${goal} mm or less`, ok: blur <= goal, frac: goal / blur, text: isFinite(blur) ? 'blur ' + f2(blur) + ' mm' : 'no light' });
+// how big the picture is, from where the light of the two points lands
+const size = (m) => { const a = m.groups[0], b = m.groups[1]; if (!a || !b || !a.w || !b.w) return 'no light'; const k = (a.u / a.w - b.u / b.w) / (2 * TIP); if (Math.abs(k) < 0.005) return 'a single spot'; return f2(Math.abs(k)) + ' times, ' + (k < 0 ? 'upside down' : 'upright'); };
+
 export const LEVELS = [
   // ───────────────────────────────────────────────────────────── 1
   {
@@ -96,6 +126,50 @@ export const LEVELS = [
       return { solved: m.viaShare >= 0.9,
         meters: [{ label: 'Light on the match head', text: f0(m.viaShare * 100) + '%', goal: '90% or more', frac: m.viaShare / 0.9 }],
         rows: [['Focal length of the lens', f1(b.L.focal(GREEN)) + ' mm'], ['Lens to match', f1(-p.x) + ' mm']] };
+    },
+  },
+  // ───────────────────────────────────────────────────────────── picture
+  {
+    id: 'picture', nav: 'Picture', unit: 'mm', scale: 'Candle 20 mm tall',
+    title: 'Make a picture',
+    task: 'Put a sharp, bright picture of the candle on the screen.',
+    brief: 'Every point of the candle sends light out in all directions. Light from the tip of the flame is drawn in gold, light from the foot of the candle in pale blue. The panel shows what lands on the screen.',
+    learned: 'A picture is sharp when the light from each point of the candle lands on its own point of the screen. A small hole does it by blocking nearly all of the light. A lens bends the whole fan of light from a point back to a point, but at one distance only. That is focusing.',
+    key: [['k-ray', 'Light from the tip of the flame'], ['k-ray2', 'Light from the foot of the candle'], ['k-stop', 'Plate with a hole'], ['k-glass', 'Crown glass lens, 40 mm'], ['k-target', 'Screen'], ['k-inset', 'Panel: the picture on the screen, made from the traced light. Its brightness is compressed so that a dim picture still shows.']],
+    bounds: [-108, -20, 88, 20], aside: true,
+    params: [
+      { id: 'lens', label: 'In the hole', options: ['Nothing', 'A lens'], value: 0 },
+      { id: 'D', label: 'Size of the hole', min: 1, max: 16, step: 0.5, value: 16, show: (v) => f1(v) + ' mm across' },
+      { id: 'xs', label: 'Screen', min: 30, max: 84, step: 1, value: 50, show: (v) => f1(v + 3) + ' mm behind the hole' },
+    ],
+    build(p) { return candle(this, p, { lens: p.lens, D: p.D, d: 100 }); },
+    score(m, b, p) {
+      const blur = worst(m), light = (p.D / 16) ** 2;
+      return { solved: blur <= 0.5 && light >= 0.5,
+        meters: [sharpMM(blur, 0.5), { label: 'Brightness', text: (light < 0.0995 ? f1(light * 100) : f0(light * 100)) + '%', goal: '50% or more', frac: light / 0.5 }],
+        rows: [['Candle to hole', '97.0 mm'], ['Picture, against the candle', size(m)]] };
+    },
+  },
+  // ───────────────────────────────────────────────────────────── far
+  {
+    id: 'far', nav: 'Far', unit: 'mm', scale: 'Lens 16 mm across',
+    title: 'Step back',
+    task: 'Carry the candle far away, and keep its picture sharp.',
+    brief: 'The same lens and screen. Slide the candle away and watch the light that gets through the hole.',
+    learned: 'From far away, the light a lens catches from one point is a bundle of parallel rays, and the picture of that point is a small spot, one focal length behind the lens. From here on, parallel rays are the light from one far-off point of a scene, and a small spot means a sharp picture.',
+    key: [['k-ray', 'Light from the tip of the flame'], ['k-ray2', 'Light from the foot of the candle'], ['k-stop', 'Plate with a hole, 10 mm'], ['k-glass', 'Crown glass lens, 40 mm'], ['k-target', 'Screen'], ['k-inset', 'Panel: the picture on the screen, made from the traced light. A candle too far off to show its shape is drawn as a dot big enough to see.']],
+    bounds: [-108, -20, 88, 20], aside: true,
+    params: [
+      // the slider and the candle move the same way: left is further off
+      { id: 'near', label: 'Candle', min: 0, max: 1, step: 0.01, value: 1, show: (v, b) => (b.d < 1000 ? f0(b.d) + ' mm away' : b.d < 1e5 ? f1(b.d / 1000) + ' m away' : 'very far away') },
+      { id: 'xs', label: 'Screen', min: 30, max: 84, step: 1, value: 66, show: (v) => f1(v + 3) + ' mm behind the hole' },
+    ],
+    build(p) { return candle(this, p, { lens: 1, D: 10, d: p.near > 0.001 ? 97 / (p.near * p.near) + 3 : 1e7 }); },
+    score(m, b, p) {
+      const blur = worst(m), away = 1 - p.near;
+      return { solved: blur <= 0.3 && b.d >= 5000,
+        meters: [sharpMM(blur, 0.3), { label: 'Distance', text: b.d < 1000 ? f0(b.d) + ' mm' : b.d < 1e5 ? f1(b.d / 1000) + ' m' : 'very far', goal: '5 m or more', frac: Math.min(1, 1 - Math.sqrt(97 / (b.d - 3))) / (1 - Math.sqrt(97 / 4997)) }],
+        rows: [['Focal length of the lens', f1(b.L.focal(GREEN)) + ' mm'], ['Picture, against the candle', size(m)]] };
     },
   },
   // ───────────────────────────────────────────────────────────── 2

@@ -294,6 +294,8 @@ the note again.
 | Challenge | You change | It teaches |
 | --- | --- | --- |
 | Burning glass | Where the lens sits, how strongly its faces curve | Focus and focal length |
+| Make a picture | A hole or a lens in a plate, the size of the hole, where the screen sits | What a picture is: each point of a candle lighting its own point of a screen; pinhole against lens |
+| Step back | How far away the candle is, where the screen sits | Light from a far-off point arrives as parallel rays and makes a spot one focal length behind the lens |
 | Eyeglasses | The power of a spectacle lens in front of a nearsighted eye | Spreading lenses, dioptres |
 | Camera lens | The shape of a 50 mm lens and its iris | Spherical aberration, and sharpness against brightness |
 | Colour | The glass of a 100 mm lens, and its curve | Dispersion (wavelengths focusing apart), the Abbe number, index against curvature |

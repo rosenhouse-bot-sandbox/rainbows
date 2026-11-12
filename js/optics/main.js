@@ -5,6 +5,7 @@
 
 import { LEVELS, run } from './levels.js';
 import { drawChart, CHART_ASPECT } from './chart.js';
+import { drawPicture } from './picture.js';
 import { WHITE } from './glass.js';
 
 const $ = (id) => document.getElementById(id);
@@ -231,6 +232,12 @@ const ITEMS = {
     g.fillStyle = o.flint ? 'rgba(170,230,190,.24)' : 'rgba(150,195,255,.2)'; g.fill();
     g.strokeStyle = o.flint ? 'rgba(200,245,215,.85)' : 'rgba(205,228,255,.85)'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
   },
+  candle(o) {
+    const w = Math.max(3, V.k * 3), x = sx(o.x), top = sy(o.tip - 6.8), r = Math.max(2.5, V.k * 2.2);
+    g.fillStyle = '#d8cdb4'; g.fillRect(x - w / 2, top, w, sy(-o.tip) - top);
+    g.fillStyle = '#ffbe5a';
+    g.beginPath(); g.moveTo(x, sy(o.tip)); g.quadraticCurveTo(x + r, sy(o.tip - 4), x + r * 0.9, sy(o.tip - 5.4)); g.arc(x, sy(o.tip - 5.4), r * 0.9, 0, Math.PI); g.quadraticCurveTo(x - r, sy(o.tip - 4), x, sy(o.tip)); g.fill();
+  },
   match(o, lit) {
     g.strokeStyle = '#b89a6a'; g.lineWidth = Math.max(2, V.k * 1.1); g.lineCap = 'round';
     line(o.x + o.r, -o.r, o.x + o.r + 5, -19);
@@ -342,9 +349,10 @@ function draw() {
     g.fillStyle = `rgb(${INK})`; g.fill();
   }
   if (b.spot) inset(b.spot, m, lit);
-  if (b.chart && V.aside) {
+  if ((b.chart || b.picture) && V.aside) {
     const [ax, ay, aw, ah] = V.aside;
-    drawChart(g, ax, ay, aw, ah, V.dpr, m.hits, b.chart.umPerArcmin);
+    if (b.chart) drawChart(g, ax, ay, aw, ah, V.dpr, m.hits, b.chart.umPerArcmin);
+    else drawPicture(g, ax, ay, aw, ah, V.dpr, m, b.picture);
     g.strokeStyle = lit ? '#6fe3a1' : `rgba(${INK},.25)`; g.lineWidth = lit ? 2 : 1; g.beginPath(); g.roundRect(ax, ay, aw, ah, 8); g.stroke();
   }
   if (S.fx && performance.now() - S.fx.t0 < FLARE * 1000) invalidate();

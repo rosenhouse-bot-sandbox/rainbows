@@ -34,6 +34,8 @@ fs.mkdirSync(out, { recursive: true });
 // (from a world point; `rev` when the value rises as the pointer goes left). The values are a known solution; the test checks the page agrees.
 const PLAYS = {
   burn: { keys: { c: 15 }, drags: [{ param: 'x', at: [-50, -21], to: -61 }] },
+  picture: { clicks: { lens: 1 }, keys: { D: 13 }, drags: [{ param: 'xs', at: [50, -19], to: 65 }] },
+  far: { keys: { near: 0.05 }, drags: [{ param: 'xs', at: [66, -19], to: 40 }] },
   specs: { keys: { P: -4.5 }, drags: [] },
   camera: { keys: { q: 0.7 }, drags: [{ param: 'D', at: [-6, 12], to: 12.8 }] },
   colour: { clicks: { glass: 0 }, keys: { c: 11.5 }, drags: [] },
