@@ -52,6 +52,13 @@ function bestFocus(scene, rays) {
 const GLASSES = [CAF2, BK7, F2, SF10];
 const focusRows = (surfaces, from) => WHITE.map((col, i) => [f0(col.nm) + ' nm focuses', f1(paraxial(surfaces, col.nm).at - from) + ' mm behind']);
 
+// A bar that fills as the picture gets sharper. The player is after sharpness, so that is what the
+// bar is called and what grows; the number beside it is the blur, which shrinks.
+const sharp = (label, um, goal, digits = 0) => ({ label, goal: `blur ${goal} µm or less`, ok: um <= goal, frac: goal / um,
+  text: isFinite(um) ? 'blur ' + um.toFixed(um < 10 ? digits : 0) + ' µm' : 'no light' });
+// A quantity that has to land inside a band: drawn as a marker on a scale, not as a bar that fills.
+const band = (label, value, lo, hi, min, max, text) => ({ label, text, goal: `${lo} to ${hi} mm`, ok: value >= lo && value <= hi, range: { lo, hi, min, max, value } });
+
 // Handles: how a drag on the picture changes a setting. `hit` says how near a point (in world
 // units, with px per unit) is, or Infinity; `start` remembers the grab; `move` returns the value.
 const slideX = (param, x, h, pad, ky) => ({ param, cursor: 'ew', knobs: [[x, ky]],
@@ -124,7 +131,7 @@ export const LEVELS = [
     score(m, b, p) {
       const um = m.blur * 1000;
       return { solved: um <= 20,
-        meters: [{ label: 'Blur on the retina', text: isFinite(um) ? f0(um) + ' µm' : 'no light', goal: '20 µm or less', frac: 20 / um }],
+        meters: [sharp('Sharpness on the retina', um, 20)],
         rows: [['Its focal length', p.P ? signed(b.L.focal(GREEN), 0) + ' mm' : 'none (flat)'],
           ['Lens thickness, middle', f1(b.L.t) + ' mm'], ['Lens thickness, edge', f1(b.L.edge) + ' mm']] };
     },
@@ -176,8 +183,9 @@ export const LEVELS = [
     score(m, b, p) {
       const um = m.blur * 1000, okB = um <= 40, okN = b.fnum < 4.05;       // what the readout shows as f/4.0
       return { solved: okB && okN,
-        meters: [{ label: 'Blur on the sensor', text: f0(um) + ' µm', goal: '40 µm or less', frac: 40 / um },
-          { label: 'Brightness', text: 'f/' + f1(b.fnum), goal: 'f/4 or a smaller number', frac: okN ? 1 : 4 / b.fnum * 0.96 }],
+        meters: [sharp('Sharpness', um, 40),
+          // the bar is the light let through, against what f/4 lets through
+          { label: 'Brightness', text: 'f/' + f1(b.fnum), goal: 'f/4 or a smaller number', ok: okN, frac: (4.05 / b.fnum) ** 2 }],
         rows: [['Focal length', f1(b.f) + ' mm'], ['Light let through, against wide open', f0(100 * (p.D / 24) ** 2) + '%'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
     },
   },
@@ -187,7 +195,7 @@ export const LEVELS = [
     title: 'Chase the colour fringe',
     brief: 'White light is a mix of many wavelengths, and glass slows the short ones more than the long ones. So a lens brings short wavelengths, which we see as blue, to a focus nearer than long ones, which we see as red, and a white point lands with coloured fringes. Pick a glass, then set the curve for a lens of about 100 mm. The sensor slides itself to the best focus. Which glass lands the wavelengths closest together?',
     learned: 'Every glass bends short wavelengths more than long ones. The Abbe number says how little the bending varies: fluorite, at 95, spreads the wavelengths least, which is why long camera lenses use it. Notice that a glass with a higher index needs gentler curves for the same focal length. No single glass brings every wavelength to one focus, though. With one simple lens this blur, chromatic aberration, is set by the width of the lens and the Abbe number, and nothing else you can change. The cure is the next challenge.',
-    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as. Sharpness counts all three.'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
     bounds: [-30, -14, 122, 14],
     params: [
       { id: 'glass', label: 'Glass', options: ['Fluorite', 'Crown', 'Flint', 'Dense flint'], value: 3 },
@@ -208,8 +216,8 @@ export const LEVELS = [
     score(m, b) {
       const um = m.blur * 1000, okF = b.f >= 90 && b.f <= 110;
       return { solved: um <= 70 && okF,
-        meters: [{ label: 'Blur, all wavelengths', text: f0(um) + ' µm', goal: '70 µm or less', frac: 70 / um },
-          { label: 'Focal length', text: f0(b.f) + ' mm', goal: '90 to 110 mm', frac: okF ? 1 : 1 - Math.min(0.9, Math.abs(b.f - 100) / 100) - 0.05 }],
+        meters: [sharp('Sharpness', um, 70),
+          band('Focal length', b.f, 90, 110, 60, 140, f0(b.f) + ' mm')],
         rows: [['Index of this glass', b.mat.n(587.56).toFixed(3)], ['Its Abbe number', f0(abbe(b.mat))], ...focusRows(b.L.surfaces, b.L.v2)] };
     },
   },
@@ -219,7 +227,7 @@ export const LEVELS = [
     title: 'An achromatic doublet',
     brief: 'Design a 50 mm lens that brings all the wavelengths to one sharp point. It is two lenses cemented together: a crown glass lens in front, and a second lens behind it. Set the curve of the front lens, choose the glass of the second, and shape its back face. Shaped right, the second lens brings the wavelengths that the first one separated back together.',
     learned: 'A lens that spreads light separates the wavelengths the opposite way to one that gathers it. Flint glass separates them nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s chromatic error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the chromatic error would cancel the focusing too. This is the achromatic doublet (the name means without colour), the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far. Dense flint cancels the chromatic error too, but with these shapes it leaves more spherical aberration behind, so the choice of glass pair decides how sharp the lens can be.',
-    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as. Sharpness counts all three.'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
     bounds: [-16, -11, 96, 11],
     params: [
       { id: 'c1', label: 'Curve of the front lens', min: 24, max: 60, step: 0.5, value: 30, show: (v) => 'radius ' + f1(1000 / v) + ' mm' },
@@ -243,8 +251,8 @@ export const LEVELS = [
     score(m, b) {
       const um = m.blur * 1000, okF = b.f >= 48 && b.f <= 52;
       return { solved: um <= 6 && okF,
-        meters: [{ label: 'Blur, all wavelengths', text: isFinite(um) ? (um < 10 ? f1(um) : f0(um)) + ' µm' : 'no focus', goal: '6 µm or less', frac: 6 / um },
-          { label: 'Focal length', text: b.f > 0 && b.f < 1000 ? f1(b.f) + ' mm' : 'none', goal: '48 to 52 mm', frac: okF ? 1 : b.f > 0 && b.f < 1000 ? 0.95 - Math.min(0.9, Math.abs(b.f - 50) / 50) : 0 }],
+        meters: [sharp('Sharpness', um, 6, 1),
+          band('Focal length', b.f > 0 ? b.f : Infinity, 48, 52, 30, 70, b.f > 0 && b.f < 1000 ? f1(b.f) + ' mm' : 'none')],
         rows: [['Abbe numbers, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
           ...(b.f > 0 && b.f < 1000 ? focusRows(b.K.surfaces, b.K.back) : [])] };
     },
@@ -259,14 +267,14 @@ export const LEVELS = [
     bounds: [-46, -24, 68, 30],
     params: [
       { id: 'q', label: 'Lens faces, front / back', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },
-      { id: 's', label: 'Stop position', min: 6, max: 30, step: 0.25, value: 6, show: (v) => f1(v) + ' mm in front' },
+      { id: 'xi', label: 'Stop position', min: -30, max: -6, step: 0.25, value: -6, show: (v) => f1(-v) + ' mm in front of the lens' },   // slider and stop move the same way
     ],
     build(p) {
       const n = BK7.n(GREEN), P = 1 / 60, H = 16, D = 5.45, FIELD = 20 * DEG;
       const c1 = P * (p.q + 1) / (2 * (n - 1)), c2 = P * (p.q - 1) / (2 * (n - 1));
       const R1 = Math.abs(c1) > 1e-9 ? 1 / c1 : Infinity, R2 = Math.abs(c2) > 1e-9 ? 1 / c2 : Infinity;
       const L = lens({ x: 0, h: H, R1, R2, mat: BK7, tag: 'part' });
-      const xi = -p.s, front = [...L.surfaces, seg(xi, D / 2, xi, 21, { act: 'absorb' }), seg(xi, -D / 2, xi, -21, { act: 'absorb' })];
+      const xi = p.xi, front = [...L.surfaces, seg(xi, D / 2, xi, 21, { act: 'absorb' }), seg(xi, -D / 2, xi, -21, { act: 'absorb' })];
       // two bundles through the stop: straight ahead, and from 20° below the axis
       const bundle = (angle, n, c, rgb, fill) => beam({ ox: xi - 70 * Math.cos(angle), oy: -70 * Math.sin(angle), angle, half: D / 2 * Math.cos(angle) * fill, n, nm: GREEN }).map((r) => ({ ...r, c, rgb }));
       const probe = [...bundle(0, 81, 0, null, 0.999), ...bundle(FIELD, 81, 1, null, 0.999)];
@@ -274,16 +282,14 @@ export const LEVELS = [
       return { surfaces: [...front, seg(xs, -23, xs, 29, { act: 'target' })], ring: false, L, R1, R2, xs, f: L.focal(GREEN),
         draw: [...bundle(0, 7, 0, null, 0.92), ...bundle(FIELD, 7, 1, [150, 205, 255], 0.92)], probe,
         items: [{ t: 'axis' }, { t: 'glass', outline: L.outline }, { t: 'iris', x: xi, open: D / 2, h: 21 }, { t: 'sensor', x: xs, h: 26, y: 3 }],
-        handles: [{ param: 's', cursor: 'ew', knobs: [[xi, -21]],
+        handles: [{ param: 'xi', cursor: 'ew', knobs: [[xi, -21]],
           hit: (wx, wy, k) => (Math.abs(wx - xi) * k <= 26 && Math.abs(wy) <= 21 + 12 / k ? Math.abs(wx - xi) : Infinity),
-          start: (wx, wy, v) => v + wx, move: (wx, wy, c) => c - wx }] };
+          start: (wx, wy, v) => v - wx, move: (wx, wy, c) => wx + c }] };
     },
     score(m, b) {
       const mid = m.groups[0] ? m.groups[0].spread * 1000 : Infinity, edge = m.groups[1] ? m.groups[1].spread * 1000 : Infinity;
-      const show = (v) => (isFinite(v) ? f0(v) + ' µm' : 'no light');
       return { solved: mid <= 40 && edge <= 60,
-        meters: [{ label: 'Blur in the middle', text: show(mid), goal: '40 µm or less', frac: 40 / mid },
-          { label: 'Blur at the edge', text: show(edge), goal: '60 µm or less', frac: 60 / edge }],
+        meters: [sharp('Sharp in the middle', mid, 40), sharp('Sharp at the edge', edge, 60)],
         rows: [['Focal length', f1(b.f) + ' mm'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
     },
   },

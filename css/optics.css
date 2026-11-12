@@ -50,10 +50,17 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 .cap p{margin:0;font-size:0.8438rem;line-height:1.42;color:var(--ink2);max-width:62ch;text-wrap:pretty}
 
 .meters{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
-.meter{display:grid;gap:4px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(234,240,255,.05)}
+.meter{min-width:0;display:grid;gap:4px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(234,240,255,.05)}
+.meter .lab{flex-wrap:wrap}
 .meter .lab b{font-size:0.9375rem}
 .meter .track{height:8px;border-radius:4px;background:rgba(234,240,255,.12);overflow:hidden}
 .meter .track i{display:block;height:100%;width:0;border-radius:4px;background:var(--light);transition:width .12s linear}
+.meter .track u{display:none}
+/* a value that must land in a band: the band is marked on the scale and a marker slides along it */
+.meter .track.range{position:relative;overflow:visible}
+.meter .track.range u{display:block;position:absolute;top:0;bottom:0;border-radius:4px;background:rgba(234,240,255,.3)}
+.meter .track.range i{position:absolute;top:-3px;bottom:-3px;height:auto;width:4px;margin-left:-2px;border-radius:2px;transition:left .12s linear}
+.meter.ok .track.range u{background:rgba(111,227,161,.35)}
 .meter small{font-size:0.75rem;color:var(--ink3)}
 .meter.ok{border-color:rgba(111,227,161,.55)}
 .meter.ok .track i{background:var(--good)}
@@ -125,4 +132,4 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   .meter .lab{flex-wrap:wrap}
   .scalebar{display:none}
 }
-@media (prefers-reduced-motion:reduce){.stages button i,.meter .track i,.hint{transition:none}}
+@media (prefers-reduced-motion:reduce){.stages button i,.meter .track i,.meter .track.range i,.hint{transition:none}}

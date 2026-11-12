@@ -114,13 +114,24 @@ function update() {
   score.meters.forEach((m, i) => {
     let e = meterEls[i];
     if (!e) {
-      const root = el('div', 'meter'), lab = el('div', 'lab'), name = el('span'), val = el('b'), track = el('div', 'track'), fill = el('i'), note = el('small');
-      lab.append(name, val); track.append(fill); root.append(lab, track, note); box.append(root);
-      e = meterEls[i] = { root, name, val, fill, note };
+      const root = el('div', 'meter'), lab = el('div', 'lab'), name = el('span'), val = el('b'), track = el('div', 'track'), zone = el('u'), fill = el('i'), note = el('small');
+      lab.append(name, val); track.append(zone, fill); root.append(lab, track, note); box.append(root);
+      e = meterEls[i] = { root, name, val, track, zone, fill, note };
     }
-    const frac = clamp(isFinite(m.frac) ? m.frac : 0, 0, 1), ok = frac >= 1;
+    const pct = (v) => (clamp(isFinite(v) ? v : 1, 0, 1) * 100).toFixed(1) + '%';
+    e.track.classList.toggle('range', !!m.range);
+    let ok;
+    if (m.range) {                                 // a marker on a scale, with the goal as a band
+      const r = m.range, at = (v) => (v - r.min) / (r.max - r.min);
+      ok = m.ok;
+      e.zone.style.left = pct(at(r.lo)); e.zone.style.width = pct(at(r.hi) - at(r.lo));
+      e.fill.style.width = ''; e.fill.style.left = pct(at(r.value));
+    } else {                                       // a bar that fills toward the goal
+      const frac = clamp(isFinite(m.frac) ? m.frac : 0, 0, 1);
+      ok = m.ok ?? frac >= 1;
+      e.fill.style.left = ''; e.fill.style.width = pct(ok ? 1 : Math.min(frac, 0.97));
+    }
     e.name.textContent = m.label; e.val.textContent = m.text;
-    e.fill.style.width = (frac * 100).toFixed(1) + '%';
     e.root.classList.toggle('ok', ok);
     e.note.textContent = (ok ? 'Goal met: ' : 'Goal: ') + m.goal;
   });

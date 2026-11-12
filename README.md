@@ -282,6 +282,10 @@ Meet the goal and let go, and the panel says what you just built and why it work
 - The white knobs in the picture can be dragged with a mouse or a finger. Every setting is also a
   slider in the panel, so the whole game can be played from the keyboard. The iris and the mirrors
   move by a fixed small amount for each pixel of drag, so a thumb can set them finely.
+- A bar that fills is named for what the player gains: "Sharpness" fills as the blur (the number
+  beside it) shrinks, "Brightness" as more light gets through. A value that has to land in a band,
+  such as a focal length, is a marker on a scale with the band marked, not a bar. A slider moves the
+  same way as the thing it moves in the picture.
 - Nothing moves unless you move it, with one exception: when the match lights it flares, with
   sparks, for four seconds and then the flame holds still. With reduced motion switched on it is
   simply alight. The flame is a drawing, not a model of combustion.
@@ -310,7 +314,7 @@ The physics:
   36.4, SF10 1.7283 and 28.5, CaF2 1.4338 and 95.0.
 - The text keeps wavelength and colour apart: wavelength is a property of the light, colour is what
   we see. White light is a mix of many wavelengths; it is traced as three of them, 486 nm, 546 nm
-  and 656 nm, each drawn in the colour we see it as (blue, green, red). "Blur, all wavelengths" is
+  and 656 nm, each drawn in the colour we see it as (blue, green, red). In the two chromatic challenges the blur behind "Sharpness" is
   over the three together, equally weighted. The inset adds the three drawings up; it is not a
   rendering of what an eye would see of a full spectrum.
 - In the Wide view challenge the second bundle arrives 20° off the axis, so its spot is not round.
