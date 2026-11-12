@@ -28,7 +28,7 @@ export const N_MEDIUM = 1.335, N_LIPID = 1.48, MEM = 4;     // medium and vesicl
 export const IRM = { lambda: 630, min: 560, max: 720 };     // nm; above 560 it stays clear of the pHluorin emission band
 export const WELL = 2e4;                                    // photoelectrons per pixel per millisecond from the reference wave
 export const SHOW_MS = 10;                                  // exposure of one displayed frame
-export const SPAN = 0.02;                                   // the display's full grey range is -SPAN .. +SPAN of the background
+export const SPAN = 0.035;                                  // the display's full grey range is -SPAN .. +SPAN of the background
 const PI = Math.PI;
 
 // ---- one objective, two colours ------------------------------------------------------------------

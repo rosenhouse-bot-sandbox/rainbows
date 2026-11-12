@@ -218,7 +218,7 @@ function applyIrm() {
   for (const t of document.querySelectorAll('.irmTile')) t.hidden = !on;
   $('obsCap').textContent = on ? 'TIRF' : 'Recorded'; $('expectCap').textContent = on ? 'Expected' : 'Model expects';
   $('pipNote').textContent = on
-    ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. Mid-grey is the bare background; black and white are ${(SPAN * 100).toFixed(0)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`
+    ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`
     : `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
 }
 $('irm').addEventListener('change', (e) => { st.irm = e.target.checked; applyIrm(); stageIdx = -1; delete shown.wl; syncUI(); resize(); pipRect = $(st.infer ? 'inf' : 'pip').getBoundingClientRect(); });
