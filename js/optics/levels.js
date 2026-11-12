@@ -15,7 +15,7 @@ const side = (R, out) => (isFinite(R) && Math.abs(R) < 1e5 ? (Math.sign(R) === -
 
 // Light that arrives at the target, as numbers. `ring` weights each ray by its distance from the
 // axis: on the axis of a round lens, a ray at height s stands for a ring of light of radius s.
-// Rays may carry a group number c (a colour, or a direction); each group is also tallied alone,
+// Rays may carry a group number c (a wavelength, or a direction); each group is also tallied alone,
 // with its blur measured about the axis (`blur`) and about its own middle (`spread`).
 function tally(scene, rays, ring) {
   let all = 0, got = 0, u2 = 0, via = 0, viaGot = 0;
@@ -36,7 +36,7 @@ function tally(scene, rays, ring) {
     blur: got ? 2 * Math.sqrt(u2 / got) : Infinity, hits, groups };
 }
 
-// White light: the same bundle in each of three colours.
+// White light: the same bundle at each of three wavelengths.
 const white = (src, n) => WHITE.flatMap((col, c) => beam({ ...src, n, nm: col.nm }).map((r) => ({ ...r, c, rgb: col.rgb })));
 // Where the rays that leave a lens (a list of traces, with their weights) are tightest about the axis.
 function bestFocus(scene, rays) {
@@ -50,7 +50,7 @@ function bestFocus(scene, rays) {
   return sbb ? -sab / sbb : NaN;
 }
 const GLASSES = [CAF2, BK7, F2, SF10];
-const focusRows = (surfaces, from) => WHITE.map((col, i) => [['Blue', 'Green', 'Red'][i] + ' light focuses', f1(paraxial(surfaces, col.nm).at - from) + ' mm behind']);
+const focusRows = (surfaces, from) => WHITE.map((col, i) => [f0(col.nm) + ' nm focuses', f1(paraxial(surfaces, col.nm).at - from) + ' mm behind']);
 
 // Handles: how a drag on the picture changes a setting. `hit` says how near a point (in world
 // units, with px per unit) is, or Infinity; `start` remembers the grab; `move` returns the value.
@@ -65,7 +65,7 @@ export const LEVELS = [
     title: 'Light the match',
     brief: 'Sunlight arrives from the left as parallel rays. Slide the magnifying glass along its rail and change how strongly its faces curve until the light meets on the match head.',
     learned: 'A lens that bulges in the middle bends parallel rays to one meeting point, its focus. The distance from lens to focus is the focal length, and stronger curves make it shorter. Look at the outermost rays: they cross a little early. That is spherical aberration, and it comes back in the camera challenge. The Sun is traced here as a single far-off point; its real image here would be a disc more than half a millimetre across.',
-    key: [['k-ray', 'Sunlight, one colour (550 nm)'], ['k-glass', 'Crown glass lens'], ['k-target', 'Match head, 1.5 mm']],
+    key: [['k-ray', 'Sunlight, one wavelength (550 nm)'], ['k-glass', 'Crown glass lens'], ['k-target', 'Match head, 1.5 mm']],
     bounds: [-112, -25, 14, 25],
     params: [
       { id: 'x', label: 'Lens position', min: -78, max: -42, step: 0.25, value: -50, show: (v) => f1(-v) + ' mm from the match' },
@@ -134,7 +134,7 @@ export const LEVELS = [
     id: 'camera', nav: 'Camera', unit: 'mm', scale: 'Lens 26 mm across',
     title: 'A sharp, bright camera lens',
     brief: 'One 50 mm lens, a distant point of light, and a sensor that slides itself to the best focus. Wide open the picture is bright but soft. Closing the iris sharpens it and throws light away. Find a lens shape that is sharp without closing down past f/4.',
-    learned: 'Rays through the edge of a spherical lens bend too much and cross early: spherical aberration. It grows steeply with the opening, so closing the iris cures it, at the cost of light. Shape matters as well. With the curved face toward the distant scene both faces share the bending, and the blur is about a quarter of what the same glass gives turned round. Real camera lenses stack several elements so the errors of one cancel those of the next. Only light along the axis is traced here; off-axis blurs and colour are for later challenges.',
+    learned: 'Rays through the edge of a spherical lens bend too much and cross early: spherical aberration. It grows steeply with the opening, so closing the iris cures it, at the cost of light. Shape matters as well. With the curved face toward the distant scene both faces share the bending, and the blur is about a quarter of what the same glass gives turned round. Real camera lenses stack several elements so the errors of one cancel those of the next. Only light along the axis is traced here; blur off the axis and other wavelengths are for later challenges.',
     key: [['k-ray', 'Light from a far-off point (550 nm)'], ['k-glass', 'Crown glass lens, 50 mm'], ['k-stop', 'Iris'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
     bounds: [-46, -20, 64, 20],
     params: [
@@ -185,9 +185,9 @@ export const LEVELS = [
   {
     id: 'colour', nav: 'Colour', unit: 'mm', scale: 'Lens 16 mm across',
     title: 'Chase the colour fringe',
-    brief: 'White light is every colour at once, and glass slows blue more than red, so a lens brings blue to a focus nearer than red. Pick a glass, then set the curve for a lens of about 100 mm. The sensor slides itself to the best focus. Which glass lands the colours closest together?',
-    learned: 'Every glass bends blue more than red. The Abbe number says how little: fluorite, at 95, spreads colours least, which is why long camera lenses use it. Notice that a glass with a higher index needs gentler curves for the same focal length. No single glass brings the colours together, though. With one simple lens the colour blur is set by the width of the lens and the Abbe number, and nothing else you can change. The cure is the next challenge.',
-    key: [['k-ray', 'White light, traced in blue, green and red'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    brief: 'White light is a mix of many wavelengths, and glass slows the short ones more than the long ones. So a lens brings short wavelengths, which we see as blue, to a focus nearer than long ones, which we see as red, and a white point lands with coloured fringes. Pick a glass, then set the curve for a lens of about 100 mm. The sensor slides itself to the best focus. Which glass lands the wavelengths closest together?',
+    learned: 'Every glass bends short wavelengths more than long ones. The Abbe number says how little the bending varies: fluorite, at 95, spreads the wavelengths least, which is why long camera lenses use it. Notice that a glass with a higher index needs gentler curves for the same focal length. No single glass brings every wavelength to one focus, though. With one simple lens this blur, chromatic aberration, is set by the width of the lens and the Abbe number, and nothing else you can change. The cure is the next challenge.',
+    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
     bounds: [-30, -14, 122, 14],
     params: [
       { id: 'glass', label: 'Glass', options: ['Fluorite', 'Crown', 'Flint', 'Dense flint'], value: 3 },
@@ -208,7 +208,7 @@ export const LEVELS = [
     score(m, b) {
       const um = m.blur * 1000, okF = b.f >= 90 && b.f <= 110;
       return { solved: um <= 70 && okF,
-        meters: [{ label: 'Blur, all colours', text: f0(um) + ' µm', goal: '70 µm or less', frac: 70 / um },
+        meters: [{ label: 'Blur, all wavelengths', text: f0(um) + ' µm', goal: '70 µm or less', frac: 70 / um },
           { label: 'Focal length', text: f0(b.f) + ' mm', goal: '90 to 110 mm', frac: okF ? 1 : 1 - Math.min(0.9, Math.abs(b.f - 100) / 100) - 0.05 }],
         rows: [['Index of this glass', b.mat.n(587.56).toFixed(3)], ['Its Abbe number', f0(abbe(b.mat))], ...focusRows(b.L.surfaces, b.L.v2)] };
     },
@@ -216,10 +216,10 @@ export const LEVELS = [
   // ───────────────────────────────────────────────────────────── doublet
   {
     id: 'doublet', nav: 'Doublet', unit: 'mm', scale: 'Lens 12 mm across',
-    title: 'Cancel the colour',
-    brief: 'A strong crown glass lens, with a second lens cemented to its back. Choose the glass of the second lens and the curve of its back face. Shaped right, the second lens undoes the colour spread of the first and still leaves a lens that focuses.',
-    learned: 'A lens that spreads light has colour error of the opposite sign to one that gathers it. Flint glass spreads colours nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s colour error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the colour would cancel the focusing too. This is the achromatic doublet, the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far.',
-    key: [['k-ray', 'White light, traced in blue, green and red'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    title: 'Cancel the colour fringes',
+    brief: 'A strong crown glass lens, with a second lens cemented to its back. Choose the glass of the second lens and the curve of its back face. Shaped right, the second lens brings the wavelengths that the first one separated back together, and still leaves a lens that focuses.',
+    learned: 'A lens that spreads light separates the wavelengths the opposite way to one that gathers it. Flint glass separates them nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s chromatic error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the chromatic error would cancel the focusing too. This is the achromatic doublet (the name means without colour), the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far.',
+    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
     bounds: [-16, -11, 96, 11],
     params: [
       { id: 'glass', label: 'Glass of the second lens', options: ['Crown', 'Flint', 'Dense flint'], value: 0 },
@@ -242,8 +242,8 @@ export const LEVELS = [
     score(m, b) {
       const um = m.blur * 1000;
       return { solved: um <= 15,
-        meters: [{ label: 'Blur, all colours', text: isFinite(um) ? f0(um) + ' µm' : 'no focus', goal: '15 µm or less', frac: 15 / um }],
-        rows: [['Focal length of the pair', b.f > 0 && b.f < 1000 ? f0(b.f) + ' mm' : 'none'], ['Abbe number, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
+        meters: [{ label: 'Blur, all wavelengths', text: isFinite(um) ? f0(um) + ' µm' : 'no focus', goal: '15 µm or less', frac: 15 / um }],
+        rows: [['Focal length of the pair', b.f > 0 && b.f < 1000 ? f0(b.f) + ' mm' : 'none'], ['Abbe numbers, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
           ...(b.f > 0 && b.f < 1000 ? focusRows(b.K.surfaces, b.K.back) : [])] };
     },
   },
@@ -251,9 +251,9 @@ export const LEVELS = [
   {
     id: 'wide', nav: 'Wide', unit: 'mm', scale: 'Lens 32 mm across',
     title: 'A lens for landscapes',
-    brief: 'A camera must be sharp at the edge of the picture as well as the middle. Gold light comes straight in. Pale light comes from 20° off to one side, and has to land sharp on the same flat sensor. Bend the lens and slide the stop along the axis until both spots are small.',
+    brief: 'A camera must be sharp at the edge of the picture as well as the middle. Light drawn in gold comes straight in. Light drawn in pale blue is the same wavelength, coming from 20° off to one side, and it has to land sharp on the same flat sensor. Bend the lens and slide the stop along the axis until both spots are small.',
     learned: 'Off the axis a simple lens smears a point into a comet shape (coma), and focuses it on a curved surface where the sensor is flat. A stop in front decides which part of the lens each direction of light goes through. With the lens bent into a meniscus, hollow side to the scene, and the stop at the right distance, those errors nearly cancel. William Wollaston found this in 1812, and his landscape lens went into simple cameras for well over a century. Only an up-and-down slice of each beam is traced here, so the error of the sideways slice (astigmatism) is not counted.',
-    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop, f/11'], ['k-target', 'Sensor, at the best focus for the middle']],
+    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side (also 550 nm)'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop, f/11'], ['k-target', 'Sensor, at the best focus for the middle']],
     bounds: [-46, -24, 68, 30],
     params: [
       { id: 'q', label: 'Lens faces, front / back', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },

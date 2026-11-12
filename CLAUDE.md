@@ -16,6 +16,9 @@ experience is and where its code lives.
 - Physics claims must be true. Numbers shown on screen come from the model in code
   (`js/v2/optics.js` for v2), not from text typed into a caption. Where a picture simplifies or
   exaggerates, say so on screen and in the README.
+- Use wavelength and colour correctly. Wavelength is a property of the light; colour is what we
+  perceive. White light is a mix of many wavelengths, not "every colour at once". Write "short
+  wavelengths, which we see as blue", and "drawn in gold" for a colour that is only the picture's.
 
 ## Modern Web Guidance
 

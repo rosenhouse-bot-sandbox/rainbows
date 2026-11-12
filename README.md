@@ -271,7 +271,7 @@ Meet the goal and let go, and the panel says what you just built and why it work
 | Burning glass | Where the lens sits, how strongly its faces curve | Focus and focal length |
 | Eyeglasses | The power of a spectacle lens in front of a nearsighted eye | Spreading lenses, dioptres |
 | Camera lens | The shape of a 50 mm lens and its iris | Spherical aberration, and sharpness against brightness |
-| Colour | The glass of a 100 mm lens, and its curve | Dispersion, the Abbe number, index against curvature |
+| Colour | The glass of a 100 mm lens, and its curve | Dispersion (wavelengths focusing apart), the Abbe number, index against curvature |
 | Doublet | The glass and back face of a lens cemented behind a crown lens | The achromatic doublet: why it takes two glasses |
 | Wide view | The bending of a lens and where its stop sits | Coma and field curvature off the axis (Wollaston's landscape lens) |
 | Solar tower | The tilt of three heliostat mirrors | The law of reflection |
@@ -305,9 +305,11 @@ The physics:
 - Glass indices come from the makers' Sellmeier fits, and Malitson's for fluorite. They give the
   catalogue values at 587.6 nm and the catalogue Abbe numbers: N-BK7 1.5168 and 64.2, F2 1.6200 and
   36.4, SF10 1.7283 and 28.5, CaF2 1.4338 and 95.0.
-- White light is traced as three wavelengths: 486 nm, 546 nm and 656 nm, drawn blue, green and red.
-  "Blur, all colours" is over the three together, equally weighted. The colours of the spot in the
-  inset are those three added up, not a full spectrum.
+- The text keeps wavelength and colour apart: wavelength is a property of the light, colour is what
+  we see. White light is a mix of many wavelengths; it is traced as three of them, 486 nm, 546 nm
+  and 656 nm, each drawn in the colour we see it as (blue, green, red). "Blur, all wavelengths" is
+  over the three together, equally weighted. The inset adds the three drawings up; it is not a
+  rendering of what an eye would see of a full spectrum.
 - In the Wide view challenge the second bundle arrives 20° off the axis, so its spot is not round.
   Only the slice of that bundle in the plane of the picture is traced, each ray weighted equally,
   and its blur is measured about its own middle. That catches coma and field curvature; the error
@@ -321,7 +323,7 @@ The physics:
   index 4/3, with a 3 mm pupil, made 23.45 mm long so that it is nearsighted.
 
 Simplifications, which the panel also states where they matter: one wavelength (550 nm) outside the
-two colour challenges; light on the axis only outside Wide view; no reflection losses at the
+two chromatic challenges; light on the axis only outside Wide view; no reflection losses at the
 glass; the Sun is a point, not a half-degree disc; the spectacle lens (40 mm across, 1.5 mm at its thinnest) is equally curved on both
 faces, where a real one is a meniscus; the solar field is a flat slice with three mirrors. The
 inset that magnifies the spot compresses brightness (a square root) so that a wide blur can still be

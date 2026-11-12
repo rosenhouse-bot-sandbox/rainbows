@@ -36,9 +36,9 @@ export const EYE = { name: 'Eye (reduced model)', n: () => 4 / 3 };
 
 export const GREEN = 550;      // the one wavelength the first levels trace
 
-// Three colours for white light: the blue and red lines opticians quote dispersion between, and
-// a green between them. `rgb` is how each is drawn.
+// Three wavelengths to stand for white light: the two lines opticians quote dispersion between
+// (486 and 656 nm) and one between them. `rgb` is the colour each is drawn in, roughly as we see it.
 export const WHITE = [{ nm: 486.13, rgb: [70, 130, 255] }, { nm: 546.07, rgb: [60, 225, 90] }, { nm: 656.27, rgb: [255, 70, 55] }];
 
-// The Abbe number: how little a glass spreads colours. Higher is better.
+// The Abbe number: how little a glass's index varies with wavelength. Higher spreads less.
 export const abbe = (mat) => (mat.n(587.56) - 1) / (mat.n(486.13) - mat.n(656.27));
