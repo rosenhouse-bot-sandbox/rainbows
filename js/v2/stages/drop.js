@@ -127,30 +127,14 @@ function ensure(S) {
 }
 
 // ---- the drop as the Rain scale shows it ----
-// From metres away a drop is a glint, the cone of colour it throws back, and the one ray that finds
-// the eye. Rain draws exactly this for each marked drop, and this scene draws it again around itself
-// while the camera flies between the two, so every line carries straight on across the join.
-const FAR = 180;      // how far the cone is drawn, in drop radii
-let farRays = null;
+// From metres away a drop is a glint and the one ray that finds the eye. Both the Rain scene and this
+// one draw it with this, so the two agree while one is flown into the other. (The cone of colour the drop
+// throws back is left to the Drop scale: among the rain and the sunlight it was one thing too many.)
 // h: the marked drop (its colour and brightness at the eye); toEye: the far end of the ray to the eye;
 // gain dims the lines and glint dims the glow that stands in for the drop itself;
 // xf places a point of this scene in the caller's world, where one drop radius is `unit` long.
 export function drawFar(R, S, h, toEye, gain = 1, glint = gain, xf = p => p, unit = 1) {
-  // The cone is hollow, and is drawn that way: a dozen of its rays as ribs, the circle they end on in
-  // each colour (red outermost, at the true angles, so the colours lie close together), and its axis,
-  // the line from the drop straight back toward the Sun. Many more ribs than this fill in to a white fan.
-  farRays ??= SPEC.map(sp => {
-    const tr = O.traceDrop(O.bowB(sp.n), sp.n, 1), out = tr.outs.find(o => o.order === 1), p = tr.hits[out.at];
-    return { col: sp.part, p, q: [p[0] + out.dir[0] * FAR, p[1] + out.dir[1] * FAR] };
-  });
-  const f = S.focus, aC = (f === 'eye' ? 0.12 : f === 'sun' ? 1 : 0.6) * h.fade * gain, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
-  const TAU = 2 * Math.PI, RIBS = 12, RIM = 48;
-  for (const r of farRays) {
-    for (let a = 0; a < RIBS; a++) { const phi = (a + 0.5) / RIBS * TAU; R.seg(xf(rot(r.p, phi)), xf(rot(r.q, phi)), r.col, 0.4 * aC, 1.2, 0.2 * aC); }
-    let prev = xf(rot(r.q, 0));
-    for (let a = 1; a <= RIM; a++) { const pt = xf(rot(r.q, a / RIM * TAU)); R.seg(prev, pt, r.col, 0.4 * aC, 1.4); prev = pt; }
-  }
-  R.seg(xf([0, 0, 0]), xf([farRays[3].q[0], 0, 0]), [1, 0.86, 0.55], 0.3 * aC, 1.2, 0.12 * aC);
+  const f = S.focus, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
   const o = xf([0, 0, 0]);
   R.seg(o, toEye, h.col, (0.25 + 0.75 * h.level) * aE, 2.4);
   // The glow stands in for a drop too small to see. From close by it would fill the view (a marked drop
