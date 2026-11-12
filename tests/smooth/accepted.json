@@ -1,0 +1,4 @@
+[
+  { "scenario": "^reduced motion", "kind": "jump", "match": "on the very frame a flight between scales began",
+    "reason": "With reduced motion nothing flies. Zooming in to Molecules from the back wall or the way out first changes the Surface scene to the entering crossing, and that change is a cut, exactly as pressing a Which crossing button is under reduced motion. The scales then cross-fade." }
+]

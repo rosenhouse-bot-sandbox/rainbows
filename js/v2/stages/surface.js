@@ -33,12 +33,12 @@ float net(vec2 g, float cell){
   return max(l.x, l.y)*(1.0 - smoothstep(0.08, 0.3, max(w.x, w.y)));
 }
 // The drop's skin with its net of lines, where a sight line meets it at P.
-vec3 skin(vec3 P, vec3 rd){
+vec3 skin(vec3 P, vec3 rd, float sheen){
   vec3 nrm = vec3(P.x, P.y + RD, P.z)/RD;
   vec2 g = RD*vec2(atan(P.x, P.y + RD), atan(P.z, P.y + RD));
   float line = max(net(g, 2.0), max(net(g, 20.0), net(g, 200.0)));
   float graze = pow(1.0 - abs(dot(nrm, rd)), 4.0);
-  return vec3(0.16,0.34,0.7)*(0.05 + 0.11*line + 0.45*graze);
+  return vec3(0.16,0.34,0.7)*(0.05*sheen + 0.11*line + 0.45*graze*sheen);
 }
 // The drop itself, to scale: its skin carries a net of 2 µm squares near the beam, 20 µm and 200 µm
 // ones further off, and shines where it is seen edge-on, at the horizon.
@@ -47,18 +47,40 @@ vec3 skin(vec3 P, vec3 rd){
 // the water behind it; from inside, the far skin is a window on the dark air beyond and the water in
 // between is kept faint. A flight can carry the camera through the skin, so the two views are blended
 // over its last few µm outside (w: wider from far off, to match the Drop scale), and skin right at the eye is not drawn: nothing changes at once there.
-vec3 dropSkin(vec3 ro, vec3 rd, float w){
+// The drop is drawn cut open: the half of it nearer the camera than the plane z = zc is taken away,
+// so that the water's cut face and its edge, the surface in cross-section, are seen square on with
+// the beams lying in that face. (zc is 0, the plane of the ray, once the camera is close; from far off
+// it is out beyond the drop, which is then whole: see cutAt.) What is left is the sphere where z < zc.
+vec3 dropSkin(vec3 ro, vec3 rd, float w, float zc){
   float reach = min(2.0*RD, 10.0*w);      // how near counts as right at the eye (see the Drop scale's shader)
   float cc = dot(ro,ro) + 2.0*RD*ro.y, bb = dot(ro,rd) + RD*rd.y, hh = bb*bb - cc;
-  float tFar = sqrt(max(hh, 0.0)) - bb;
-  if(hh <= 0.0 || tFar <= 0.0) return vec3(0.0);
-  float wo = smoothstep(0.0, w, cc/(2.0*RD)), tNear = max(cc, 0.0)/tFar;
-  vec3 s = vec3(0.0);
-  if(wo > 0.0) s += wo*skin(ro + rd*tNear, rd);
-  if(wo < 1.0) s += (1.0 - wo)*(1.0 - exp(-2.0*tFar/reach))*skin(ro + rd*tFar, rd);
-  return s + vec3(0.010,0.028,0.070)*mix(0.45, 1.5, wo)*(1.0 - exp(-(tFar - tNear)/7.0));
+  // where the sight line meets the cutting plane, and how far outside the sphere that point is
+  float tp = (zc - ro.z)/(abs(rd.z) < 1e-6 ? -1e-6 : rd.z);
+  vec3 Pp = ro + rd*tp;
+  float hp = (dot(Pp,Pp) + 2.0*RD*Pp.y)/(2.0*RD), fw = fwidth(hp);
+  // how far outside what is left the eye is, and so how much of the view from outside to use
+  float wo = smoothstep(0.0, w, max(cc/(2.0*RD), ro.z - zc));
+  vec3 col = vec3(0.0);
+  // the edge of the cut face: the surface itself, as a bright line
+  if(ro.z > zc && rd.z < 0.0 && tp > 0.0 && fw < 0.5*RD) col += wo*vec3(0.45,0.72,1.0)*0.9*exp(-abs(hp)/(1.2*fw + 0.012));
+  if(hh <= 0.0) return col;
+  float sq = sqrt(hh), tFar = sq - bb, tNear = cc/tFar;      // tNear < 0 with the eye inside the sphere
+  float a = tNear, b = tFar; bool face = false, open = false;
+  if(rd.z < 0.0){ if(tp > a){ a = tp; face = true; } } else if(tp < b){ b = tp; open = true; }
+  if(b <= max(a, 0.0)) return col;
+  // (with the drop cut open, the outside of the half that is left is drawn as its net of lines on the
+  // dark, without the blue of the water under it: it lies behind the air the beams cross, and the
+  // blue is kept for the cut face, so that water and air are told apart at a glance)
+  float whole = smoothstep(0.0, 60.0, zc);
+  if(wo > 0.0) col += wo*(face ? vec3(0.16,0.34,0.7)*0.07 : skin(ro + rd*a, rd, mix(0.12, 1.0, whole)));
+  if(wo < 1.0 && !open) col += (1.0 - wo)*(1.0 - exp(-2.0*b/reach))*skin(ro + rd*b, rd, 1.0);
+  return col + vec3(0.010,0.028,0.070)*mix(0.45, 1.5*(face ? 1.0 : mix(0.2, 1.0, whole)), wo)*(1.0 - exp(-(b - max(a, 0.0))/7.0));
 }
 `;
+// Where the cut is, for a camera at `eye` (µm from the crossing): in the plane of the ray from any
+// distance this scale's own camera can reach, and further toward the camera the further off it is,
+// so that from the Drop scale's distances the drop is whole and the cut closes in as the camera does.
+export const cutAt = eye => Math.max(0, 0.8 * (V.len(eye) - 30));
 // how wide that blend is, for a camera at `eye`
 export const skinWidth = eye => Math.min(300, Math.max(3, 0.6 * (V.len(eye) - 25)));
 function setup(S) {
@@ -109,7 +131,7 @@ export default {
 <dt>Reflected</dt><dd>${(c.F.R * 100).toFixed(1)}% (other polarisation ${(other.R * 100).toFixed(1)}%)</dd>`;
     rows += `<dt>Transmitted, leaving at</dt><dd>${((1 - c.F.R) * 100).toFixed(1)}% at ${d(c.F.thetaT)}</dd>
 <dt>Red would leave at</dt><dd>${d(bend(nr))}</dd><dt>Violet would leave at</dt><dd>${d(bend(nv))}</dd>`;
-    return `<dl>${rows}</dl>` + (S.pol === 'p' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
+    return `<dl>${rows}</dl><p>The drop is drawn cut open along the plane of the ray: the bright line is its surface seen edge-on, with the water's cut face on one side and air on the other. The light itself is a round beam, in front of the cut as well as behind it.</p>` + (S.pol === 'p' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
   },
   labels(S) {
     const c = setup(S), L = [];
@@ -121,7 +143,7 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn, uLit, uSkin;
+uniform vec4 uA, uB, uC, uD; uniform vec3 uCol, uW; uniform float uOwn, uLit, uSkin, uCut;
 const vec3 BOX = vec3(${BOX.map(x => x.toFixed(2)).join(',')});
 float sg(float a){ return exp(-a*a); }       // a beam with a fairly flat top and a definite edge
 // x: the field; y: its envelope squared; z: how strongly to draw it
@@ -174,7 +196,7 @@ void main(){
     }
     col *= 1.6*uLit;
   }
-  col += dropSkin(ro, rd, uSkin)*uOwn;
+  col += dropSkin(ro, rd, uSkin, uCut)*uOwn;
   o = vec4(col*uFade, 0.0); }`);
   },
 
@@ -198,7 +220,7 @@ void main(){
     // them over in the same way.
     const z = R.zoom, own = z?.lo ? z.cover : 1;
     gl.uniform1f(prog.u.uOwn, own);
-    gl.uniform1f(prog.u.uSkin, skinWidth(R.view.eye));
+    gl.uniform1f(prog.u.uSkin, skinWidth(R.view.eye)); gl.uniform1f(prog.u.uCut, cutAt(R.view.eye));
     // From far off this whole scene is a speck on the drop's skin, and everything in it would pile up
     // into one bright patch there. So how much of it is drawn goes by how big it looks (`near`: 1 from
     // closer than 80 µm, falling with distance): the beam's glow and the number of photons grow in

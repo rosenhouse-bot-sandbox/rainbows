@@ -71,6 +71,18 @@ The physics, all in `js/v2/optics.js`:
   toggle, the energy split is folded away under "Where the wave's energy is", and the few percent
   of light that reflects is left out, which the panel says. Each molecule drawn stands for over a
   hundred layers of real ones.
+- The Surface scale draws the drop cut open along the plane of the ray (`dropSkin` in
+  `js/v2/stages/surface.js`): the half nearer the camera is taken away, so the surface is seen
+  edge-on as a bright line with the water's blue cut face on one side and air on the other, and the
+  beams bend at that line. It is a drawing aid and the panel says so: the light is a round beam on
+  both sides of the cut. From far off the cutting plane is out beyond the drop and closes in as the
+  camera does (`cutAt`), and the Drop scale's sphere is cut by the same plane on the flight in.
+- The Molecules panel carries two moving pictures drawn from the model, on the scene's clock, so
+  Pause stops them. One shows a cloud on its springs in red and in violet light; the cloud's extra
+  swing over a slow push (2.1% and 6.8%) is drawn ten times too big, which the caption says. The
+  other shows the wave falling behind the wave there would be with no water as each layer of clouds
+  adds its own small wave a quarter turn late. Each layer drawn stands for about 220 real ones and
+  sets the wave back by exactly 220 times what one real layer does; reflection is left out.
 - The last scale is the Surface scale's own patch of the drop seen from the same camera, closer:
   the flight between the two never turns, the drop's skin and blue water are drawn by the same
   shader code in both, and the water stays on the side it was on. The light drawn is polarised with

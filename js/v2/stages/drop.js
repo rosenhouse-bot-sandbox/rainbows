@@ -77,6 +77,11 @@ const rand = rng(11);
 // How far outside the drop the view from outside starts giving way to the view from inside, in drop
 // radii: 3 µm with the camera at the Surface scale's distance from the crossing, wider from further off
 // (where a flight is moving faster), and never wide enough to show at the Drop scale's own distances.
+// Where the drop is cut open, in drop radii (see the Surface scale's cutAt: the same plane).
+export function cutPlane(R, S) {
+  const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
+  return Math.max(0, 0.8 * (d - 0.03));
+}
 export function skinBlend(R, S) {
   const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
   return Math.min(0.3, Math.max(0.003, 0.6 * (d - 0.025)));
@@ -143,12 +148,17 @@ function ensure(S) {
 // h: the marked drop (its colour and brightness at the eye); toEye: the far end of the ray to the eye;
 // gain dims the lines and glint dims the glow that stands in for the drop itself;
 // xf places a point of this scene in the caller's world, where one drop radius is `unit` long.
+// The ray to the eye starts where the rainbow ray comes out of the drop, FAR_EXIT, and not at the
+// drop's middle: the light goes in near the top, off the back wall and out near the bottom, so it leaves
+// most of a radius to one side of the centre. From metres away that cannot be seen; flying in, it is
+// the difference between this ray running on into the Drop scale's own and running beside it.
+const FAR_EXIT = (() => { const q = O.traceDrop(O.bowB(N_MID), N_MID, 1).hits[2]; return [q[0], q[1], 0]; })();
 export function drawFar(R, S, h, toEye, T, gain = 1, glint = gain, xf = p => p, unit = 1) {
   const f = S.focus, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
   const o = xf([0, 0, 0]);
   // the ray carries arrowheads travelling toward the eye, as sunlight does: it is light arriving, not a line of sight
   const aR = (0.25 + 0.75 * h.level) * aE;
-  sunRay(R, o, toEye, aR, aR, T, { gap: 130 * unit, size: 22 * unit, speed: 190 * unit, w: 2.4, col: h.col });
+  sunRay(R, xf(FAR_EXIT), toEye, aR, aR, T, { gap: 130 * unit, size: 22 * unit, speed: 190 * unit, w: 2.4, col: h.col });
   // The glow stands in for a drop too small to see. From close by it would fill the view (a marked drop
   // falling past the camera during a flight was a coloured flash for one frame), so past a quarter of
   // its distance across it thins out as it spreads.
@@ -262,27 +272,34 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform float uBody, uSkin, uReach;
+uniform float uBody, uSkin, uReach, uCut;
 void main(){ vec3 ro = uEye, rd = rayDir();
   float b = dot(ro, rd), c = dot(ro, ro)-1.0, h = b*b-c;
-  if(h < 0.0 || sqrt(h) <= b){ o = vec4(0.0); return; }      // the sight line misses the drop, or the drop is behind the camera
-  h = sqrt(h); float tN = -b-h, tF = -b+h; vec3 n1 = normalize(ro + rd*(-b-h)), n2 = normalize(ro + rd*(-b+h));      // (seen from metres away, rounding would push these off the sphere)
+  // On the way in to the Surface scale the drop is cut open, as that scale draws it: the part nearer
+  // the camera than the plane z = uCut is taken away (uCut is beyond the drop until the camera is close).
+  float tp = (uCut - ro.z)/(abs(rd.z) < 1e-6 ? -1e-6 : rd.z);
+  vec3 Pp = ro + rd*tp; float hp = length(Pp) - 1.0, fw = fwidth(hp);
+  float wo = smoothstep(0.0, uSkin, max(sqrt(c + 1.0) - 1.0, ro.z - uCut));
+  vec3 edge = ro.z > uCut && rd.z < 0.0 && tp > 0.0 && fw < 0.5 ? wo*vec3(0.45,0.72,1.0)*0.9*exp(-abs(hp)/(1.2*fw + 0.000012)) : vec3(0.0);
+  if(h < 0.0 || sqrt(h) <= b){ o = vec4(edge*uFade*uBody, 0.0); return; }      // the sight line misses the drop, or the drop is behind the camera
+  h = sqrt(h); float tN = -b-h, tF = -b+h; bool face = false, open = false;
+  if(rd.z < 0.0){ if(tp > tN){ tN = tp; face = true; } } else if(tp < tF){ tF = tp; open = true; }
+  if(tF <= max(tN, 0.0)){ o = vec4(edge*uFade*uBody, 0.0); return; } vec3 n1 = normalize(ro + rd*(-b-h)), n2 = normalize(ro + rd*(-b+h));      // (seen from metres away, rounding would push these off the sphere)
   vec3 sun = vec3(-1.0, 0.0, 0.0);
-  float f1 = pow(clamp(1.0-dot(n1,-rd), 0.0, 1.0), 3.0);
+  float f1 = face ? 0.0 : pow(clamp(1.0-dot(n1,-rd), 0.0, 1.0), 3.0);      // the cut face is flat and has no sheen
   // A flight to a crossing can carry the camera through the skin. From outside the near skin is seen,
   // from inside the far skin (at the same slant, so with the same sheen). The two are blended over the
   // last stretch outside (uSkin wide), and skin right at the eye is not drawn, so that nothing changes
   // at once as the camera passes through.
-  float wo = smoothstep(0.0, uSkin, sqrt(c + 1.0) - 1.0);
   // (How near counts as "right at the eye" is uReach, much longer than uSkin while the camera is still
   // far from the crossing: a camera skimming in just above the skin sees the drop's edge, and that edge
   // closes up on it very fast at the end, so by then the skin out to the edge has to have gone dim.)
   float there = mix(1.0 - exp(-2.0*tF/uReach), 1.0, wo);      // 0 for skin right at the eye
-  vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1)*there;
-  col += vec3(1.0,0.95,0.85)*pow(max(dot(reflect(rd,n1), sun),0.0), 90.0)*2.5*wo;          // the Sun's glint
-  col += vec3(0.5,0.7,1.0)*pow(max(dot(reflect(rd,-n2), -sun),0.0), 30.0)*0.25*there;         // light gathered at the back
+  vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1)*there*mix(1.0, face ? 1.0 : mix(0.4, 1.0, smoothstep(0.0, 0.06, uCut)), wo);      // (the outside of a drop cut open is kept dim, as at the Surface scale)
+  col += vec3(1.0,0.95,0.85)*pow(max(dot(reflect(rd,n1), sun),0.0), 90.0)*2.5*wo*(face ? 0.0 : 1.0);          // the Sun's glint
+  col += vec3(0.5,0.7,1.0)*pow(max(dot(reflect(rd,-n2), -sun),0.0), 30.0)*0.25*there*(open ? 0.0 : 1.0);         // light gathered at the back
   col += vec3(0.25,0.4,0.7)*0.05*smoothstep(0.0, 2.0, tF - max(tN, 0.0));      // the water looked through
-  o = vec4(col*uFade*uBody, 0.0); }`);
+  o = vec4((col + edge)*uFade*uBody, 0.0); }`);
   },
 
   draw(R, S, T) {
@@ -310,7 +327,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       // the rain scene still shows through until this one covers it (R.zoom.cover), and it draws these
       // same lines: scale ours by the cover so that the two together always make one set
       const cov = R.zoom?.cover ?? 1;
-      drawFar(R, S, dive.M.hero, V.mul([-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), T, far * cov, (1 - sstep(0.25, 0.8, dive.k)) * cov);
+      drawFar(R, S, dive.M.hero, V.mad(FAR_EXIT, [-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), T, far * cov, (1 - sstep(0.25, 0.8, dive.k)) * cov);
       R.flushLines(); R.flushPoints({ minPx: 2 });
     }
 
@@ -387,7 +404,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
     }
 
     const gl = R.gl;
-    gl.useProgram(prog.p); R.setRayUniforms(prog, T); gl.uniform1f(prog.u.uBody, 1); { const w = skinBlend(R, S); gl.uniform1f(prog.u.uSkin, w); gl.uniform1f(prog.u.uReach, Math.min(2, 10 * w)); }
+    gl.useProgram(prog.p); R.setRayUniforms(prog, T); gl.uniform1f(prog.u.uBody, 1); { const w = skinBlend(R, S); gl.uniform1f(prog.u.uSkin, w); gl.uniform1f(prog.u.uReach, Math.min(2, 10 * w)); gl.uniform1f(prog.u.uCut, cutPlane(R, S)); }
     R.fullscreen(prog, 'add');
   },
 };

@@ -27,7 +27,7 @@ canvas.addEventListener('webglcontextrestored', () => location.reload());      /
 // frames, so a jump of the slider is a fade and not a cut. Text and the address bar use S itself.
 let D = null;
 const S = {
-  stage: 0, mode: 'ray', focus: 'both',
+  stage: 0, mode: 'ray', focus: 'eye',      // (the light that reaches you is the clearest picture to arrive at)
   sun: 14, bowpos: 0.5, exag: false, second: false,
   cross: 'enter', theta: 59.4, pol: 's', lambda: 550, tilt: 59.4, bfield: false,
 };
@@ -133,6 +133,8 @@ function go(to) {
   if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
   // The Molecules scale shows light going from air into water, which is what happens where the ray
   // enters the drop. From either of the other crossings, fly round to that one first, then in.
+  // (With reduced motion there is no flying: the crossing changes over at once, as it does when its
+  // button is pressed, and the scales then cross-fade in place.)
   if (to === ATOMS && S.stage === SURFACE && S.cross !== 'enter') {
     S.cross = 'enter'; S.theta = presetAngle(S); syncUI();
     if (!RM.matches) { queued = ATOMS; syncNav(); return; }      // (the hop starts on the next frame, and carries on to `queued`)
@@ -378,7 +380,8 @@ function frame(now) {
     if (far && !tr) { ready(DROP); tr = { hi: DROP, q: 1, dir: 1, v: 0, dur: HOP, capWait: 0, hop: true }; $('labels').classList.add('off'); }
     else if (far && near3 && tr.dir > 0) tr.hop = true;       // already flying in: go back out and round first
     if (tr?.hop) tr.out = far;
-    if (gap) {
+    if (gap && !far && !tr) phi = goal;      // at rest the place only moves with the colour, by micrometres: no flight in that
+    else if (gap) {
       // round the drop while the camera is far out; the last little way is too small to see from anywhere
       const go = far ? 1 - sstep(HOP_OUT + 0.05, HOP_OUT + 0.3, tr.q) : 1;
       const step = Math.sign(gap) * Math.min(Math.abs(gap), go * dt * Math.min(1.9, 0.25 + 4.5 * Math.abs(gap)));
@@ -390,7 +393,9 @@ function frame(now) {
     if (at === S.cross) { D.cross = at; D.theta = S.theta; }
     else if (at !== D.cross) { D.cross = at; D.theta = presetAngle(D); }
   }
-  { const gap = S.lambda - D.lambda; D.lambda = RM.matches || Math.abs(gap) < 0.05 ? S.lambda : D.lambda + gap * (1 - Math.exp(-dt * 9)); }
+  // (The colour drawn eases to the slider's, and the last few nanometres are covered at a steady rate so
+  // that it arrives: an ease alone creeps for a second, and the place on the drop moves with the colour.)
+  { const gap = S.lambda - D.lambda, go = Math.abs(gap) * (1 - Math.exp(-dt * 9)) + 15 * dt; D.lambda = RM.matches || Math.abs(gap) <= go ? S.lambda : D.lambda + Math.sign(gap) * go; }
   if (offXg !== null) { const k = 1 - Math.exp(-dt * 5); offX += (offXg - offX) * k; offY += (offYg - offY) * k; }
   for (const c of cams) { const k = 1 - Math.exp(-dt * 9); c.yaw += (c.gy - c.yaw) * k; c.pitch += (c.gp - c.pitch) * k; c.dist += (c.gd - c.dist) * k; }
 
@@ -474,6 +479,7 @@ function frame(now) {
   }
   const st = STAGES[S.stage];
   drawLabels(st.labels ? st.labels(D, labelView) : [], labelView);
+  st.figures?.($('readout'), D, time);       // moving pictures in the panel run on the scene's clock
   if (st.liveReadout && (readoutClock += dt) > 0.25 && !tr) { readoutClock = 0; $('readout').innerHTML = st.readout(S); holdReadout(); }
 }
 

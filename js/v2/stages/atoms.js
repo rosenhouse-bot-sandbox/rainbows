@@ -7,7 +7,7 @@
 import { V, DEG, rng, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { backdrop, colourName } from './common.js';
-import surface, { SKIN_GLSL, skinWidth } from './surface.js';
+import surface, { SKIN_GLSL, skinWidth, cutAt } from './surface.js';
 
 const NL = 37, DX = 0.25, X1 = 0.3, AMP = 1.3, SI = 8.2, ST = 9.6, W = 2.3, YF = -3.0, XB = 9.4, ZB = 5.6, YM = 2.0;
 const lamD = l => 3.2 * l / 550;                 // drawn vacuum wavelength, scene units
@@ -33,6 +33,73 @@ function setup(S) {
 }
 const pct = x => (x * 100).toFixed(1) + '%';
 
+// ---- the two moving pictures in the panel ----
+const EXTRA = 10;          // how many times too big the spring picture draws a cloud's extra swing
+const LAYER = 550 / 8;     // nm between the layers drawn in the wavelet picture
+const lagAt = l => 2 * Math.PI * (O.nWater(l) - 1) * LAYER / l;      // radians one drawn layer sets the wave back
+function fit(cv) {
+  const w = cv.clientWidth, h = cv.clientHeight; if (!w || !h) return null;
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  g.lineCap = 'round'; g.lineJoin = 'round'; g.font = '600 11px system-ui, sans-serif'; g.textAlign = 'center';
+  return { g, w, h };
+}
+const INK = 'rgba(234,240,255,', CLOUD_CSS = 'rgb(140,190,255)', CORE_CSS = 'rgb(255,150,120)';
+// One molecule in red light and one in violet: the cloud on its springs, the push, and how far it goes.
+function drawSpring(cv, T) {
+  const f = fit(cv); if (!f) return; const { g, w, h } = f, cy = h / 2 + 4, R0 = 15, reach = 44;
+  [[700, 'Red, 700 nm', 0.27], [400, 'Violet, 400 nm', 0.73]].forEach(([l, name, at]) => {
+    const cx = w * at, col = O.cssRGB(O.wlRGB(l)), extra = O.energySplit(l).response - 1;
+    const amp = R0 * (1 + EXTRA * extra), push = Math.cos(2 * Math.PI * T * 550 / l / 2.2), y = cy + amp * push;       // the cloud goes against the field
+    g.fillStyle = INK + '.75)'; g.fillText(name, cx, 12);
+    // the frame the springs hang from, and the springs
+    g.strokeStyle = INK + '.35)'; g.lineWidth = 1.5;
+    for (const s of [-1, 1]) {
+      g.beginPath(); g.moveTo(cx - 16, cy + s * reach); g.lineTo(cx + 16, cy + s * reach); g.stroke();
+      g.beginPath(); const y0 = cy + s * reach, y1 = y + s * 11, n = 9;
+      for (let i = 0; i <= n; i++) g.lineTo(cx + (i === 0 || i === n ? 0 : (i % 2 ? 5 : -5)), y0 + (y1 - y0) * i / n);
+      g.stroke();
+    }
+    // how far a slow push would take the cloud's middle
+    g.setLineDash([3, 3]); g.strokeStyle = INK + '.45)'; g.lineWidth = 1;
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(cx + 14, cy + s * R0); g.lineTo(cx + 40, cy + s * R0); g.stroke(); }
+    g.setLineDash([]);
+    g.strokeStyle = INK + '.8)'; g.beginPath(); g.moveTo(cx + 18, y); g.lineTo(cx + 36, y); g.stroke();       // where its middle is now
+    // the cloud, and the rest of the molecule, which stays put
+    g.globalAlpha = 0.55; g.fillStyle = CLOUD_CSS; g.beginPath(); g.arc(cx, y, 11, 0, 7); g.fill(); g.globalAlpha = 1;
+    g.fillStyle = CORE_CSS; g.beginPath(); g.arc(cx, cy, 3.5, 0, 7); g.fill();
+    // the light's push
+    const ax = cx - 34, len = -26 * push;
+    g.strokeStyle = col; g.fillStyle = col; g.lineWidth = 2.5; g.beginPath(); g.moveTo(ax, cy); g.lineTo(ax, cy + len); g.stroke();
+    if (Math.abs(len) > 5) { const s = Math.sign(len); g.beginPath(); g.moveTo(ax, cy + len + s * 3); g.lineTo(ax - 4, cy + len - s * 4); g.lineTo(ax + 4, cy + len - s * 4); g.fill(); }
+  });
+}
+// The wave going into the water, layer by layer: what each layer adds, and what the sum is.
+function drawSum(cv, S, T) {
+  const f = fit(cv); if (!f) return; const { g, w, h } = f, l = S.lambda, col = O.cssRGB(O.wlRGB(l));
+  const x0 = Math.round(w * 0.24), px = 0.3 * w / 550, lam = l * px, d = LAYER * px, k = 2 * Math.PI / lam, lag = lagAt(l);
+  const wt = 2 * Math.PI * T * 550 / l / 2.2, y1 = h * 0.27, u1 = h * 0.17, y2 = h * 0.76, u2 = h * 0.34;
+  const layers = []; for (let x = x0 + d / 2; x < w - 2; x += d) layers.push(x);
+  const passed = x => x < x0 ? 0 : Math.min(layers.length, Math.floor((x - x0) / d + 0.5));
+  g.fillStyle = 'rgba(40,90,190,.22)'; g.fillRect(x0, 0, w - x0, h);
+  g.strokeStyle = 'rgba(115,185,255,.9)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x0, 0); g.lineTo(x0, h); g.stroke();
+  g.strokeStyle = INK + '.1)'; g.lineWidth = 1;
+  for (const x of layers) { g.beginPath(); g.moveTo(x, 4); g.lineTo(x, h - 4); g.stroke(); }
+  const trace = (fn, xa, xb, y, u) => { g.beginPath(); for (let x = xa; x <= xb; x += 1.5) g.lineTo(x, y - u * fn(x)); g.stroke(); };
+  // the wave as it would be with no water, and the wave as it is
+  g.setLineDash([4, 4]); g.strokeStyle = INK + '.5)'; g.lineWidth = 1.2; trace(x => Math.cos(k * (x - x0) - wt), x0, w, y1, u1); g.setLineDash([]);
+  g.strokeStyle = col; g.lineWidth = 2.4; trace(x => Math.cos(k * (x - x0) - wt), 0, x0, y1, u1);
+  for (let j = 0; j <= layers.length; j++) trace(x => Math.cos(k * (x - x0) - wt + j * lag), j ? layers[j - 1] : x0, j < layers.length ? layers[j] : w, y1, u1);
+  // what each layer of clouds gives off: the difference it makes to the wave that reaches it
+  // (one layer in three is drawn, or they hide one another)
+  g.strokeStyle = CLOUD_CSS; g.lineWidth = 1.3; g.globalAlpha = 0.85;
+  layers.forEach((xj, i) => i % 3 === 1 && trace(x => (Math.cos(k * (x - x0) - wt + (i + 1) * lag) - Math.cos(k * (x - x0) - wt + i * lag)) * Math.min(1, (x - xj) / 6), xj, w, y2, u2));
+  g.globalAlpha = 1; g.fillStyle = CLOUD_CSS;
+  layers.forEach((x, i) => { g.globalAlpha = i % 3 === 1 ? 1 : 0.35; g.beginPath(); g.arc(x, y2 + 4 * Math.cos(k * (x - x0) - wt + passed(x) * lag), 2, 0, 7); g.fill(); }); g.globalAlpha = 1;
+  g.fillStyle = INK + '.6)'; g.fillText('Air', x0 / 2, h - 5); g.fillText('Water', (x0 + w) / 2, h - 5);
+}
+
 export default {
   id: 'atoms', name: 'Molecules', scale: '1 nm', scaleNote: 'not to scale: see the note', modes: false, focus: false,
   controls: ['tilt', 'lambda', 'bfield'], lambdaMin: 250, bloom: 0.55, exposure: 1.0,
@@ -50,7 +117,7 @@ export default {
   // One caption for the whole scale. It sits above the sliders, so it must not change length while one is dragged.
   caption() {
     return { title: 'Why violet is slowed more than red',
-      body: 'The light\'s electric field shakes the electron cloud of every water molecule it passes. The shaking clouds give off light of their own, a little late, and the sum is a wave that runs slower, with its crests closer together. Violet shakes the clouds harder than red, so it is slowed more. Arriving at an angle, the slowed crests must turn to stay joined at the surface. That turn is the bend.' };
+      body: 'Light shakes the electron cloud of every water molecule it passes, and each shaken cloud gives off a little light of its own. The two moving pictures below show what that does. Slowed crests arriving at an angle must turn to stay joined at the surface. That turn is the bend.' };
   },
   // Every number here sits in a cell of its own, so the text never re-wraps as the sliders move.
   readout(S) {
@@ -60,7 +127,12 @@ export default {
     const lag1000 = lag * 1000, a = -lag1000 * DEG, th = Math.min(75, S.tilt);
     const x2 = 48 + 34 * Math.cos(a), y2 = 48 - 34 * Math.sin(a);
     const key = (c, text, dot) => `<li><i class="${dot ? 'dot' : ''}" style="background:${c}"></i><span>${text}</span></li>`;
-    return `<ul class="scenekey">
+    const more = n => ((O.energySplit(n).response - 1) * 100).toFixed(1) + '%';
+    const figs = `<figure class="fig"><canvas data-fig="spring" role="img" aria-label="Two water molecules side by side, one in red light and one in violet. Each electron cloud is held by springs and is pushed up and down by the light. The violet one swings faster and further."></canvas>
+<figcaption>A cloud is held to its molecule as if by springs, and the light's field pushes it up and down. Violet pushes closer to the springs' own rhythm, so the cloud swings further: ${more(400)} further than a slow push would take it, against ${more(700)} for red. The dashed marks are the slow push. The extra beyond them is drawn ${EXTRA} times too big.</figcaption></figure>
+<figure class="fig"><canvas data-fig="sum" role="img" aria-label="A wave crossing from air into water. In the water it falls further and further behind a dashed copy of itself that carries on as if there were no water. Below, each layer of clouds sends out a small wave of its own, a quarter turn late."></canvas>
+<figcaption>Above: the wave (bold) beside the wave as it would be with no water (dashed). Below: the small wave a layer of shaken clouds gives off, a quarter turn late (one layer in three is drawn). Adding each one in sets the wave back a little more, ${(lagAt(l) / DEG).toFixed(0)}° a layer at this colour. Each layer drawn stands for about ${Math.round(LAYER / 0.31 / 10) * 10} real ones, and reflection is left out.</figcaption></figure>`;
+    return `${figs}<ul class="scenekey">
 ${key(col, '<b>Electric field E</b>: the light, swinging up and down')}
 ${S.bfield ? key(css(BCOL), '<b>Magnetic field B</b>: swings side to side, in step with E') : ''}
 ${key(css(CLOUD), '<b>Electron cloud</b> of a water molecule, pushed by E', 1)}
@@ -85,7 +157,12 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
 <dt><i style="background:${C.mo}"></i>Moving electrons</dt><dd>${pct(e.motion)}</dd><dt><i style="background:${C.mg}"></i>Magnetic field</dt><dd>${pct(e.magnetic)}</dd>
 <dt>Energy travels at</dt><dd>${e.vEnergy.toFixed(4)} c</dd></dl>
 <p>In air the energy is half electric and half magnetic, and all of it travels. In water, part of the electric half is held in molecules being stretched. Energy parked in matter is going nowhere, so the wave as a whole moves slower. Nearer the ultraviolet, more is parked.</p></details>
-<p>Not to scale: each molecule drawn stands for about ${Math.round(DX / (lamD(l) / e.n) * (l / e.n) / 0.31 / 10) * 10} layers of real ones, 0.31 nm apart. The few percent of the light that reflects off the surface is left out.</p>`;
+<p>Not to scale: each molecule drawn stands for about ${Math.round(DX / (lamD(l) / e.n) * (l / e.n) / 0.31 / 10) * 10} layers of real ones, 0.31 nm apart. The few percent of the light that reflects off the surface is left out. The water is drawn cut open along the plane of the bend, as at the Surface scale.</p>`;
+  },
+  // Called every frame while this scale is showing: the readout is rebuilt whenever a control moves,
+  // so the canvases are looked up afresh. T is the scene's clock, which Pause stops.
+  figures(root, S, T) {
+    for (const cv of root.querySelectorAll('canvas[data-fig]')) cv.dataset.fig === 'spring' ? drawSpring(cv, T) : drawSum(cv, S, T);
   },
   labels(S) {
     const c = setup(S), at = (d, k, up = 0, b = null, kb = 0) => { const p = V.mul(d, k); if (b) { p[0] += b[0] * kb; p[2] += b[2] * kb; } p[1] += up; return p; };
@@ -105,10 +182,10 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
   init(R) {
     // the drop's skin and the water behind it, exactly as the Surface scale draws them
     const f = a => a.map(x => x.toFixed(1)).join(',');
-    skinProg = R.rayProgram(`uniform float uOwn, uSkin;
+    skinProg = R.rayProgram(`uniform float uOwn, uSkin, uCut;
 ${SKIN_GLSL}
 const mat3 IN = mat3(${f(IN.X)}, ${f(IN.Y)}, ${f(IN.Z)});
-void main(){ o = vec4(dropSkin(IN*uEye*${IN.s.toFixed(6)}, IN*rayDir(), uSkin)*uOwn*uFade, 0.0); }`);
+void main(){ o = vec4(dropSkin(IN*uEye*${IN.s.toFixed(6)}, IN*rayDir(), uSkin, uCut)*uOwn*uFade, 0.0); }`);
     const r = rng(7);
     for (let j = 0; j < NL; j++) for (const y of [-YM, YM])
       mols.push({ x: X1 + j * DX + (r() - 0.5) * 0.04, y: y + (r() - 0.5) * 0.08, u: 0 });
@@ -124,7 +201,7 @@ void main(){ o = vec4(dropSkin(IN*uEye*${IN.s.toFixed(6)}, IN*rayDir(), uSkin)*u
     const gl = R.gl;
     gl.useProgram(skinProg.p); R.setRayUniforms(skinProg, T);
     gl.uniform1f(skinProg.u.uOwn, R.zoom?.lo ? R.zoom.cover : 1);
-    gl.uniform1f(skinProg.u.uSkin, skinWidth(V.mul(R.view.eye, IN.s)));
+    gl.uniform1f(skinProg.u.uSkin, skinWidth(V.mul(R.view.eye, IN.s))); gl.uniform1f(skinProg.u.uCut, cutAt(V.mul(R.view.eye, IN.s)));
     R.fullscreen(skinProg, 'add');
 
     // the surface (the plane x = 0) and the floor of the water behind it
