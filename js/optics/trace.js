@@ -144,5 +144,5 @@ export function lens({ x, h, R1, R2, mat, tmin = 1.2, tag }) {
     const n = mat.n(nm), c1 = flat(R1) ? 0 : 1 / R1, c2 = flat(R2) ? 0 : 1 / R2;
     return 1 / ((n - 1) * (c1 - c2 + (n - 1) * t * c1 * c2 / n));
   };
-  return { surfaces, outline, t, v1, v2, focal, x, h };
+  return { surfaces, outline, t, edge: t - s1 + s2, v1, v2, focal, x, h };
 }

@@ -68,10 +68,10 @@ export const LEVELS = [
   {
     id: 'specs', nav: 'Eyeglasses', unit: 'mm', scale: 'Eye 23.5 mm long',
     title: 'Fit a pair of glasses',
-    brief: 'This eye is a little too long, so light from a distant point meets in front of the retina and lands as a blur: nearsightedness. Choose the power of the spectacle lens that puts the focus back on the retina.',
-    learned: 'A lens that is thinner in the middle spreads light, which pushes the focus further back. Opticians measure power in dioptres, one over the focal length in metres, negative for a spreading lens. The stroke of a letter on the 20/20 line covers about 5 µm of retina. This one-surface model eye cannot do better than about 16 µm, because a sphere is not the ideal shape; a real cornea flattens toward its edge.',
-    key: [['k-ray', 'Light from a far-off point (550 nm)'], ['k-glass', 'Spectacle lens, 12 mm from the eye'], ['k-target', 'Retina'], ['k-inset', 'Inset: the spot on the retina, magnified. The ring is the goal.']],
-    bounds: [-42, -14.5, 27, 14.5],
+    brief: 'This eye is a little too long, so light from a distant point meets in front of the retina and lands as a blur: nearsightedness. The chart shows what the eye makes of an eye chart across the room. Choose the power of the spectacle lens that puts the focus back on the retina.',
+    learned: 'A lens that is thinner in the middle spreads light, which pushes the focus further back. Opticians measure power in dioptres, one over the focal length in metres, negative for a spreading lens. Look at the lens: the stronger it is, the thicker its edge. A letter on the 20/20 line is only 26 µm tall on the retina, so a blur of 16 µm leaves it soft. This one-surface model eye cannot do better, because a sphere is not the ideal shape; a real cornea flattens toward its edge.',
+    key: [['k-ray', 'Light from a far-off point (550 nm)'], ['k-glass', 'Spectacle lens, 40 mm across, 12 mm from the eye'], ['k-target', 'Retina'], ['k-inset', 'Chart: an eye chart as this eye sees it. The bottom row is the 20/20 line.']],
+    bounds: [-27, -21.5, 25, 21.5], aside: true,
     params: [
       { id: 'P', label: 'Power of the lens', min: -8, max: 4, step: 0.25, value: 0, show: (v) => signed(v, 2) + ' D' },
     ],
@@ -80,17 +80,19 @@ export const LEVELS = [
       // where the corneal bulge meets the eyeball
       const xj = (RB * RB - RC * RC - cx * cx + RC * RC) / (2 * (RC - cx)), hj = Math.sqrt(RC * RC - (xj - RC) ** 2);
       const R = p.P ? 2 * (CR39.n(GREEN) - 1) / p.P * 1000 : Infinity;
-      const L = lens({ x: -12, h: 9, R1: R, R2: -R, mat: CR39, tag: 'part' });
+      const L = lens({ x: -12, h: 20, R1: R, R2: -R, mat: CR39, tmin: 1.5, tag: 'part' });
       const pupil = 1.5;
       const surfaces = [...L.surfaces,
         arc(RC, 0, RC, -1, hj, { act: 'refract', nL: AIR, nR: EYE }),
         arc(cx, 0, RB, -1, RB, { act: 'absorb', hmin: hj }),
         seg(xj, pupil, xj, hj, { act: 'absorb' }), seg(xj, -pupil, xj, -hj, { act: 'absorb' }),
         arc(cx, 0, RB, 1, RB, { act: 'target' })];
-      const src = { ox: -42, oy: 0, nm: GREEN };
+      const src = { ox: -27, oy: 0, nm: GREEN };
+      // The eye turns about the centre of the cornea's curve, so that far in front of the retina
+      // is what turns an angle in the world into a distance on the retina.
       return { surfaces, ring: true, L, R,
-        draw: beam({ ...src, half: 7, n: 15 }), probe: beam({ ...src, half: 2.4, n: 241 }),
-        spot: { goal: 0.020, unit: 'µm', per: 1000 },
+        draw: beam({ ...src, half: 9, n: 19 }), probe: beam({ ...src, half: 2.4, n: 241 }),
+        chart: { umPerArcmin: (LEN - RC) * 1000 * Math.PI / 10800 },
         items: [{ t: 'axis' }, { t: 'eye', cx, RB, RC, xj, hj, pupil }, { t: 'glass', outline: L.outline }],
         handles: [] };
     },
@@ -98,7 +100,8 @@ export const LEVELS = [
       const um = m.blur * 1000;
       return { solved: um <= 20,
         meters: [{ label: 'Blur on the retina', text: isFinite(um) ? f0(um) + ' µm' : 'no light', goal: '20 µm or less', frac: 20 / um }],
-        rows: [['Lens power', signed(p.P, 2) + ' D'], ['Its focal length', p.P ? signed(b.L.focal(GREEN), 0) + ' mm' : 'none (flat)']] };
+        rows: [['Its focal length', p.P ? signed(b.L.focal(GREEN), 0) + ' mm' : 'none (flat)'],
+          ['Lens thickness, middle', f1(b.L.t) + ' mm'], ['Lens thickness, edge', f1(b.L.edge) + ' mm']] };
     },
   },
   // ───────────────────────────────────────────────────────────── 3

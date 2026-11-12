@@ -216,12 +216,18 @@ Meet the goal and let go, and the panel says what you just built and why it work
 - The white knobs in the picture can be dragged with a mouse or a finger. Every setting is also a
   slider in the panel, so the whole game can be played from the keyboard. The iris and the mirrors
   move by a fixed small amount for each pixel of drag, so a thumb can set them finely.
-- Nothing moves unless you move it. There is no animation, so nothing to pause.
+- Nothing moves unless you move it, with one exception: when the match lights it flares, with
+  sparks, for four seconds and then the flame holds still. With reduced motion switched on it is
+  simply alight. The flame is a drawing, not a model of combustion.
+- Beside the eye is an eye chart as that eye sees it. The chart is laid out at its true size on the
+  retina (a 20/20 letter is five minutes of arc, 26 µm, tall; the eye turns angles into distances
+  about the centre of the cornea's curve) and every point of it is spread into the spot the traced
+  rays make there. The small change in image size that a spectacle lens causes is left out.
 - Solved challenges are remembered in the browser (`localStorage`); the address bar tracks the
   challenge after `#`.
 
 Code: `js/optics/trace.js` is the ray tracer, `glass.js` the refractive indices, `levels.js` the
-challenges (their text, their scenes and their scoring), `main.js` the page. `css/optics.css` is the
+challenges (their text, their scenes and their scoring), `chart.js` the eye chart, `main.js` the page. `css/optics.css` is the
 stylesheet. `node tests/optics/run.mjs` plays every challenge in a real browser with a mouse, a
 finger and the keyboard.
 
@@ -241,7 +247,7 @@ The physics:
 
 Simplifications, which the panel also states where they matter: one wavelength (550 nm), so no
 colour fringes yet; light on the axis only, so no coma or astigmatism; no reflection losses at the
-glass; the Sun is a point, not a half-degree disc; the spectacle lens is equally curved on both
+glass; the Sun is a point, not a half-degree disc; the spectacle lens (40 mm across, 1.5 mm at its thinnest) is equally curved on both
 faces, where a real one is a meniscus; the solar field is a flat slice with three mirrors. The
 inset that magnifies the spot compresses brightness (a square root) so that a wide blur can still be
 seen.

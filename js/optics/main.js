@@ -1,8 +1,10 @@
 // Optics workshop: the page. It owns the settings, asks levels.js to trace them, draws the bench
 // on a 2D canvas and keeps the panel's numbers in step. Nothing moves unless the player moves it,
-// so there is no animation clock and nothing to pause.
+// with one exception: the match flares for four seconds when it lights, and then holds still. With
+// reduced motion switched on it is simply alight.
 
 import { LEVELS, run } from './levels.js';
+import { drawChart, CHART_ASPECT } from './chart.js';
 
 const $ = (id) => document.getElementById(id);
 const cv = $('view'), g = cv.getContext('2d');
@@ -55,6 +57,7 @@ function go(i, quiet) {
   S.hinted = false;
   if (!quiet) { try { history.replaceState(null, '', '#l=' + L.id); } catch { /* sandboxed frame */ } }
   $('panel').scrollTop = 0;
+  S.lit = undefined; S.fx = null;            // arriving at a challenge is not lighting the match
   update();
   const hasKnob = S.out.b.handles.length > 0;
   $('hint').textContent = L.hint || (hasKnob ? 'Drag the white knobs, or use the sliders' : 'Use the slider in the panel');
@@ -81,6 +84,10 @@ function paintNav() {
 function update() {
   const L = LEVELS[S.i];
   S.out = run(L, S.p);
+  const lit = S.out.score.solved;
+  if (lit && S.lit === false && !REDUCE.matches) S.fx = { t0: performance.now() };
+  if (!lit) S.fx = null;
+  S.lit = lit;
   const { score, b } = S.out;
   for (const k in inputs) {
     const { inp, val, q } = inputs[k], v = S.p[k];
@@ -115,7 +122,7 @@ function commit() {
   solved.add(L.id); save(); paintNav();
   $('status').textContent = `Solved: ${L.title}. ${L.learned}`;
   // on a phone the news is below the fold of the sheet: bring its heading up, and no further
-  $('won').firstElementChild.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion:reduce)').matches ? 'auto' : 'smooth' });
+  $('won').firstElementChild.scrollIntoView({ block: 'nearest', behavior: REDUCE.matches ? 'auto' : 'smooth' });
   invalidate();
 }
 
@@ -125,6 +132,7 @@ $('reset').addEventListener('click', () => {
   for (const q of LEVELS[S.i].params) S.p[q.id] = q.value;
   update();
 });
+const REDUCE = window.matchMedia('(prefers-reduced-motion:reduce)');
 const hintOff = () => { if (!S.hinted) { S.hinted = true; $('hint').classList.add('gone'); } };
 
 // ── view: world units to screen ────────────────────────────────────────────────────────────────
@@ -135,10 +143,15 @@ function fit() {
   const pr = $('panel').getBoundingClientRect(), wide = window.matchMedia('(min-width:900px)').matches;
   // the part of the screen the panel leaves free
   const x0 = wide ? pr.right + 20 : 10, x1 = w - (wide ? 20 : 10), y0 = wide ? 64 : 84, y1 = wide ? h - 48 : pr.top - 10;
+  let x0s = x0, x1s = x1, aside = null;
+  if (LEVELS[S.i].aside) {                  // a column kept clear of the bench, for the eye chart
+    const cw = wide ? Math.min(190, (x1 - x0) * 0.22) : 96, ch = cw * CHART_ASPECT, cy = (y0 + y1) / 2 - ch / 2;
+    if (wide) { aside = [x1 - cw, cy, cw, ch]; x1s = x1 - cw - 16; } else { aside = [x0, cy, cw, ch]; x0s = x0 + cw + 8; }
+  }
   const [bx0, by0, bx1, by1] = LEVELS[S.i].bounds;
-  const k = Math.max(0.01, Math.min((x1 - x0) / (bx1 - bx0), (y1 - y0) / (by1 - by0)));
-  Object.assign(V, { k, dpr, w, h, box: [x0, y0, x1, y1],
-    ox: (x0 + x1) / 2 - k * (bx0 + bx1) / 2, oy: (y0 + y1) / 2 + k * (by0 + by1) / 2 });
+  const k = Math.max(0.01, Math.min((x1s - x0s) / (bx1 - bx0), (y1 - y0) / (by1 - by0)));
+  Object.assign(V, { k, dpr, w, h, box: [x0, y0, x1, y1], aside,
+    ox: (x0s + x1s) / 2 - k * (bx0 + bx1) / 2, oy: (y0 + y1) / 2 + k * (by0 + by1) / 2 });
 }
 const sx = (x) => V.ox + V.k * x, sy = (y) => V.oy - V.k * y;
 const wx = (px) => (px - V.ox) / V.k, wy = (py) => (V.oy - py) / V.k;
@@ -148,6 +161,7 @@ function invalidate() { if (!queued) { queued = true; requestAnimationFrame(() =
 
 // ── drawing ────────────────────────────────────────────────────────────────────────────────────
 const INK = '234,240,255', LIGHT = '#ffb13b';
+const FLARE = 4;                       // seconds the match flares before the flame holds still
 function line(x0, y0, x1, y1) { g.beginPath(); g.moveTo(sx(x0), sy(y0)); g.lineTo(sx(x1), sy(y1)); g.stroke(); }
 
 const ITEMS = {
@@ -166,8 +180,42 @@ const ITEMS = {
     g.strokeStyle = '#b89a6a'; g.lineWidth = Math.max(2, V.k * 1.1); g.lineCap = 'round';
     line(o.x + o.r, -o.r, o.x + o.r + 5, -19);
     const r = Math.max(3, V.k * o.r), cx = sx(o.x) + r, cy = sy(0);
-    if (lit) { const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r * 9); gr.addColorStop(0, 'rgba(255,214,120,.95)'); gr.addColorStop(.25, 'rgba(255,140,40,.55)'); gr.addColorStop(1, 'rgba(255,90,20,0)'); g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r * 9, 0, 7); g.fill(); }
-    g.fillStyle = lit ? '#fff1c9' : '#e8553d'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+    if (!lit) { g.fillStyle = '#e8553d'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); return; }
+    // t: seconds since it caught. Past the flare (or with reduced motion) the flame holds still.
+    const t = S.fx ? Math.min(FLARE, (performance.now() - S.fx.t0) / 1000) : FLARE;
+    const u = Math.min(1, t / 0.45), grow = 1 + 2.2 * (u - 1) ** 3 + 1.2 * (u - 1) ** 2;      // overshoots, then settles
+    const live = Math.max(0, 1 - t / FLARE) ** 1.5;                                        // how much flicker is left
+    const H = V.k * 17 * grow * (1 + 0.1 * live * Math.sin(t * 23)), W = V.k * 3.6 * (1 + 0.12 * live * Math.sin(t * 17 + 1));
+    const sway = W * 0.9 * live * Math.sin(t * 11);
+    g.save(); g.globalCompositeOperation = 'lighter';
+    const halo = H * 1.5, gr = g.createRadialGradient(cx, cy - H * 0.3, 0, cx, cy - H * 0.3, halo);
+    gr.addColorStop(0, 'rgba(255,170,60,.5)'); gr.addColorStop(1, 'rgba(255,90,20,0)');
+    g.fillStyle = gr; g.beginPath(); g.arc(cx, cy - H * 0.3, halo, 0, 7); g.fill();
+    if (t < 0.3) {                                                    // the flash as it catches
+      const f = t / 0.3; g.fillStyle = `rgba(255,244,214,${(0.9 * (1 - f)).toFixed(3)})`;
+      g.beginPath(); g.arc(cx, cy, r + H * 0.9 * Math.sqrt(f), 0, 7); g.fill();
+    }
+    if (S.fx) for (let i = 0; i < 22; i++) {                           // sparks, the same every time
+      const h1 = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1, h2 = Math.abs(Math.sin(i * 78.233) * 12345.678) % 1, h3 = Math.abs(Math.sin(i * 39.425) * 9876.543) % 1;
+      const life = 0.55 + 0.9 * h3, a = t / life;
+      if (a >= 1) continue;
+      const ang = -Math.PI / 2 + (h1 - 0.5) * 3.6, v = V.k * (38 + 70 * h2), reach = (1 - (1 - a) ** 2) * life * 0.6;
+      const px = cx + Math.cos(ang) * v * reach, py = cy + Math.sin(ang) * v * reach + V.k * 16 * a * a - V.k * 6 * a;
+      g.fillStyle = `rgba(255,${(200 + 40 * h2) | 0},${(120 * (1 - a)) | 0},${(1 - a).toFixed(3)})`;
+      g.beginPath(); g.arc(px, py, Math.max(1, V.k * 0.42 * (1 - 0.5 * a)), 0, 7); g.fill();
+    }
+    g.globalCompositeOperation = 'source-over';
+    const tongue = (w, h, s, fill) => {
+      g.beginPath(); g.moveTo(cx, cy + r * 0.9);
+      g.bezierCurveTo(cx - w * 1.7, cy - h * 0.1, cx - w * 0.55 + s * 0.4, cy - h * 0.62, cx + s, cy - h);
+      g.bezierCurveTo(cx + w * 0.55 + s * 0.4, cy - h * 0.62, cx + w * 1.7, cy - h * 0.1, cx, cy + r * 0.9);
+      g.fillStyle = fill; g.fill();
+    };
+    tongue(W, H, sway, 'rgba(255,106,26,.92)');
+    tongue(W * 0.66, H * 0.72, sway * 0.7, '#ffc13d');
+    tongue(W * 0.34, H * 0.42, sway * 0.4, '#fff6dc');
+    g.fillStyle = '#3a2618'; g.beginPath(); g.arc(cx, cy, r * 0.8, 0, 7); g.fill();          // the head, charring
+    g.restore();
   },
   eye(o, lit) {
     const a = Math.atan2(o.hj, o.cx - o.xj);              // half-angle the cornea takes out of the eyeball
@@ -228,6 +276,12 @@ function draw() {
     g.fillStyle = `rgb(${INK})`; g.fill();
   }
   if (b.spot) inset(b.spot, m, lit);
+  if (b.chart && V.aside) {
+    const [ax, ay, aw, ah] = V.aside;
+    drawChart(g, ax, ay, aw, ah, V.dpr, m.hits, b.chart.umPerArcmin);
+    g.strokeStyle = lit ? '#6fe3a1' : `rgba(${INK},.25)`; g.lineWidth = lit ? 2 : 1; g.beginPath(); g.roundRect(ax, ay, aw, ah, 8); g.stroke();
+  }
+  if (S.fx && performance.now() - S.fx.t0 < FLARE * 1000) invalidate();
 }
 
 // The spot the light makes on the target, magnified. On the axis of a round lens the spot is
