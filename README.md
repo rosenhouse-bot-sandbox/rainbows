@@ -123,6 +123,28 @@ dish over a TIRF microscope, and synaptobrevin carries superecliptic pHluorin on
 
 Optics, bench geometry and the camera simulation are in `js/vesicle/vitro.js`.
 
+An optional **Interference reflection camera** (a checkbox in vitro) adds a second, dye-free view
+through the same objective:
+
+- Light of one colour, 560 to 720 nm (630 nm by default), goes straight up through the objective.
+  The 0.4% reflected where glass meets medium is the reference wave; membranes and the vesicle's
+  watery interior scatter a far weaker wave back, with a phase of `4πnz/λ` set by their height.
+  The camera records the two added together.
+- The scattered wave is the first Born approximation integrated over the page's own membrane
+  shape: lipid (index 1.48, 4 nm) and the vesicle interior (1.335, like the medium) against
+  cytoplasm (1.36). For a flat film this is the Fresnel thin-film formula. The two terms have
+  opposite signs, so contrast does not simply grow with vesicle size.
+- A docked 42 nm vesicle comes out about 0.5% darker than the background at 630 nm, fading as it
+  flattens; larger vesicles turn bright partway through the collapse. The camera panel shows a
+  second column (field, magnified centre, contrast trace) in grey, ±1.5% of the background.
+- The wavelength is longer than the laser's to stay clear of the pHluorin band, not because long
+  wavelengths resolve more: within the slider's range, shorter light gives a sharper, stronger spot.
+- Simplifications, also stated on screen: the blur is a Gaussian with no diffraction rings, the
+  light is treated as arriving at normal incidence, and the cell has no organelles or mottle of
+  its own in the camera panel.
+
+The model is in `js/vesicle/irm.js`.
+
 A third setting, **Inference**, turns the problem around. It simulates a noisy 400 ms TIRF video
 of one fusion event from hidden parameters, then infers them back with Bayes' rule, live:
 
@@ -141,6 +163,19 @@ of one fusion event from hidden parameters, then infers them back with Bayes' ru
 - Laser power, frame time, laser angle and prior width are adjustable; "New event" draws a new
   hidden truth and "Show the true values" reveals it.
 
+- A **pore width** chart shows the believed width of the fusion pore over the video, in
+  nanometres. It is derived from each sample's fusion time, collapse time and vesicle size
+  through the membrane shape; the model's pore opens at the moment of fusion and widens as the
+  vesicle flattens, so there is no separate pore parameter.
+- With the interference reflection camera on, its video is a second likelihood on the same five
+  unknowns (Gaussian shot noise, 20,000 photoelectrons per pixel per millisecond). Every pixel
+  has an unknown static brightness of its own, standing for the cell's fixed pattern, which is
+  integrated out, so only changes over time count and a docked vesicle tells nothing. A second
+  sampler runs on the fluorescence video alone and is drawn as green outlines, so the narrowing
+  is visible. For the default event (42 nm, all frames seen) the 90% range for vesicle diameter
+  goes from 33–63 nm to 41–44 nm, for collapse time from 41–216 ms to 77–95 ms, and for pore
+  width 40 ms after fusion from 3–51 nm to 20–27 nm.
+
 A "How it works" button in that view opens a short summary of the mathematics (Bayes' rule, the
 priors, the forward model, the Poisson likelihood, the sampler, and how to read the results).
 
@@ -149,7 +184,7 @@ The model and sampler are in `js/vesicle/infer.js`, the charts in `js/vesicle/in
 Around the scene:
 
 - The address bar tracks the view after `#` (`mode`, `p`, `size`, `angle`, `cut`, `orbit`, `tilt`,
-  `dist`, `labels`, plus `t`, `power`, `frame`, `prior`, `seed`, `truth` in the inference view), so any state can be bookmarked or shared; there is also a copy-link button.
+  `dist`, `labels`, `irm`, `wl`, plus `t`, `power`, `frame`, `prior`, `seed`, `truth` in the inference view), so any state can be bookmarked or shared; there is also a copy-link button.
 - On a desktop, hovering a label opens a short explanation with a Wikipedia link
   (text in `js/vesicle/info.js`).
 - Hovering an entry in the colour key picks those molecules out and dims the rest; clicking holds it.

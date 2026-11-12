@@ -113,6 +113,9 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 .mode button[aria-pressed="true"] small{color:var(--ink2)}
 input.laser::-webkit-slider-runnable-track{background:linear-gradient(90deg,#19b8ff var(--v),rgba(25,184,255,.22) var(--v))}
 input.laser::-moz-range-progress{background:#19b8ff}
+input.irm{--irm:#ff5a14}
+input.irm::-webkit-slider-runnable-track{background:linear-gradient(90deg,var(--irm) var(--v),rgba(234,240,255,.17) var(--v))}
+input.irm::-moz-range-progress{background:var(--irm)}
 .key.plain{border-top:0;padding-top:0;margin-top:-7px}
 .key .wide{grid-column:1/-1;font-size:12.5px;color:var(--ink3);line-height:1.4}
 
@@ -121,11 +124,14 @@ input.laser::-moz-range-progress{background:#19b8ff}
 .inf header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3)}
 .inf header b{font-weight:500;color:var(--ink)}
 .inf header span{letter-spacing:.02em;text-transform:none}
+.inf header b{white-space:nowrap}
 .infTop{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .infTop figure{margin:0;display:grid;gap:3px}
 .infTop figure canvas{width:100%;max-width:118px;margin:0 auto;aspect-ratio:1;display:block;border-radius:6px;background:#000;image-rendering:pixelated}
 .infTop figcaption{font-size:11.5px;color:var(--ink3);text-align:center}
 #fan{grid-column:1/-1;width:100%;height:104px;display:block}
+#pore{width:100%;height:92px;display:block}
+.inf.dual .infTop{grid-template-columns:repeat(4,1fr);gap:6px}
 #strips{width:100%;height:250px;display:block}
 #pair{width:100%;height:128px;display:block}
 .inf p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
@@ -161,7 +167,14 @@ body.infer #sizeNote{display:none}
 .pipScale{position:absolute;left:8px;right:8px;bottom:7px;display:grid;gap:3px;justify-items:start;pointer-events:none}
 .pipScale i{display:block;height:2px;background:#fff}
 .pipScale em{font-family:var(--mono);font-style:normal;font-size:10px;color:#fff;text-shadow:0 0 3px #000}
-#trace{width:100%;height:48px;display:block;min-width:0}
+.pipCols{display:grid;gap:7px;align-items:start}
+.pipCol{display:grid;gap:7px;min-width:0}
+.pipHead{display:none;font-family:var(--mono);font-weight:400;font-size:10px;letter-spacing:.02em;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pip.dual{width:396px}
+.pip.dual .pipCols{grid-template-columns:1fr 1fr}
+.pip.dual .pipHead{display:block}
+#irmCam,#irmZoom{width:100%;height:100%;display:block;image-rendering:pixelated}
+#trace,#irmTrace{width:100%;height:48px;display:block;min-width:0}
 .pipTrace{display:grid;grid-template-columns:auto 1fr;gap:2px 3px;align-items:center}
 .pipTrace span{font-family:var(--mono);font-size:9px;line-height:1;letter-spacing:.04em;color:var(--ink3)}
 .axY{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center}
@@ -174,15 +187,21 @@ body.infer #sizeNote{display:none}
   .infTop{grid-template-columns:62px 62px 1fr;align-items:start}
   .infTop figcaption{font-size:10px}
   #fan{grid-column:auto;height:78px}
-  #strips{height:150px}
+  #strips{height:132px}
   #pair,.inf p,.inf header span{display:none}
+  .inf header #poreInfo{display:inline;font-size:10px}
+  #pore{height:48px}
+  .inf.dual .infTop{grid-template-columns:44px 44px 1fr;gap:4px 6px}
+  .inf.dual #fan{grid-column:3;grid-row:1/3;height:100%;min-height:96px}
   .inf header .mathBtn{margin-left:auto}
   .math{padding:18px 16px;font-size:14.5px}
   .math .eq{font-size:15.5px}
   body.infer .scalebar,body.infer .hint{display:none}
   .pip{top:calc(92px + env(safe-area-inset-top));bottom:auto;width:124px;padding:7px;gap:5px;border-radius:13px}
   .pip p,.pip figcaption span{display:none}
-  #trace{height:30px}
+  #trace,#irmTrace{height:30px}
+  .pip.dual{width:214px}
+  .pipHead{font-size:8px;letter-spacing:0}
   .pipTrace span{font-size:8px}
   .scalebar{top:calc(52px + env(safe-area-inset-top))}
   .hint{top:calc(22px + env(safe-area-inset-top));padding:0 60px}
@@ -201,6 +220,7 @@ body.infer #sizeNote{display:none}
   .more{display:grid;gap:14px;padding-top:14px;border-top:1px solid var(--line)}
   .hint{left:412px;top:auto;bottom:22px}
   body.vitro .hint{right:268px}
+  body.vitro.irm .hint{right:432px}
   body.infer .hint{right:362px}
   .scalebar{top:26px;right:26px}
   .tag{font-size:13px}

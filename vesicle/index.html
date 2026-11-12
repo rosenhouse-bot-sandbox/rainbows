@@ -87,6 +87,16 @@
       <input id="angle" class="laser" type="range" min="50" max="79" step="0.1" value="68">
       <small id="angleNote"></small>
     </div>
+    <div class="group" id="ctl-irm" hidden>
+      <div class="toggles">
+        <label class="toggle"><input id="irm" type="checkbox"><span>Interference reflection camera</span></label>
+      </div>
+      <div class="ctl" id="ctl-wl" hidden>
+        <label for="wl"><span>Reflection wavelength</span><b id="wlV">630 nm</b></label>
+        <input id="wl" class="irm" type="range" min="560" max="720" step="5" value="630">
+        <small id="wlNote"></small>
+      </div>
+    </div>
     <div class="ctl">
       <label for="cut"><span>Cutaway</span><b id="cutV">110°</b></label>
       <input id="cut" type="range" min="0" max="180" step="1" value="110">
@@ -113,6 +123,7 @@
     <ul class="key" id="keyInfer" aria-label="Key for the inference view" hidden>
       <li><i style="--c:#a0acd0"></i>Prior: assumed beforehand</li>
       <li><i style="--c:#ffcf6b"></i>Posterior: believed now</li>
+      <li id="keyAlone" hidden><i style="--c:#73ff5a"></i>From fluorescence alone</li>
       <li><i style="--c:#78beff"></i>Forecast of unseen frames</li>
       <li><i style="--c:#ffffff"></i>True value (hidden)</li>
       <li class="wide">The posterior is sampled live by an ensemble of 40 walkers, each scoring a guess against every photon recorded so far. Bits count how many times the video has halved the uncertainty.</li>
@@ -122,6 +133,7 @@
       <li data-cat="12" tabindex="0" role="button" aria-pressed="false"><i style="--c:#73ff5a"></i>510 nm fluorescence</li>
       <li data-cat="13" tabindex="0" role="button" aria-pressed="false"><i style="--c:#4dff66"></i>pHluorin, lit</li>
       <li data-cat="14" tabindex="0" role="button" aria-pressed="false"><i style="--c:#4d6657"></i>pHluorin, quenched</li>
+      <li id="keyIrm" hidden><i id="keyIrmDot"></i><span id="keyIrmText">Reflection light</span></li>
       <li class="wide" id="energy"></li>
     </ul>
     <ul class="key" aria-label="Colour key">
@@ -144,19 +156,41 @@
 
 <figure class="pip" id="pip" hidden>
   <figcaption><b>Camera</b><span id="pipInfo">TIRF</span></figcaption>
-  <div class="pipImg">
-    <canvas id="cam" width="128" height="128" aria-label="Simulated microscope image of the whole lit field around the fusion site"></canvas>
-    <i class="pipBox" id="pipBox"></i>
-    <div class="pipScale"><i id="pipBar"></i><em>1 µm</em></div>
-  </div>
-  <div class="pipImg">
-    <canvas id="camZoom" width="24" height="24" aria-label="The same image magnified on the vesicle at the centre"></canvas>
-    <div class="pipScale"><i id="zoomBar"></i><em>500 nm</em></div>
-  </div>
-  <div class="pipTrace">
-    <span class="axY" aria-hidden="true">Intensity</span>
-    <canvas id="trace" width="336" height="96" aria-label="Spot intensity at the fusion site against time over the course of fusion"></canvas>
-    <span class="axX" aria-hidden="true">Time</span>
+  <div class="pipCols">
+    <div class="pipCol">
+      <b class="pipHead" id="tirfHead">Fluorescence</b>
+      <div class="pipImg">
+        <canvas id="cam" width="128" height="128" aria-label="Simulated fluorescence image of the whole lit field around the fusion site"></canvas>
+        <i class="pipBox" id="pipBox"></i>
+        <div class="pipScale"><i id="pipBar"></i><em>1 µm</em></div>
+      </div>
+      <div class="pipImg">
+        <canvas id="camZoom" width="24" height="24" aria-label="The same image magnified on the vesicle at the centre"></canvas>
+        <div class="pipScale"><i id="zoomBar"></i><em>500 nm</em></div>
+      </div>
+      <div class="pipTrace">
+        <span class="axY" aria-hidden="true">Intensity</span>
+        <canvas id="trace" width="336" height="96" aria-label="Spot intensity at the fusion site against time over the course of fusion"></canvas>
+        <span class="axX" aria-hidden="true">Time</span>
+      </div>
+    </div>
+    <div class="pipCol" id="irmCol" hidden>
+      <b class="pipHead" id="irmHead">Reflection</b>
+      <div class="pipImg">
+        <canvas id="irmCam" width="128" height="128" aria-label="Simulated interference reflection image of the same field"></canvas>
+        <i class="pipBox" id="irmBox"></i>
+        <div class="pipScale"><i id="irmBar"></i><em>1 µm</em></div>
+      </div>
+      <div class="pipImg">
+        <canvas id="irmZoom" width="24" height="24" aria-label="The same reflection image magnified on the vesicle at the centre"></canvas>
+        <div class="pipScale"><i id="irmZoomBar"></i><em>500 nm</em></div>
+      </div>
+      <div class="pipTrace">
+        <span class="axY" aria-hidden="true">Contrast</span>
+        <canvas id="irmTrace" width="336" height="96" aria-label="Contrast of the reflection spot at the fusion site against time over the course of fusion"></canvas>
+        <span class="axX" aria-hidden="true">Time</span>
+      </div>
+    </div>
   </div>
   <p class="pipCount">Brightest pixel in the zoom this frame: <b id="pipPeak">0</b> photons</p>
   <p id="pipNote"></p>
@@ -165,10 +199,14 @@
 <section class="inf" id="inf" aria-label="Inference from the video" hidden>
   <header><b>Evidence</b><span id="infFrames">frame 0 of 40</span><button class="mathBtn" id="mathBtn" aria-haspopup="dialog">How it works</button></header>
   <div class="infTop">
-    <figure><canvas id="obs" width="24" height="24" aria-label="The frame the camera recorded"></canvas><figcaption>Recorded</figcaption></figure>
-    <figure><canvas id="expect" width="24" height="24" aria-label="The frame the model expects"></canvas><figcaption>Model expects</figcaption></figure>
+    <figure><canvas id="obs" width="24" height="24" aria-label="The fluorescence frame the camera recorded"></canvas><figcaption id="obsCap">Recorded</figcaption></figure>
+    <figure><canvas id="expect" width="24" height="24" aria-label="The fluorescence frame the model expects"></canvas><figcaption id="expectCap">Model expects</figcaption></figure>
+    <figure class="irmTile" hidden><canvas id="obs2" width="24" height="24" aria-label="Recorded change in the reflection picture since the first frame"></canvas><figcaption>Reflection</figcaption></figure>
+    <figure class="irmTile" hidden><canvas id="expect2" width="24" height="24" aria-label="The change in the reflection picture that the model expects"></canvas><figcaption>Expected</figcaption></figure>
     <canvas id="fan" aria-label="Brightness over time with belief and forecast bands"></canvas>
   </div>
+  <header><b>Pore width</b><span id="poreInfo"></span></header>
+  <canvas id="pore" aria-label="Believed width of the fusion pore in nanometres against video time"></canvas>
   <header><b>Beliefs</b><span>estimate · 90% range · learned</span></header>
   <canvas id="strips" aria-label="Prior and posterior for each unknown"></canvas>
   <canvas id="pair" aria-label="Joint belief about the two most entangled unknowns"></canvas>
@@ -212,6 +250,12 @@
     <li><b>Fan chart and forecast:</b> every sample pushed through the forward model, for frames seen and not yet seen.</li>
     <li><b>Gold band in the scene:</b> the same percentiles, drawn as membrane shapes.</li>
   </ul>
+  <h3>7. A second camera</h3>
+  <p>With the interference reflection camera on, each frame brings a second picture. A guess predicts it too: a spot whose contrast <i>C</i> (its brightness as a fraction of the background) follows from the membrane's shape, so from the vesicle size and how far it has flattened, and not from the tags at all.</p>
+  <p class="eq">ln p(both | θ) = ln p(video | θ) − Σ ( <i>y</i>′ − <i>C</i>′ )² / 2σ²</p>
+  <p>Here <i>y</i> is the recorded contrast in a pixel and σ its shot noise. The primes mean "less this pixel's own average over the frames seen": the cell has a static pattern nobody knows, so only changes count. The green outlines repeat the whole inference without this term, to show what the second camera added.</p>
+  <ul id="mathIrm"></ul>
+
   <p class="fine">The video here is generated from this same model, so the inference is being tested on its own assumptions. The spot centre, blur, background and field depth are treated as known.</p>
 </dialog>
 

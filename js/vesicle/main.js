@@ -3,7 +3,8 @@ import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
 import { PH } from './profile.js';
 import { INFO } from './info.js';
-import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles } from './infer.js';
+import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles, progressOf } from './infer.js';
+import { IrmCamera, irmOptics, moment, contrastCurve, hue, css, IRM, SPAN, WELL, N_MEDIUM, N_LIPID } from './irm.js';
 import { Dashboard } from './inferui.js';
 import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
 
@@ -42,13 +43,16 @@ LABELS.dish = 'Glass-bottom dish, 35 mm'; LABELS.neigh = 'Other vesicles, some f
 // The story the inference view tells, keyed to milliseconds since the (hidden) moment of fusion.
 const INF_STAGES = [
   { at: -1e9, name: 'Before', title: 'Nothing has happened yet',
-    body: 'Only a dim, quenched spot. The beliefs on the right are still the priors: what the literature would let us assume before seeing this video. The gold band in the scene is where the membrane could be.' },
+    body: 'Only a dim, quenched spot. The beliefs on the right are still the priors: what the literature would let us assume before seeing this video. The gold band in the scene is where the membrane could be.',
+    irm: 'Only a dim, quenched spot, and a reflection picture that is not changing. The cell has a static pattern of its own, so a picture that stays the same tells us nothing yet. The beliefs are still the priors.' },
   { at: 0, name: 'The flash', title: 'The flash pins the moment',
     body: 'Brightness jumps when the pore opens. Within two frames the moment of fusion is known to a few milliseconds, and the number of tags follows from how bright the flash is.' },
   { at: 25, name: 'Settling', title: 'The shape of the rise',
-    body: 'As the vesicle flattens its tags sink into brighter light. How fast that happens says how quickly it collapsed. Size is harder: a bigger vesicle with fewer tags looks much the same.' },
+    body: 'As the vesicle flattens its tags sink into brighter light. How fast that happens says how quickly it collapsed. Size is harder: a bigger vesicle with fewer tags looks much the same.',
+    irm: 'The reflection picture starts to change as the vesicle flattens. How large the change is depends on the size of the vesicle and not on its tags, and how fast it happens follows the pore as it widens.' },
   { at: 120, name: 'Spreading', title: 'Spreading reveals diffusion',
-    body: 'The spot widens as tagged synaptobrevin drifts away, and every extra frame sharpens the diffusion estimate. The blue fan is the forecast for frames not yet seen.' },
+    body: 'The spot widens as tagged synaptobrevin drifts away, and every extra frame sharpens the diffusion estimate. The blue fan is the forecast for frames not yet seen.',
+    irm: 'The spot widens as the tags drift away, which gives diffusion. The green outlines are what the fluorescence video alone would allow: compare them with the gold for vesicle size, collapse time and pore width.' },
 ];
 const FAR = new Set(['reserve', 'mito', 'psd']);
 
@@ -59,6 +63,7 @@ const st = {
   vitro: params.get('mode') === 'vitro', angle: +params.get('angle') || 68,
   play: false, spin: !reduced && !params.has('still'), labels: !params.has('nolabels'), hi: 0,
   infer: params.get('mode') === 'infer', t: +params.get('t') || 0, power: 1.5, dt: 10, prior: 1, seed: 1, truth: false,
+  irm: false, lambda: IRM.lambda,
 };
 if (st.infer) st.vitro = true;
 const modeName = () => (st.infer ? 'infer' : st.vitro ? 'vitro' : 'vivo');
@@ -76,6 +81,8 @@ const HASH = {
   p: [() => +st.p.toFixed(3), (v) => { st.p = clamp(+v || 0, 0, 1); }],
   size: [() => st.diam, (v) => { st.diam = clamp(Math.round(+v) || 42, 30, 90); }],
   angle: [() => +st.angle.toFixed(1), (v) => { st.angle = clamp(+v || 68, 50, 79); }],
+  irm: [() => (st.irm ? 1 : 0), (v) => { st.irm = v === '1'; }],
+  wl: [() => st.lambda, (v) => { st.lambda = clamp(Math.round((+v || IRM.lambda) / 5) * 5, IRM.min, IRM.max); }],
   cut: [() => Math.round(st.cut), (v) => { st.cut = clamp(+v || 0, 0, 180); }],
   orbit: [() => +st.az.toFixed(1), (v) => { st.az = ((+v || 0) % 360 + 360) % 360; }],
   tilt: [() => +st.el.toFixed(1), (v) => { st.el = clamp(+v || 0, -85, 88); }],
@@ -92,7 +99,8 @@ function readHash() {
   return true;
 }
 const INF_KEYS = new Set(['t', 'power', 'frame', 'prior', 'seed', 'truth']);
-const hashNow = () => Object.entries(HASH).filter(([k]) => (k !== 'angle' || st.vitro) && (st.infer ? k !== 'p' : !INF_KEYS.has(k))).map(([k, [get]]) => k + '=' + get()).join('&');
+const VITRO_KEYS = new Set(['angle', 'irm', 'wl']);
+const hashNow = () => Object.entries(HASH).filter(([k]) => (!VITRO_KEYS.has(k) || st.vitro) && (k !== 'wl' || st.irm) && (st.infer ? k !== 'p' : !INF_KEYS.has(k))).map(([k, [get]]) => k + '=' + get()).join('&');
 let hashTimer = 0;
 function writeHash() {
   clearTimeout(hashTimer);
@@ -146,6 +154,19 @@ function syncUI() {
       ? `Past the critical angle of ${o.crit.toFixed(1)}°: total internal reflection. The field falls to 1/e every ${Math.round(o.depth)} nm.`
       : `Below the critical angle of ${o.crit.toFixed(1)}°: the beam refracts into the cell and lights all of it.`;
     if (shown.note !== note) { shown.note = note; $('angleNote').textContent = note; $('pipInfo').textContent = o.tir ? `TIRF, ${Math.round(o.depth)} nm deep` : 'No TIRF: background'; }
+    if (st.irm) {
+      set('wl', st.lambda, st.lambda + ' nm');
+      const key = st.lambda + '|' + st.diam;
+      if (shown.wl !== key) {
+        shown.wl = key;
+        // Every number here is read from the model: the fringe spacing, the blur, and the docked vesicle's contrast.
+        const io = irmOptics(st.lambda), m = moment(io, 0, st.diam / 2 - 2.4, [0, 0]), c = 100 * m[0] / (2 * Math.PI * (io.sigmaA * io.sigmaA + m[1]));
+        $('wlNote').textContent = `Brightness repeats every ${Math.round(io.fringe)} nm of height. Blur ${Math.round(io.fwhm)} nm. A docked ${st.diam} nm vesicle is ${Math.abs(c).toFixed(2)}% ${c < 0 ? 'darker' : 'brighter'} than the background.`;
+        const col = css(hue(st.lambda));
+        $('wl').style.setProperty('--irm', col); $('keyIrmDot').style.setProperty('--c', col);
+        $('keyIrmText').textContent = `${st.lambda} nm reflection light`; $('irmHead').textContent = `Reflection ${st.lambda} nm`;
+      }
+    }
   }
   if (st.infer) {
     set('power', st.power, st.power.toFixed(1) + ' photons/ms');
@@ -160,7 +181,7 @@ function syncUI() {
     const first = stageIdx < 0; stageIdx = i;
     const apply = () => {
       $('stageNo').textContent = `${st.infer ? 'Evidence' : 'Stage'} ${i + 1} of ${SG.length}`; $('stageTime').textContent = SG[i].name;
-      $('capTitle').textContent = SG[i].title; $('capBody').textContent = (st.vitro && SG[i].vitro) || SG[i].body;
+      $('capTitle').textContent = SG[i].title; $('capBody').textContent = (st.infer && st.irm && SG[i].irm) || (st.vitro && SG[i].vitro) || SG[i].body;
       $('cap').classList.remove('swap');
     };
     if (first || reduced) apply(); else { $('cap').classList.add('swap'); setTimeout(apply, 180); }
@@ -178,13 +199,28 @@ $('tilt').addEventListener('input', (e) => { st.el = +e.target.value; syncUI(); 
 $('zoom').addEventListener('input', (e) => { st.dist = zoomToDist(+e.target.value); syncUI(); });
 $('angle').max = Math.floor(THETA_MAX * 10) / 10;
 $('angle').addEventListener('input', (e) => { st.angle = +e.target.value; syncUI(); });
+// The second camera is optional. Switching it on widens the camera panel to two columns, and in
+// the inference view adds its video to the evidence.
+$('wl').min = IRM.min; $('wl').max = IRM.max;
+function applyIrm() {
+  const on = st.irm && st.vitro;
+  $('irm').checked = st.irm; $('ctl-wl').hidden = !st.irm; $('irmCol').hidden = !on; $('keyIrm').hidden = !on; $('keyAlone').hidden = !on;
+  $('pip').classList.toggle('dual', on); $('inf').classList.toggle('dual', on); document.body.classList.toggle('irm', on);
+  for (const t of document.querySelectorAll('.irmTile')) t.hidden = !on;
+  $('obsCap').textContent = on ? 'TIRF' : 'Recorded'; $('expectCap').textContent = on ? 'Expected' : 'Model expects';
+  $('pipNote').textContent = on
+    ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. Mid-grey is the bare background; black and white are ${(SPAN * 100).toFixed(1)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`
+    : `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
+}
+$('irm').addEventListener('change', (e) => { st.irm = e.target.checked; applyIrm(); stageIdx = -1; delete shown.wl; syncUI(); resize(); pipRect = $(st.infer ? 'inf' : 'pip').getBoundingClientRect(); });
+$('wl').addEventListener('input', (e) => { st.lambda = +e.target.value; applyIrm(); syncUI(); });
 function setMode(mode) {
   const infer = mode === 'infer', vitro = mode !== 'vivo';
   st.infer = infer; st.vitro = vitro; st.dist = Math.min(st.dist, maxDist()); st.play = false;
   document.body.classList.toggle('vitro', vitro); document.body.classList.toggle('infer', infer);
   for (const [id, m] of [['modeVivo', 'vivo'], ['modeVitro', 'vitro'], ['modeInfer', 'infer']]) $(id).setAttribute('aria-pressed', m === mode);
   $('pip').hidden = !vitro || infer; $('inf').hidden = !infer; $('ctl-infer').hidden = !infer; $('ticks').hidden = infer;
-  $('ctl-angle').hidden = !vitro; $('keyVitro').hidden = !vitro; $('keyVivo').hidden = vitro; $('keyInfer').hidden = !infer;
+  $('ctl-angle').hidden = !vitro; $('ctl-irm').hidden = !vitro; applyIrm(); $('keyVitro').hidden = !vitro; $('keyVivo').hidden = vitro; $('keyInfer').hidden = !infer;
   $('sub').textContent = infer ? 'working back from the video' : vitro ? 'watched on a TIRF microscope' : 'how a synapse releases its signal';
   $('progL').textContent = infer ? 'Video time' : 'Fusion progress'; $('sizeL').textContent = infer ? 'True vesicle diameter' : 'Vesicle diameter';
   $('truth').checked = st.truth;
@@ -273,7 +309,7 @@ function resize() {
   // The inference view adds a second panel (right on desktop, top on phones) to steer clear of.
   const q = st.infer ? $('inf').getBoundingClientRect() : null;
   if (phone.matches) { const bot = Math.min(0.62, r.height / ch), top = q ? q.bottom / ch : 0; cam.ox = 0; cam.fw = 1; cam.oy = bot - top; cam.fh = Math.max(0.15, 1 - bot - top); }
-  else { const left = r.right / cw, right = q ? (cw - q.left) / cw : 0; cam.ox = left - right; cam.fw = Math.max(0.2, 1 - left - right); cam.oy = 0; cam.fh = 1; }
+  else { const q2 = q || (st.irm && st.vitro ? $('pip').getBoundingClientRect() : null), left = r.right / cw, right = q2 ? (cw - q2.left) / cw : 0; cam.ox = left - right; cam.fw = Math.max(0.2, 1 - left - right); cam.oy = 0; cam.fh = 1; }
 }
 new ResizeObserver(resize).observe($('panel')); addEventListener('resize', resize); resize();
 
@@ -354,12 +390,38 @@ function drawCamera(now) {
   const key = st.diam + '|' + st.angle;
   if (key !== curveKey && now - curveAt > 160) { curveKey = key; curveAt = now; curve = scene.fluorCurve(st.diam / 2 - 2.4); }
   if (curve) camera.drawTrace(curve, st.p);
+  if (st.irm) drawIrm(reshuffle);
   if (reshuffle) pipRect = $('pip').getBoundingClientRect();
 }
+// The reflection camera looks at the same field. Each vesicle near the glass is a faint spot whose
+// contrast comes from its membrane shape at this moment; vesicles that never fuse are worked out once.
+const irmCam = new IrmCamera($('irmCam'), $('irmZoom'), $('irmTrace'));
+let irmO = null, irmStill = null, irmKey = '', irmSpots = [], irmCurve = null, irmCurveKey = '';
+function drawIrm(reshuffle) {
+  const R = st.diam / 2 - 2.4, half = CAM.px * CAM.nm / 2 + 400, m = [0, 0];
+  const inField = (x, z) => Math.abs(x) < half && Math.abs(z) < half;
+  if (!irmO || irmO.lambda !== st.lambda) {
+    irmO = irmOptics(st.lambda); irmKey = '';
+    irmStill = [];
+    for (const [x, z, rad] of scene.docked) if (inField(x, z)) { moment(irmO, 0, rad - 2, m); irmStill.push([x, z, m[0], m[1]]); }
+    for (const nb of scene.neigh) if (nb.off === null && inField(nb.x, nb.z)) { moment(irmO, 0, nb.rad - 2, m); irmStill.push([nb.x, nb.z, m[0], m[1]]); }
+  }
+  const key = st.p.toFixed(4) + '|' + st.diam;
+  if (key !== irmKey) {
+    irmKey = key; irmSpots = irmStill.slice();
+    moment(irmO, st.p, R, m); irmSpots.push([0, 0, m[0], m[1]]);
+    for (const nb of scene.neigh) if (nb.off !== null && inField(nb.x, nb.z)) { moment(irmO, clamp(st.p + nb.off, 0, 1), nb.rad - 2, m); irmSpots.push([nb.x, nb.z, m[0], m[1]]); }
+  }
+  irmCam.render(irmO, irmSpots, reshuffle);
+  const ck = st.diam + '|' + st.lambda;
+  if (ck !== irmCurveKey) { irmCurveKey = ck; irmCurve = contrastCurve(irmO, R); }
+  irmCam.drawTrace(irmCurve, st.p, 'rgba(234,240,255,.95)');
+}
+$('irmBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%'; $('irmZoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';
+{ const b = $('irmBox').style, e = (CAM.px - CAM.zoom) / 2 / CAM.px * 100 + '%'; b.left = b.right = b.top = b.bottom = e; }
 $('pipBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%';
 $('zoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';
 { const b = $('pipBox').style, e = (CAM.px - CAM.zoom) / 2 / CAM.px * 100 + '%'; b.left = b.right = b.top = b.bottom = e; }
-$('pipNote').textContent = `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
 
 // ---- inference (third view) ----------------------------------------------------------------------
 // The hidden truth for a given event. The diameter comes from the size slider; the rest are drawn
@@ -375,35 +437,43 @@ for (const P of PARAMS) {
   li.textContent = P.log ? `${P.name}: ${P.med} ${P.unit} ×/÷ ${P.gsd}` : `${P.name}: anywhere in the ${T_TOTAL} ms of video, equally likely`;
   $('mathPriors').append(li);
 }
+for (const t of [
+  `Reference wave: the ${(irmOptics(IRM.lambda).glass * 100).toFixed(2)}% of the light that the glass reflects where it meets the medium.`,
+  `Refractive indices: lipid ${N_LIPID}, vesicle interior and medium ${N_MEDIUM}, cytoplasm 1.36.`,
+  `Noise: ${WELL.toLocaleString('en')} photoelectrons per pixel per millisecond, so σ is ${(100 / Math.sqrt(WELL * 10)).toFixed(2)}% in a 10 ms frame.`,
+]) { const li = document.createElement('li'); li.textContent = t; $('mathIrm').append(li); }
 $('mathBtn').addEventListener('click', () => { st.play = false; syncUI(); $('math').showModal(); $('math').scrollTop = 0; });
 $('mathClose').addEventListener('click', () => $('math').close());
 $('math').addEventListener('click', (e) => { if (e.target === $('math')) $('math').close(); });   // a click on the backdrop
-const dash = new Dashboard({ obs: $('obs'), exp: $('expect'), fan: $('fan'), strips: $('strips'), pair: $('pair') });
+const dash = new Dashboard({ obs: $('obs'), exp: $('expect'), obs2: $('obs2'), exp2: $('expect2'), fan: $('fan'), pore: $('pore'), strips: $('strips'), pair: $('pair') });
+let samplerT = null;         // with the reflection camera on: a second sampler that sees the fluorescence video only
 let exper = null, sampler = null, expKey = '', viewDiam = 42, diamAt = 0, infTick = 0, goal = null;
 const belief = { p: [0.2, 0.2, 0.2, 0.2, 0.2], R: [20, 20, 20, 20, 20], sp: [80, 80, 80, 80, 80], fused: 0, ready: false };
 const rowBuf = new Float32Array(1300 * 5), qP = new Float32Array(1300), qR = new Float32Array(1300), qS = new Float32Array(1300);
 function runInference(now, dt) {
-  const key = [st.dt, st.power, st.angle, st.prior, st.seed, st.diam].join('|');
+  const key = [st.dt, st.power, st.angle, st.prior, st.seed, st.diam, st.irm ? st.lambda : 0].join('|');
   if (key !== expKey) {
     expKey = key;
-    exper = new Experiment({ dt: st.dt, power: st.power, angle: st.angle, prior: st.prior });
+    exper = new Experiment({ dt: st.dt, power: st.power, angle: st.angle, prior: st.prior, irm: st.irm, lambda: st.lambda });
     exper.simulate(truthOf(st.seed), st.seed * 7 + 3);
-    if (sampler) sampler.reset(exper); else sampler = new Sampler(exper);
+    if (sampler) { sampler.both = st.irm; sampler.reset(exper); } else sampler = new Sampler(exper, 7, st.irm);
+    if (!st.irm) samplerT = null; else if (samplerT) samplerT.reset(exper); else samplerT = new Sampler(exper, 11, false);
     belief.ready = false; goal = null;
   }
-  sampler.observe(Math.min(exper.nf, Math.floor(st.t / st.dt + 1e-6)));
-  sampler.run(phone.matches ? 5 : 7);
+  const upto = Math.min(exper.nf, Math.floor(st.t / st.dt + 1e-6)), budget = phone.matches ? 5 : 7;
+  sampler.observe(upto); sampler.run(samplerT ? budget * 0.7 : budget);
+  if (samplerT) { samplerT.observe(upto); samplerT.run(budget * 0.55); }
   // Summarise the posterior from the sampler's long memory rather than from where the walkers
   // happen to be this instant, and ease everything on screen toward that summary. The picture
   // then moves when the evidence moves, not with every step of the sampler.
   if (infTick % 3 === 0 || !belief.ready) {
-    const n = sampler.rows(rowBuf, 1200), s3 = new Float64Array(3);
+    const n = sampler.rows(rowBuf, 1200), s3 = new Float64Array(5);
     if (n >= 40) {
       let fused = 0;
       for (let s = 0; s < n; s++) {
         const u = rowBuf.subarray(s * 5, s * 5 + 5); exper.state(u, st.t, s3);
         const f = st.t > u[0]; fused += f;
-        qP[s] = f ? PH.PORE + 0.02 + (0.98 - PH.PORE) * s3[2] : 0.2; qR[s] = Math.exp(u[1]) / 2 - 2.4; qS[s] = Math.sqrt(s3[1]) * CAM.nm;
+        qP[s] = f ? progressOf(s3[2]) : 0.2; qR[s] = Math.exp(u[1]) / 2 - 2.4; qS[s] = Math.sqrt(s3[1]) * CAM.nm;
       }
       const Q = [0.05, 0.25, 0.5, 0.75, 0.95];
       goal = { p: quantiles(qP, n, Q), R: quantiles(qR, n, Q), sp: quantiles(qS, n, Q), fused: fused / n };
@@ -418,7 +488,8 @@ function runInference(now, dt) {
   const d = 2 * (belief.R[2] + 2.4);
   if (Math.abs(d - viewDiam) >= 2 && now - diamAt > 800) { viewDiam = Math.min(90, Math.max(30, Math.round(d))); diamAt = now; }
   if (++infTick % 3 === 0) {
-    dash.draw(exper, sampler, st.t, st.truth);
+    dash.draw(exper, sampler, st.t, st.truth, samplerT);
+    if (dash.poreText && shown.pore !== dash.poreText) { shown.pore = dash.poreText; $('poreInfo').textContent = dash.poreText; }
     const fr = `frame ${sampler.upto} of ${exper.nf}`;
     if (shown.fr !== fr) { shown.fr = fr; $('infFrames').textContent = fr; }
     if (dash.pairText && shown.pt !== dash.pairText) { shown.pt = dash.pairText; $('pairNote').textContent = dash.pairText; }

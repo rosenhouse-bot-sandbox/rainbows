@@ -6,7 +6,7 @@
 // evidence changes and hold still when it does not.
 import { PARAMS, NP, ROI, T_TOTAL, WALKERS, KEEP, toValue, quantiles, bitsLearned } from './infer.js';
 
-const GOLD = [255, 207, 107], INK = '#EAF0FF', INK3 = '#7C88B0', FORE = [120, 190, 255];
+const GOLD = [255, 207, 107], INK = '#EAF0FF', INK3 = '#7C88B0', FORE = [120, 190, 255], ALONE = [115, 255, 90];
 const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const LN = Math.log;
 
@@ -26,6 +26,19 @@ export class Dashboard {
     this.octx = el.obs.getContext('2d'); this.ectx = el.exp.getContext('2d');
     this.oimg = this.octx.createImageData(ROI, ROI); this.eimg = this.ectx.createImageData(ROI, ROI);
     this.summary = PARAMS.map(() => ({ q: [0, 0, 0], bits: 0 }));
+    this.o2ctx = el.obs2.getContext('2d'); this.e2ctx = el.exp2.getContext('2d');
+    this.o2img = this.o2ctx.createImageData(ROI, ROI); this.e2img = this.e2ctx.createImageData(ROI, ROI);
+    this.tile2 = new Float32Array(ROI * ROI); this.diff = new Float32Array(ROI * ROI);
+  }
+
+  // A change in the reflection picture, in grey: mid-grey is no change, `span` is full black or white.
+  paintGrey(ctx, img, data, span) {
+    const d = img.data;
+    for (let i = 0; i < ROI * ROI; i++) {
+      const g = 255 * Math.min(1, Math.max(0, 0.5 + data[i] / (2 * span)));
+      d[i * 4] = g; d[i * 4 + 1] = g * 0.97; d[i * 4 + 2] = g * 0.93; d[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
   }
 
   // Photon counts to the same green scale as the microscope camera.
@@ -38,9 +51,11 @@ export class Dashboard {
     ctx.putImageData(img, 0, 0);
   }
 
-  draw(exp, sam, t, showTruth) {
+  // sam: the sampler using every camera that is switched on. alone: when the reflection camera is
+  // on, a second sampler that sees the fluorescence video only, drawn in green for comparison.
+  draw(exp, sam, t, showTruth, alone) {
     const nf = exp.nf, dt = exp.set.dt, upto = sam.upto, f = Math.max(0, Math.min(nf - 1, upto - 1));
-    const o = new Float64Array(3);
+    const o = new Float64Array(4);
     // Brightest pixel the truth ever produces sets the display scale.
     if (this.scaleFor !== exp) {
       let m = 1; for (let k = 0; k < nf; k++) { exp.frame(exp.truth, k, o); m = Math.max(m, o[0] / (2 * Math.PI * o[1]) + exp.bg * dt); }
@@ -55,8 +70,25 @@ export class Dashboard {
     for (let i = 0; i < ROI * ROI; i++) T[i] += (this.tile[i] / WALKERS - T[i]) * k;
     this.paint(this.ectx, this.eimg, T, 0, this.white);
 
+    if (exp.irm) {
+      // The reflection tiles show the change since the first frame, which is what carries information.
+      if (this.spanFor !== exp) {
+        let m = 0; this.tile2.fill(0); const one = new Float32Array(ROI * ROI);
+        for (let q = 1; q < nf; q++) { one.fill(0); exp.expectedIrm(exp.truth, q, one); for (let i = 0; i < ROI * ROI; i++) m = Math.max(m, Math.abs(one[i])); }
+        this.span = Math.max(m * 1.8, 5 * exp.sdI); this.spanFor = exp;
+      }
+      const P = ROI * ROI, D2 = this.diff;
+      for (let i = 0; i < P; i++) D2[i] = upto > 1 ? exp.imgI[f * P + i] - exp.imgI[i] : 0;
+      this.paintGrey(this.o2ctx, this.o2img, D2, this.span);
+      this.tile2.fill(0);
+      for (const w of sam.x) exp.expectedIrm(w, f, this.tile2);
+      const T2 = this.tile2S || (this.tile2S = new Float32Array(P));
+      for (let i = 0; i < P; i++) T2[i] += (this.tile2[i] / WALKERS - T2[i]) * k;
+      this.paintGrey(this.e2ctx, this.e2img, T2, this.span);
+    }
     this.fan(exp, sam, t, showTruth);
-    this.strips(exp, sam, showTruth);
+    this.pore(exp, sam, alone, t, showTruth);
+    this.strips(exp, sam, showTruth, alone);
     this.pair(exp, sam, showTruth);
     this.snap = false;
   }
@@ -64,7 +96,7 @@ export class Dashboard {
   // Total brightness over time. Dots are recorded frames. The band is the model's belief about the
   // underlying brightness: tight where there is data, and fanning out into a forecast beyond it.
   fan(exp, sam, t, showTruth) {
-    const [c, W, H] = fit(this.el.fan), nf = exp.nf, dt = exp.set.dt, bgTot = exp.bg * dt * ROI * ROI, o = new Float64Array(3);
+    const [c, W, H] = fit(this.el.fan), nf = exp.nf, dt = exp.set.dt, bgTot = exp.bg * dt * ROI * ROI, o = new Float64Array(4);
     const padL = 4, padB = 15, X = (ms) => padL + (W - padL - 4) * ms / T_TOTAL;
     const tmp = new Float32Array(WALKERS), e = this.snap ? 1 : EASE;
     if (!this.bands || this.bands.length !== nf) this.bands = Array.from({ length: nf }, () => null);
@@ -104,8 +136,60 @@ export class Dashboard {
     for (const ms of [0, 100, 200, 300, 400]) { c.textAlign = ms === 0 ? 'left' : ms === 400 ? 'right' : 'center'; c.fillText(ms + (ms === 400 ? ' ms' : ''), X(ms), H - 3); }
   }
 
+  // Width of the fusion pore over time, as believed from the frames seen so far. Gold is the belief
+  // from every camera that is on; with the reflection camera on, the green outline is what the
+  // fluorescence video alone would allow.
+  pore(exp, sam, alone, t, showTruth) {
+    const cv = this.el.pore; if (!cv.clientWidth) return;
+    const [c, W, H] = fit(cv), nf = exp.nf, dt = exp.set.dt, padL = 30, padB = 15, e = this.snap ? 1 : EASE;
+    const X = (ms) => padL + (W - padL - 4) * ms / T_TOTAL, tmp = new Float32Array(WALKERS), Q = [0.05, 0.25, 0.5, 0.75, 0.95];
+    const bands = (s, key) => {
+      if (!this[key] || this[key].length !== nf || this.snap) this[key] = Array.from({ length: nf }, () => null);
+      const B = this[key];
+      for (let k = 0; k < nf; k++) {
+        for (let w = 0; w < WALKERS; w++) tmp[w] = exp.pore(s.x[w], (k + 0.5) * dt);
+        const q = quantiles(tmp, WALKERS, Q);
+        if (!B[k]) B[k] = q; else for (let j = 0; j < 5; j++) B[k][j] += (q[j] - B[k][j]) * e;
+      }
+      return B;
+    };
+    const B = bands(sam, 'pb'), A = alone ? bands(alone, 'pa') : null;
+    let max = 8;
+    for (let k = 0; k < nf; k++) max = Math.max(max, B[k][4], A ? A[k][4] : 0);
+    this.poreMax = this.snap || !this.poreMax ? max * 1.1 : this.poreMax + (max * 1.1 - this.poreMax) * e;
+    max = this.poreMax;
+    const Y = (v) => H - padB - (H - padB - 5) * Math.min(v, max) / max;
+    const area = (S, lo, hi, col, line) => {
+      c.beginPath();
+      for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(S[k][hi]));
+      for (let k = nf - 1; k >= 0; k--) c.lineTo(X((k + 0.5) * dt), Y(S[k][lo]));
+      c.closePath(); c.fillStyle = col; c.fill();
+      if (line) { c.strokeStyle = line; c.lineWidth = 1; c.stroke(); }
+    };
+    if (A) area(A, 0, 4, rgba(ALONE, 0.10), rgba(ALONE, 0.7));
+    area(B, 0, 4, rgba(GOLD, 0.24)); area(B, 1, 3, rgba(GOLD, 0.45));
+    c.beginPath(); for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(B[k][2]));
+    c.strokeStyle = 'rgba(234,240,255,.8)'; c.lineWidth = 1.2; c.stroke();
+    if (showTruth) {
+      c.beginPath(); for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(exp.pore(exp.truth, (k + 0.5) * dt)));
+      c.setLineDash([3, 3]); c.strokeStyle = '#fff'; c.lineWidth = 1; c.stroke(); c.setLineDash([]);
+    }
+    c.strokeStyle = 'rgba(234,240,255,.5)'; c.lineWidth = 1; c.beginPath(); c.moveTo(X(t), 2); c.lineTo(X(t), H - padB); c.stroke();
+    // Axes: nanometres up the side, the video's milliseconds along the bottom.
+    c.strokeStyle = 'rgba(234,240,255,.3)'; c.beginPath(); c.moveTo(padL, 3); c.lineTo(padL, H - padB); c.lineTo(W - 4, H - padB); c.stroke();
+    c.fillStyle = INK3; c.font = '10px JetBrains Mono, monospace'; c.textBaseline = 'alphabetic';
+    for (const ms of [0, 100, 200, 300, 400]) { c.textAlign = ms === 0 ? 'left' : ms === 400 ? 'right' : 'center'; c.fillText(ms + (ms === 400 ? ' ms' : ''), X(ms), H - 3); }
+    const tick = [5, 10, 20, 50, 100, 200].find((v) => v > max * 0.45) || 200;
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (const v of [tick, tick * 2]) if (v <= max) { c.fillText(String(v), padL - 4, Y(v)); c.fillRect(padL - 2, Y(v), 3, 1); }
+    c.textBaseline = 'top'; c.fillText('nm', padL - 4, 1);
+    // The 90% range at the playhead, in words.
+    const k = Math.max(0, Math.min(nf - 1, Math.round(t / dt - 0.5))), rng = (q) => `${q[0].toFixed(q[4] < 10 ? 1 : 0)}–${q[4].toFixed(q[4] < 10 ? 1 : 0)}`;
+    this.poreText = A ? `now ${rng(B[k])} nm · TIRF alone ${rng(A[k])}` : `now ${rng(B[k])} nm, 90% range`;
+  }
+
   // One strip per unknown. Grey is what we assumed beforehand, gold is what we believe now.
-  strips(exp, sam, showTruth) {
+  strips(exp, sam, showTruth, alone) {
     const [c, W, H] = fit(this.el.strips), rowH = H / NP, compact = rowH < 34, bins = 72, hist = new Float32Array(bins);
     const priorScale = exp.set.prior;
     for (let i = 0; i < NP; i++) {
@@ -123,8 +207,17 @@ export class Dashboard {
       const s0 = P.log ? LN(P.gsd) * priorScale : 0, ph = h * 0.5;
       for (let px = 0; px <= W; px += 3) { const u = lo + (hi - lo) * px / W, d = P.log ? Math.exp(-0.5 * Math.pow((u - LN(P.med)) / s0, 2)) : 0.55; c.lineTo(px, bot - ph * d); }
       c.lineTo(W, bot); c.closePath(); c.fillStyle = 'rgba(160,172,205,.16)'; c.fill(); c.strokeStyle = 'rgba(160,172,205,.5)'; c.lineWidth = 1; c.stroke();
-      // Posterior: a heat strip (opacity follows density) with the density curve drawn over it.
       const bw = W / bins;
+      // With two cameras: what the fluorescence video alone would leave us believing, as a green outline.
+      if (alone) {
+        const n2 = alone.column(i, this.col2), g = ei.g || (ei.g = new Float32Array(bins)); let pk = 1e-9;
+        hist.fill(0);
+        for (let s = 0; s < n2; s++) { const b = Math.floor((this.col2[s] - lo) / (hi - lo) * bins); if (b >= 0 && b < bins) hist[b]++; }
+        for (let b = 0; b < bins; b++) { const v = (0.25 * (hist[b - 1] || 0) + 0.5 * hist[b] + 0.25 * (hist[b + 1] || 0)) / Math.max(1, n2); g[b] += (v - g[b]) * e; pk = Math.max(pk, g[b]); }
+        c.beginPath(); c.moveTo(0, bot); for (let b = 0; b < bins; b++) c.lineTo((b + 0.5) * bw, bot - h * 0.8 * g[b] / pk); c.lineTo(W, bot);
+        c.fillStyle = rgba(ALONE, 0.07); c.fill(); c.strokeStyle = rgba(ALONE, 0.75); c.lineWidth = 1; c.stroke();
+      }
+      // Posterior: a heat strip (opacity follows density) with the density curve drawn over it.
       for (let b = 0; b < bins; b++) if (sm[b] > peak * 0.004) { c.fillStyle = rgba(GOLD, 0.08 + 0.5 * sm[b] / peak); c.fillRect(b * bw, bot - h * sm[b] / peak, bw + 0.6, h * sm[b] / peak); }
       c.beginPath(); for (let b = 0; b < bins; b++) c.lineTo((b + 0.5) * bw, bot - h * sm[b] / peak); c.strokeStyle = rgba(GOLD, 0.95); c.lineWidth = 1.3; c.stroke();
       // 90% interval and median.

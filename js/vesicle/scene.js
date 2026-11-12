@@ -3,6 +3,7 @@
 import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
 import { compute, surf, outline, D, CLEFT, TABW, BAREA, PH } from './profile.js';
 import * as SH from './shaders.js';
+import { irmBeam } from './irm.js';
 import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
 
 const PI = Math.PI, TAU = 2 * PI;
@@ -690,7 +691,7 @@ export class Scene {
     const fade = sstep(4.7, 5.4, lg);
     if (fade > 0) {
       const v = [];
-      for (const sg of beamPath(opt)) for (const [side, end] of [[-1, 0], [1, 0], [1, 1], [-1, 0], [1, 1], [-1, 1]]) v.push(...sg.a, ...sg.b, side, end, sg.w, sg.k, ...sg.c);
+      for (const sg of st.irm ? beamPath(opt).concat(irmBeam(st.lambda)) : beamPath(opt)) for (const [side, end] of [[-1, 0], [1, 0], [1, 1], [-1, 0], [1, 1], [-1, 1]]) v.push(...sg.a, ...sg.b, side, end, sg.w, sg.k, ...sg.c);
       const u = common(P.beam); gl.uniform1f(u.uBeam, 0.85 * fade);
       gl.bindVertexArray(this.beamVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.beamBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW); gl.drawArrays(gl.TRIANGLES, 0, v.length / 13);
