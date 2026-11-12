@@ -19,21 +19,21 @@ const side = (R, out) => (isFinite(R) && Math.abs(R) < 1e5 ? (Math.sign(R) === -
 // with its blur measured about the axis (`blur`) and about its own middle (`spread`).
 function tally(scene, rays, ring) {
   let all = 0, got = 0, u2 = 0, via = 0, viaGot = 0;
-  const hits = [], groups = [];
+  const hits = [], groups = [], s = [];
   for (const r of rays) {
     const w = ring ? Math.abs(r.s) : 1, o = trace(scene, r), c = r.c || 0;
     const G = groups[c] || (groups[c] = { w: 0, u: 0, u2: 0 });
     all += w;
     const used = o.tags.has('part');
     if (used) via += w;
-    if (o.end === 'target') { got += w; u2 += w * o.u * o.u; hits.push(o.u, w, c); if (used) viaGot += w; G.w += w; G.u += w * o.u; G.u2 += w * o.u * o.u; }
+    if (o.end === 'target') { got += w; u2 += w * o.u * o.u; hits.push(o.u, w, c); s.push(r.s); if (used) viaGot += w; G.w += w; G.u += w * o.u; G.u2 += w * o.u * o.u; }
   }
   for (const G of groups) {
     G.blur = G.w ? 2 * Math.sqrt(G.u2 / G.w) : Infinity;
     G.spread = G.w ? 2 * Math.sqrt(Math.max(0, G.u2 / G.w - (G.u / G.w) ** 2)) : Infinity;
   }
   return { share: all ? got / all : 0, viaShare: via ? viaGot / via : 0, via: all ? via / all : 0,
-    blur: got ? 2 * Math.sqrt(u2 / got) : Infinity, hits, groups };
+    blur: got ? 2 * Math.sqrt(u2 / got) : Infinity, hits, groups, s };
 }
 
 // White light: the same bundle at each of three wavelengths.
@@ -220,7 +220,7 @@ export const LEVELS = [
     task: 'Find a lens shape that is sharp without closing the iris past f/4.',
     brief: 'One 50 mm lens, a distant point of light, and a sensor that slides itself to the best focus. Wide open the picture is bright but soft. Closing the iris sharpens it and throws light away. Drag a white knob to open or close the iris.',
     learned: 'Rays through the edge of a spherical lens bend too much and cross early: spherical aberration. It grows steeply with the opening, so closing the iris cures it, at the cost of light. Shape matters as well. With the curved face toward the distant scene both faces share the bending, and the blur is about a quarter of what the same glass gives turned round. Real camera lenses stack several elements so the errors of one cancel those of the next. Only light along the axis is traced here; blur off the axis and other wavelengths are for later challenges.',
-    key: [['k-ray', 'Light from a far-off point (550 nm)'], ['k-glass', 'Crown glass lens, 50 mm'], ['k-stop', 'Iris'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    key: [['k-ray', 'Light from a far-off point (550 nm)'], ['k-glass', 'Crown glass lens, 50 mm'], ['k-stop', 'Iris'], ['k-target', 'Sensor'], ['k-inset', 'Inset: a night scene as this sensor records it, magnified: stars, two of them close together, and a lit window. The bar is as wide as the blur you are allowed.']],
     bounds: [-46, -20, 64, 20],
     params: [
       { id: 'q', label: 'Lens shape', min: -1, max: 1, step: 0.05, value: -1, show: (v, b) => 'front ' + mm(b.R1) + ', back ' + mm(b.R2) },
@@ -274,7 +274,7 @@ export const LEVELS = [
     task: 'Pick a glass and set the curve for a 100 mm lens that lands the wavelengths closest together.',
     brief: 'White light is a mix of many wavelengths, and glass slows the short ones more than the long ones. So a lens brings short wavelengths, which we see as blue, to a focus nearer than long ones, which we see as red, and a white point lands with coloured fringes. The sensor slides itself to the best focus.',
     learned: 'Every glass bends short wavelengths more than long ones. The Abbe number says how little the bending varies: fluorite, at 95, spreads the wavelengths least, which is why long camera lenses use it. Notice that a glass with a higher index needs gentler curves for the same focal length. No single glass brings every wavelength to one focus, though. With one simple lens this blur, chromatic aberration, is set by the width of the lens and the Abbe number, and nothing else you can change. The cure is the next challenge.',
-    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as. Sharpness counts all three.'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as. Sharpness counts all three.'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: a night scene as this sensor records it, magnified: white stars, two of them close together, and a white window. Any colour in it is the lens’s doing. The bar is as wide as the blur you are allowed.']],
     bounds: [-30, -14, 122, 14],
     params: [
       { id: 'glass', label: 'Glass', options: ['Fluorite', 'Crown', 'Flint', 'Dense flint'], value: 3 },
@@ -307,7 +307,7 @@ export const LEVELS = [
     task: 'Design a 50 mm lens from two cemented glasses that brings all the wavelengths to one sharp point.',
     brief: 'A crown glass lens in front, and a second lens cemented behind it. Set the curve of the front lens, choose the glass of the second, and shape its back face. Shaped right, the second lens brings the wavelengths that the first one separated back together.',
     learned: 'A lens that spreads light separates the wavelengths the opposite way to one that gathers it. Flint glass separates them nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s chromatic error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the chromatic error would cancel the focusing too. This is the achromatic doublet (the name means without colour), the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far. Dense flint cancels the chromatic error too, but with these shapes it leaves more spherical aberration behind, so the choice of glass pair decides how sharp the lens can be.',
-    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as. Sharpness counts all three.'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as. Sharpness counts all three.'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: a night scene as this sensor records it, magnified: white stars, two of them close together, and a white window. Any colour in it is the lens’s doing. The bar is as wide as the blur you are allowed.']],
     bounds: [-16, -11, 96, 11],
     params: [
       { id: 'c1', label: 'Curve of the front lens', min: 24, max: 60, step: 0.5, value: 30, show: (v) => 'radius ' + f1(1000 / v) + ' mm' },
@@ -344,7 +344,7 @@ export const LEVELS = [
     task: 'Bend the lens and slide the stop until the picture is sharp at its edge as well as its middle.',
     brief: 'A stop is a plate with a hole in it, like the iris of the camera challenge: only the light that gets through the hole reaches the sensor. Light drawn in gold comes from straight ahead and makes the middle of the picture. Light drawn in pale blue is the same wavelength from 20° off to one side, and makes the edge. Sliding the stop lets the same amount of light in. What it changes is which part of the lens the light from the side goes through: watch where the pale blue rays cross the lens as you drag the white knob. The gold rays stay in the centre.',
     learned: 'Off the axis a simple lens smears a point into a comet shape (coma), and focuses it on a curved surface where the sensor is flat. Each patch of the lens makes its own errors, because light meets the glass there at its own angle. The stop picks the patch: the further it sits from the lens, the further from the centre the light from the side crosses the glass, while light from straight ahead keeps to the centre. With the lens bent into a meniscus, hollow side to the scene, and the stop at the right distance, those errors nearly cancel. William Wollaston found this in 1812, and his landscape lens went into simple cameras for well over a century. Only an up-and-down slice of each beam is traced here, so the error of the sideways slice (astigmatism) is not counted.',
-    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side (also 550 nm)'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop: a plate with a 5.5 mm hole, which makes this an f/11 lens'], ['k-target', 'Sensor, at the best focus for the middle'], ['k-inset', 'Inset: where each light lands on the sensor, magnified. A slice up and down through each spot, between marks that show its goal.']],
+    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side (also 550 nm)'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop: a plate with a 5.5 mm hole, which makes this an f/11 lens'], ['k-target', 'Sensor, at the best focus for the middle'], ['k-inset', 'Inset: stars as the sensor records them, magnified, in the middle of the picture (left half) and at its edge (right half). At the edge only the up-and-down smear is traced.']],
     bounds: [-46, -24, 68, 30],
     params: [
       { id: 'q', label: 'Lens faces', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },
@@ -363,7 +363,7 @@ export const LEVELS = [
       return { surfaces: [...front, seg(xs, -23, xs, 29, { act: 'target' })], ring: false, L, R1, R2, xs, f: L.focal(GREEN),
         draw: [...bundle(0, 7, 0, null, 0.92), ...bundle(FIELD, 7, 1, [150, 205, 255], 0.92)], probe,
         off: trace({ surfaces: L.surfaces, bounds: this.bounds }, bundle(FIELD, 1, 1, null, 0)[0]).pts[3],   // where the middle ray from the side meets the lens
-        spot: { goal: 0.060, low: true, slices: [{ goal: 0.040, rgb: '255,190,90' }, { goal: 0.060, rgb: '150,205,255' }] },
+        spot: { goal: 0.060, unit: 'µm', per: 1000, low: true, slices: true },
         items: [{ t: 'axis' }, { t: 'glass', outline: L.outline }, { t: 'iris', x: xi, open: D / 2, h: 21 }, { t: 'sensor', x: xs, h: 26, y: 3 }],
         handles: [{ param: 'xi', cursor: 'ew', knobs: [[xi, -21]],
           hit: (wx, wy, k) => (Math.abs(wx - xi) * k <= 26 && Math.abs(wy) <= 21 + 12 / k ? Math.abs(wx - xi) : Infinity),

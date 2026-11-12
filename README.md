@@ -354,11 +354,13 @@ The physics:
   and 656 nm, each drawn in the colour we see it as (blue, green, red). In the two chromatic challenges the blur behind "Sharpness" is
   over the three together, equally weighted. The inset adds the three drawings up; it is not a
   rendering of what an eye would see of a full spectrum.
+- The insets show a small night scene (white stars, a close pair, a lit window) as the sensor records
+  it: each point is spread into the traced spot, per wavelength in white light. Brightness is compressed.
 - In the Wide view challenge the second bundle arrives 20° off the axis, so its spot is not round.
   Only the slice of that bundle in the plane of the picture is traced, each ray weighted equally,
   and its blur is measured about its own middle. That catches coma and field curvature; the error
   of the slice at right angles (astigmatism) and distortion are not counted. Its inset
-  therefore draws each spot as that slice, a strip between its goal marks, not as a round spot. The stop is f/11. The spectacle
+  therefore smears the stars at the edge of the picture up and down only. The stop is f/11. The spectacle
   plastic is a two-term fit through CR-39's index and Abbe number. Air is taken as 1.
 - For the lens challenges the light comes from a point on the axis, so the spot on the target is
   round. Each traced ray stands for a ring of light, and is weighted by its height in the beam.

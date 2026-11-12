@@ -6,6 +6,7 @@
 import { LEVELS, run } from './levels.js';
 import { drawChart, CHART_ASPECT } from './chart.js';
 import { drawPicture } from './picture.js';
+import { drawScene, ringTaps, sliceTaps } from './scene.js';
 import { WHITE } from './glass.js';
 
 const $ = (id) => document.getElementById(id);
@@ -358,82 +359,43 @@ function draw() {
   if (S.fx && performance.now() - S.fx.t0 < FLARE * 1000) invalidate();
 }
 
-// The spot the light makes on the target, magnified. On the axis of a round lens the spot is
-// round: a ray that lands u from the centre stands for a ring of that radius.
+// The inset: a small night scene as the sensor records it, magnified. Each point of the scene is
+// spread into the spot the traced light makes. On the axis of a round lens the spot is round: a ray
+// that lands u from the centre stands for a ring of that radius. Off the axis only an up-and-down
+// slice of the beam is traced, so there the scene is smeared up and down only.
 function inset(spot, m, lit) {
   const wide = WIDE.matches, size = wide ? 132 : INSET, x = wide ? V.box[2] - size : V.box[0], y = wide ? (spot.low ? V.box[3] - size : V.box[1]) : (V.box[1] + V.box[3] - size) / 2;
-  const half = spot.goal * 1.6, k = size / 2 / half, cx = x + size / 2, cy = y + size / 2;
+  const G = size * V.dpr / 14, k = G / spot.goal;       // the inset is fourteen goal widths across                    // the goal's width, and a millimetre, in device pixels
+  const lists = [];                                // per kind of light: (distance from its centre, weight) pairs
+  const mids = m.groups.map((Gr) => (spot.slices && Gr && Gr.w ? Gr.u / Gr.w : 0));
+  const tot = [], r2 = [];                         // per panel: all the light on one, or each direction on its own
+  for (let i = 0, j = 0; i < m.hits.length; i += 3, j++) {
+    const c = m.hits[i + 2], d = (m.hits[i] - (mids[c] || 0)) * k, round = !spot.slices || c === 0;
+    const wt = spot.slices && round ? Math.abs(m.s[j]) : m.hits[i + 1];
+    (lists[c] || (lists[c] = [])).push(round ? [Math.abs(d), wt] : [d, wt]);
+    const q = spot.slices ? c : 0;
+    tot[q] = (tot[q] || 0) + wt; r2[q] = (r2[q] || 0) + wt * d * d;
+  }
+  const fOf = (q) => Math.min(10, Math.max(1, Math.round(Math.sqrt((r2[q] || 0) / (tot[q] || 1)) / 5))), f = fOf(0);
   g.save();
-  g.beginPath(); g.roundRect(x, y, size, size, 10); g.fillStyle = spot.slices ? 'rgb(7,11,24)' : 'rgba(7,11,24,.8)'; g.fill();
-  g.strokeStyle = `rgba(${INK},.25)`; g.lineWidth = 1; g.stroke(); g.clip();
-  // Light per unit area against radius, in rings one pixel wide. Full brightness is what all the
-  // light would give spread evenly over the goal circle; the square root compresses the rest so a
-  // wide blur still shows.
-  const n = Math.ceil(size * 0.72), rg = spot.goal / 2 * k;
+  g.beginPath(); g.roundRect(x, y, size, size, 10); g.fillStyle = 'rgb(7,11,24)'; g.fill(); g.clip();
   if (spot.slices) {
-    // Off the axis the spot is not round, and only an up-and-down slice of each beam is traced. So
-    // each direction of light is drawn as that slice: a strip, bright where the rays land, centred
-    // on the middle of its own light. The dashed marks are that direction's goal.
-    spot.slices.forEach((sl, c) => {
-      const G = m.groups[c], px = x + size * (c + 0.5) / spot.slices.length, gy = sl.goal / 2 * k, sw = size * 0.16;
-      if (G && G.w) {
-        // Neighbouring rays share out the light between where they land, so a wide smear is drawn
-        // as a smear and not as a row of dots.
-        const bins = new Float64Array(size), mid = G.u / G.w;
-        let last = null;
-        for (let i = 0; i < m.hits.length; i += 3) {
-          if (m.hits[i + 2] !== c) continue;
-          const r = size / 2 - (m.hits[i] - mid) * k;                      // up on the sensor is up in the inset
-          if (last !== null) {
-            const lo = Math.min(last, r), hi = Math.max(lo + 1, Math.max(last, r)), each = m.hits[i + 1] / (hi - lo);
-            for (let q = Math.max(0, Math.floor(lo)); q < Math.min(size, hi); q++) bins[q] += each * (Math.min(hi, q + 1) - Math.max(lo, q));
-          }
-          last = r;
-        }
-        const gr = g.createLinearGradient(0, y, 0, y + size);
-        for (let r = 0; r < size; r++) gr.addColorStop((r + 0.5) / size, `rgba(${sl.rgb},${clamp(Math.sqrt(bins[r] / G.w * 2 * gy), 0, 1).toFixed(3)})`);
-        g.fillStyle = gr; g.fillRect(px - sw / 2, y, sw, size);
-      }
-      g.strokeStyle = lit ? '#6fe3a1' : `rgba(${INK},.8)`; g.setLineDash([3, 3]); g.lineWidth = 1.25;
-      for (const d of [-gy, gy]) { g.beginPath(); g.moveTo(px - sw * 1.1, cy + d); g.lineTo(px + sw * 1.1, cy + d); g.stroke(); }
-      g.setLineDash([]);
-    });
-    g.strokeStyle = `rgba(${INK},.15)`; g.lineWidth = 1; g.beginPath(); g.moveTo(cx, y + 8); g.lineTo(cx, y + size - 8); g.stroke();
-    g.restore();
-    return;
+    drawScene(g, x, y, size / 2, size, V.dpr, f, lists[0] ? [{ rgb: [1, 1, 1], taps: ringTaps(lists[0], f) }] : [], true);
+    drawScene(g, x + size / 2, y, size / 2, size, V.dpr, fOf(1), lists[1] ? [{ rgb: [1, 1, 1], taps: sliceTaps(lists[1], fOf(1)) }] : [], true);
+    g.strokeStyle = `rgba(${INK},.3)`; g.lineWidth = 1; g.beginPath(); g.moveTo(x + size / 2, y); g.lineTo(x + size / 2, y + size); g.stroke();
+  } else {
+    // white light: each wavelength's picture in its drawn colour, scaled so that the three in focus add up to white
+    const sum = [0, 1, 2].map((q) => WHITE.reduce((a, col) => a + col.rgb[q], 0));
+    const many = lists.length > 1;
+    drawScene(g, x, y, size, size, V.dpr, f, lists.map((list, c) => list && { rgb: many ? WHITE[c].rgb.map((v, q) => v / sum[q]) : [1, 1, 1], taps: ringTaps(list, f) }).filter(Boolean), false);
   }
-  const chan = [];                                // one profile per colour of light traced
-  for (let i = 0; i < m.hits.length; i += 3) {
-    const c = m.hits[i + 2], C = chan[c] || (chan[c] = { bins: new Float64Array(n + 1), tot: 0 }), r = Math.abs(m.hits[i]) * k;
-    C.tot += m.hits[i + 1]; if (r < n) C.bins[Math.floor(r)] += m.hits[i + 1];
-  }
-  for (const C of chan) for (let pass = 0; C && pass < 3; pass++) {            // the rays are a sample: smooth the gaps between them
-    let prev = C.bins[0];
-    for (let r = 0; r < n; r++) { const here = C.bins[r]; C.bins[r] = (prev + 2 * here + C.bins[r + 1]) / 4; prev = here; }
-  }
-  const level = (C, r) => (C && C.tot ? clamp(Math.sqrt(C.bins[r] / C.tot * rg * rg / (2 * r + 1)), 0, 1) : 0);
-  if (chan.length) {
-    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, n);
-    for (let r = 0; r < n; r++) {
-      let col;
-      if (chan.length === 1) col = `rgba(255,190,90,${level(chan[0], r).toFixed(3)})`;
-      else {                                       // white light: add the colours up
-        let R = 0, G = 0, B = 0;
-        chan.forEach((C, c) => { const a = level(C, r), q = WHITE[c].rgb; R += a * q[0]; G += a * q[1]; B += a * q[2]; });
-        col = `rgb(${Math.min(255, R) | 0},${Math.min(255, G) | 0},${Math.min(255, B) | 0})`;
-      }
-      gr.addColorStop((r + 0.5) / n, col);
-    }
-    g.fillStyle = gr; g.fillRect(x, y, size, size);
-  }
-  g.strokeStyle = lit ? '#6fe3a1' : `rgba(${INK},.8)`; g.setLineDash([3, 3]); g.lineWidth = 1.25;
-  g.beginPath(); g.arc(cx, cy, spot.goal / 2 * k, 0, 7); g.stroke(); g.setLineDash([]);
+  g.restore();
+  g.strokeStyle = lit ? '#6fe3a1' : `rgba(${INK},.25)`; g.lineWidth = lit ? 2 : 1; g.beginPath(); g.roundRect(x, y, size, size, 10); g.stroke();
   // scale bar: the goal's own width, so the number is the model's
-  const bar = spot.goal * k;
+  const bar = spot.goal * k / V.dpr;
   g.strokeStyle = `rgba(${INK},.8)`; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x + 8, y + size - 9); g.lineTo(x + 8 + bar, y + size - 9); g.stroke();
   g.fillStyle = `rgba(${INK},.8)`; g.font = '500 10px "JetBrains Mono", ui-monospace, Menlo, monospace'; g.textBaseline = 'alphabetic';
   g.fillText((spot.goal * spot.per).toFixed(0) + ' ' + spot.unit, x + 8, y + size - 14);
-  g.restore();
 }
 
 // ── dragging on the picture ────────────────────────────────────────────────────────────────────
