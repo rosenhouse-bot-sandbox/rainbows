@@ -184,7 +184,8 @@ export function analyze(traces) {
 
       // ---- the flight ----
       if (x.tr && p.tr && x.tr.hi === p.tr.hi && !rm && i > 1 && s[i - 2].tr?.hi === x.tr.hi) {
-        const v1 = (x.tr.q - p.tr.q) / x.dt, v0 = (p.tr.q - s[i - 2].tr.q) / x.dt;
+        // (how far the camera has got, which is what is seen: the flight's own clock, q, is re-set when a press changes the flight's shape)
+        const at = f => f.tr.E ?? f.tr.q, v1 = (at(x) - at(p)) / x.dt, v0 = (at(p) - at(s[i - 2])) / x.dt;
         if (Math.abs(v1 - v0) > T.dv && x.tr.q > 0 && x.tr.q < 1 && p.tr.q > 0 && p.tr.q < 1) add(tr, 'flight', i, i, Math.abs(v1 - v0) / T.dv, `the flight's speed changed from ${v0.toFixed(2)} to ${v1.toFixed(2)} (of the way per second) in one frame`);
       }
       // ---- state that changed by itself ----

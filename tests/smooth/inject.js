@@ -186,7 +186,7 @@
       const t1 = Date.now(); const img = imageSample(); const t2 = Date.now();
       await realFrame(); const t3 = Date.now();      // lets observers and style changes land before the layout is read
       stepAnimations();
-      const r = window.__rainbows, S = r ? { ...r.S } : null, tr = r?.tr ? { hi: r.tr.hi, q: r.tr.q, dir: r.tr.dir, v: r.tr.v, hop: !!r.tr.hop } : null;
+      const r = window.__rainbows, S = r ? { ...r.S } : null, tr = r?.tr ? { hi: r.tr.hi, q: r.tr.q, E: r.tr.E, dir: r.tr.dir, v: r.tr.v, hop: !!r.tr.hop } : null;
       const cam = r ? r.cams.map(c => [c.yaw, c.pitch, c.dist]) : null;
       const sliders = {}; document.querySelectorAll('input[type=range]').forEach(el => { if (el.getClientRects().length) sliders[el.id] = +el.value; });
       const ta = Date.now(), layout = layoutSample(), tb = Date.now(), labels = labelSample(), tc = Date.now(), gl = drawSample(), td = Date.now(), jpg = midJpeg(), te = Date.now();

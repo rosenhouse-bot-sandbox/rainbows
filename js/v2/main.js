@@ -106,7 +106,35 @@ function ready(i) { if (!inited.has(i)) { inited.add(i); STAGES[i].init(R, S); }
 // A flight is between two neighbouring scales, hi and hi + 1. tr.q is how far along it the camera is
 // (0 at the shallower scale, 1 at the deeper one), tr.dir which way it is heading and tr.v how fast q
 // is changing. Everything drawn mid-flight depends on q alone, so a flight can turn round anywhere.
-let tr = null, queued = null, hopping = false;       // tr: {hi, q, dir, v, dur}
+let tr = null, queued = null;       // tr: {hi, q, dir, v, dur, base, t0, t1}
+// How far the camera has got (0 to 1) when a flight's clock reads q. A flight on its own eases away
+// from one scale and eases in to the other. In a journey over several scales the camera does not slow
+// for the scales it passes: an end of a flight that is passed through (t0 the shallower end, t1 the
+// deeper) is crossed at a steady speed, the top speed of a flight on its own, and only the two ends of
+// the whole journey are eased.
+const ease5 = x => x * x * x * (x * (x * 6 - 15) + 10);
+const half = u => u <= 0.5 ? ease5(u) : 0.5 + 1.875 * (u - 0.5);      // eased up to top speed, then held there
+const LEG = [1, 23 / 30, 8 / 15];      // the time a flight takes with none, one or both of its ends passed through
+const BRISK = 0.75;                    // a journey over several scales moves this much more briskly throughout
+const along = (q, t0, t1) => t0 && t1 ? q : t1 ? half(q * LEG[1]) : t0 ? 1 - half((1 - q) * LEG[1]) : ease5(q);
+const endSlope = t => t.t0 && t.t1 ? 1 : 1.875 * LEG[1];      // how fast `along` is rising at an end that is passed through
+const legDur = (base, t0, t1) => base * (t0 || t1 ? BRISK : 1) * LEG[+!!t0 + +!!t1];
+// Will the camera carry straight on past the scale it is flying to? (Not past the Surface on the way to
+// the Molecules when it must first go round the drop to where the ray enters.)
+const onward = () => queued !== null && !RM.matches && !(dest() === SURFACE && queued > SURFACE && S.cross !== 'enter');
+// A press mid-flight can change whether the scale ahead is a stop. The flight takes its new shape from
+// exactly where the camera is, at the speed it has.
+function reshape() {
+  if (!tr || tr.hop || tr.base == null || RM.matches) return;
+  const deep = tr.dir > 0, on = onward(), t0 = deep ? tr.t0 : on, t1 = deep ? on : tr.t1;
+  if (t0 === tr.t0 && t1 === tr.t1) return;
+  const E = along(tr.q, tr.t0, tr.t1), slope = (q, a, b) => (along(Math.min(1, q + 1e-3), a, b) - along(Math.max(0, q - 1e-3), a, b)) / (Math.min(1, q + 1e-3) - Math.max(0, q - 1e-3));
+  let a = 0, b = 1;
+  for (let i = 0; i < 40; i++) { const m = (a + b) / 2; if (along(m, t0, t1) < E) a = m; else b = m; }
+  const q = (a + b) / 2, dur = legDur(tr.base, t0, t1);
+  tr.v = clamp(tr.v * slope(tr.q, tr.t0, tr.t1) / Math.max(0.05, slope(q, t0, t1)), -8 / dur, 8 / dur);      // (the same speed across the screen; it then eases to the new flight's own)
+  Object.assign(tr, { q, t0, t1, dur, rev: true });
+}
 const DIVE = 4.5;    // seconds for the move between scales
 const TURN = 0.3;    // seconds, roughly, to slow down and set off the other way
 // Changing which crossing the Surface scale shows is a flight too: out along the same path until the
@@ -117,18 +145,23 @@ const HOP = 2.8;     // seconds a crossing hop would take to fly the whole way b
 const HOP_OUT = 0.24;      // how far out it goes (as tr.q): the drop fills about a third of the view
 const dest = () => tr ? tr.hi + (tr.dir > 0 ? 1 : 0) : S.stage;      // the scale the camera is flying to
 const heading = () => queued ?? dest();                               // the scale it will end up at
-function go(to) {
+function go(to, thru = false, rate = 0) {      // thru: the camera is passing through this scale mid-journey, zooming at `rate` (e-folds a second)
   to = clamp(to, 0, STAGES.length - 1);
   if (tr) {
     // A press made mid-flight. Back the way we came: slow, stop and reverse from right here.
     // Further on: finish this flight and carry on from there.
     if ((to - dest()) * tr.dir < 0) { tr.dir = -tr.dir; tr.rev = true; tr.capWait = 0.25; }
     queued = to === dest() ? null : to;
+    if (to === ATOMS && tr.hi < DROP && S.cross !== 'enter') { S.cross = 'enter'; S.theta = presetAngle(S); phi = null; syncUI(); }      // (as below)
+    reshape();
     syncNav();
     return;
   }
   if (to === S.stage) return;
-  // a jump of several scales passes through each one in turn, more briskly
+  // On the way to the Molecules from further out than the Surface, arrive at the Surface where the ray
+  // enters the drop, so that there is no going round the drop part-way.
+  if (to === ATOMS && S.stage < SURFACE && S.cross !== 'enter') { S.cross = 'enter'; S.theta = presetAngle(S); phi = null; syncUI(); }
+  // a jump of several scales passes through each one in turn, without slowing for them
   const far = Math.abs(to - S.stage) > 1;
   if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
   // The Molecules scale shows light going from air into water, which is what happens where the ray
@@ -157,12 +190,15 @@ function go(to) {
   }
   // a bigger change of scale takes longer
   const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
-  const dir = to > S.stage ? 1 : -1, dur = RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5);
-  tr = { hi: hiS, q: dir > 0 ? 0 : 1, dir, v: dir / dur, dur, capWait: 0 };
+  const dir = to > S.stage ? 1 : -1, base = clamp(DIVE + 0.3 * span, DIVE, 8.5);
+  tr = { hi: hiS, q: dir > 0 ? 0 : 1, dir, v: 0, dur: 0.7, base, t0: false, t1: false, capWait: 0 };
+  if (!RM.matches) { const on = onward(); tr.t0 = dir > 0 ? thru : on; tr.t1 = dir > 0 ? on : thru; tr.dur = legDur(base, tr.t0, tr.t1); }
+  tr.v = dir / tr.dur; tr.span = span; tr.E = tr.q;
+  // Passing through, the zoom carries on at the rate it had and eases over to this flight's own.
+  if (thru && rate && tr.t0 !== undefined && !RM.matches) tr.v *= clamp(rate / Math.max(1e-3, span * endSlope(tr) / tr.dur), 0.6, 1.6);
   if (wasLambda !== null) tr.wasLambda = wasLambda;
   // the marked drop keeps falling during the flight: set the Drop scene to where it will be on arrival
   if (to === DROP && S.stage === RAIN) { tr.was = { bowpos: S.bowpos, exag: S.exag }; const th = STAGES[RAIN].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
-  hopping = far;
   $('labels').classList.add('off');
   syncNav();
 }
@@ -412,9 +448,10 @@ function frame(now) {
     if (tr.hop && tr.dir < 0) tr.hop = false;       // Zoom out pressed part-way: carry on out to the Drop scale
     const want = (tr.hop && tr.out ? -clamp((tr.q - HOP_OUT) / 0.15, -1, 1) : tr.dir) / tr.dur;
     tr.v = still ? want : want + (tr.v - want) * Math.exp(-dt / TURN);
-    tr.q = clamp(tr.q + tr.v * dt, 0, 1);
+    const raw = tr.q + tr.v * dt, over = Math.abs(tr.v) > 1e-6 ? Math.max(0, raw - 1, -raw) / Math.abs(tr.v) : 0;      // time left over on arriving
+    tr.q = clamp(raw, 0, 1);
     const deeper = tr.dir > 0, hi = tr.hi, lo = hi + 1;
-    const q = dbg.hold != null ? (deeper ? dbg.hold : 1 - dbg.hold) : tr.q, E = q * q * q * (q * (q * 6 - 15) + 10);      // progress toward the deeper scale
+    const q = dbg.hold != null ? (deeper ? dbg.hold : 1 - dbg.hold) : tr.q, E = tr.E = along(q, tr.t0, tr.t1);      // progress toward the deeper scale
     // The words change over a little before half-way to wherever the camera is now heading.
     tr.capWait = Math.max(0, tr.capWait - dt);
     const to = dest(), show = (deeper ? q : 1 - q) >= 0.45 ? to : 2 * hi + 1 - to;
@@ -423,7 +460,7 @@ function frame(now) {
     $('panel').classList.toggle('swap', !tr.hop && S.stage !== to && (deeper ? q : 1 - q) >= 0.45 - 0.4 / tr.dur);
     // After a turn-round on the way into a marked drop, the drop has fallen further than first planned:
     // ease the Drop scene to where it will now be on arrival.
-    if (tr.fromRain && tr.rev && deeper && !still) {
+    if (tr.fromRain && tr.rev && deeper && !still) {      // (or after a press that changed how long the flight will take)
       const th = STAGES[RAIN].embed(S, paused ? 0 : (1 - tr.q) * tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700));
       S.bowpos += (clamp((th - a0) / (a1 - a0), -0.8, 1.6) - S.bowpos) * (1 - Math.exp(-dt * 6));
     }
@@ -437,6 +474,7 @@ function frame(now) {
       // where the deeper camera rests, in the shallower scene's coordinates
       const tB = out(vB.tgt), eyeB = out(vB.eye), dB = vB.d * M.s, rhoA = V.len(V.sub(vA.eye, tB));
       const rho = Math.exp(lerp(Math.log(rhoA), Math.log(dB), E));
+      tr.rho = rho;
       tr.rushy = clamp(Math.abs(Math.log(rhoA / dB)) / 4 - 0.25, 0, 1);      // no speed smear when the scale hardly changes
       const eye = V.mad(tB, slerp(V.norm(V.sub(vA.eye, tB)), V.norm(V.sub(eyeB, tB)), E), rho);
       const f = slerp(vA.f, V.norm(V.sub(tB, eye)), sstep(0, 0.4, E));
@@ -449,7 +487,7 @@ function frame(now) {
       hole = { c: [sp[0], 1 - sp[1]], r: Math.min(9, 1.25 * size), alpha: sstep(0.03, 0.45, E), floor: sstep(0.82, 1, E), soft: 0.6 };
     }
     mix = sstep(0.3, 0.8, E);
-    const rush = still ? 0 : Math.sin(Math.PI * q) ** 2 * Math.min(1, Math.abs(tr.v) * tr.dur);      // none while stopped to turn round
+    const rush = still ? 0 : ((q < 0.5 ? tr.t0 : tr.t1) ? 1 : Math.sin(Math.PI * q) ** 2) * Math.min(1, Math.abs(tr.v) * tr.dur);      // none while stopped to turn round
     // Scenes that are light on a dark ground (the drop and below) are laid over the scene they sit in:
     // their light adds to it through the opening, and only as `cover` rises does the larger scene give
     // way to the smaller one's own backdrop: late, once the opening has grown past the edges of the
@@ -466,11 +504,11 @@ function frame(now) {
     const a = STAGES[hi], b = STAGES[lo];
     R.present(hole, time, lerp(a.bloom, b.bloom, mix) * (1 + 0.2 * rush), lerp(a.exposure, b.exposure, mix), 0.04 * rush * (tr.rushy ?? 0));
     if (deeper ? tr.q >= 1 && !(tr.hop && tr.out) : tr.q <= 0) {
-      const done = to;
+      const done = to, thru = !tr.hop && !!(deeper ? tr.t1 : tr.t0), rate = thru ? Math.abs(tr.v) * endSlope(tr) * (tr.span ?? 0) : 0;
       if (tr.was && done === RAIN) Object.assign(S, tr.was);      // turned back before reaching the drop: nothing about it was changed
       if (tr.wasLambda != null && done === DROP) S.lambda = D.lambda = tr.wasLambda;      // likewise the colour, turning back short of the surface
       tr = null; S.stage = done; syncUI(); $('panel').classList.remove('swap');
-      if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
+      if (queued !== null && queued !== done) { const q = queued; queued = null; go(q, thru, rate); if (thru && tr && !tr.hop) { tr.q = clamp(tr.q + tr.v * over, 0, 1); tr.E = along(tr.q, tr.t0, tr.t1); } }      // passing through: the time left over is spent on the next flight else { queued = null; $('labels').classList.remove('off'); }
     }
   } else {
     labelView = viewFor(S.stage, time);
