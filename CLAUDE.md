@@ -71,6 +71,8 @@ Before pushing:
 - For the Optics workshop, run `node tests/optics/run.mjs`. It plays every challenge with a mouse, a
   finger and the keyboard, and fails if one cannot be won. A new challenge needs a known solution
   added to `PLAYS` there. Numbers in a challenge's text must match what the trace gives.
+  Also run `node tests/optics/layout.mjs`: it steps every slider through every value and fails if
+  anything in the panel or the bench moves or changes size (a number that gains a digit and wraps).
 - A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
   `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone

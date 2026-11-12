@@ -132,12 +132,14 @@ function update() {
     val.textContent = text; inp.setAttribute('aria-valuetext', text);
   }
   const box = $('meters');
+  box.classList.toggle('two', score.meters.length > 1);
   score.meters.forEach((m, i) => {
     let e = meterEls[i];
     if (!e) {
       const root = el('div', 'meter'), lab = el('div', 'lab'), name = el('span'), val = el('b'), track = el('div', 'track'), zone = el('u'), fill = el('i'), note = el('small');
-      lab.append(name, val); track.append(zone, fill); root.append(lab, track, note); box.append(root);
-      e = meterEls[i] = { root, name, val, track, zone, fill, note };
+      const met = el('span', 'visually-hidden');
+      lab.append(name, val); track.append(zone, fill); root.append(lab, track, note, met); box.append(root);
+      e = meterEls[i] = { root, name, val, track, zone, fill, note, met };
     }
     const pct = (v) => (clamp(isFinite(v) ? v : 1, 0, 1) * 100).toFixed(1) + '%';
     e.track.classList.toggle('range', !!m.range);
@@ -154,7 +156,8 @@ function update() {
     }
     e.name.textContent = m.label; e.val.textContent = m.text;
     e.root.classList.toggle('ok', ok);
-    e.note.textContent = (ok ? 'Goal met: ' : 'Goal: ') + m.goal;
+    // the words never change length, so the card never changes height: green says it is met
+    e.note.textContent = 'Goal: ' + m.goal; e.met.textContent = ok ? ' (met)' : '';
   });
   const dl = $('rows'); dl.replaceChildren();
   for (const [k, v] of score.rows) dl.append(el('dt', '', k), el('dd', '', v));

@@ -315,7 +315,8 @@ the note again.
 Code: `js/optics/trace.js` is the ray tracer, `glass.js` the refractive indices, `levels.js` the
 challenges (their text, their scenes and their scoring), `chart.js` the eye chart, `main.js` the page. `css/optics.css` is the
 stylesheet. `node tests/optics/run.mjs` plays every challenge in a real browser with a mouse, a
-finger and the keyboard.
+finger and the keyboard. `node tests/optics/layout.mjs` moves every slider through every value, on a
+desktop and two phone sizes, and fails if anything in the panel or the bench changes place or size.
 
 The physics:
 

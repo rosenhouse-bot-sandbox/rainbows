@@ -54,7 +54,11 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 
 .meters{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .meter{min-width:0;display:grid;gap:4px;padding:8px 10px;border-radius:12px;border:1px solid var(--line);background:rgba(234,240,255,.05)}
-.meter .lab{flex-wrap:wrap}
+/* Nothing in a card or a control row may wrap as its number changes: one line each, the name giving way. Two cards side by side put the number under the name. */
+.meter .lab,.ctl .lab{flex-wrap:nowrap}
+.meter .lab span,.ctl .lab label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meters.two .lab{flex-direction:column;align-items:flex-start;gap:0}
+.meter small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .meter .lab b{font-size:0.9375rem}
 .meter .track{height:8px;border-radius:4px;background:rgba(234,240,255,.12);overflow:hidden}
 .meter .track i{display:block;height:100%;width:0;border-radius:4px;background:var(--light);transition:width .12s linear}
@@ -140,7 +144,11 @@ input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;bac
   .eyebrow{display:none}
   .stages button{font-size:0.6875rem}
   .meter{padding:6px 9px}
-  .meter .lab{flex-wrap:wrap}
+  /* Nothing in a card or a control row may wrap as its number changes: one line each, the name giving way. Two cards side by side put the number under the name. */
+.meter .lab,.ctl .lab{flex-wrap:nowrap}
+.meter .lab span,.ctl .lab label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meters.two .lab{flex-direction:column;align-items:flex-start;gap:0}
+.meter small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .scalebar{display:none}
 }
 @media (prefers-reduced-motion:reduce){.stages button i,.meter .track i,.meter .track.range i{transition:none}}

@@ -50,7 +50,8 @@ function bestFocus(scene, rays) {
   return sbb ? -sab / sbb : NaN;
 }
 const GLASSES = [CAF2, BK7, F2, SF10];
-const focusRows = (surfaces, from) => WHITE.map((col, i) => [f0(col.nm) + ' nm focuses', f1(paraxial(surfaces, col.nm).at - from) + ' mm behind']);
+// (the rows are always there, so the readout keeps its height when a lens stops focusing)
+const focusRows = (surfaces, from, ok = true) => WHITE.map((col) => [f0(col.nm) + ' nm focuses', ok ? f1(paraxial(surfaces, col.nm).at - from) + ' mm behind' : 'nowhere']);
 
 // A bar that fills as the picture gets sharper. The player is after sharpness, so that is what the
 // bar is called and what grows; the number beside it is the blur, which shrinks.
@@ -188,7 +189,7 @@ export const LEVELS = [
       return { solved: okB && okN,
         meters: [sharp('Sharpness', um, 40),
           // the bar is the light let through, against what f/4 lets through
-          { label: 'Brightness', text: 'f/' + f1(b.fnum), goal: 'f/4 or a smaller number', ok: okN, frac: (4.05 / b.fnum) ** 2 }],
+          { label: 'Brightness', text: 'f/' + f1(b.fnum), goal: 'f/4 or brighter', ok: okN, frac: (4.05 / b.fnum) ** 2 }],
         rows: [['Focal length', f1(b.f) + ' mm'], ['Light let through, against wide open', f0(100 * (p.D / 24) ** 2) + '%'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
     },
   },
@@ -259,7 +260,7 @@ export const LEVELS = [
         meters: [sharp('Sharpness', um, 6, 1),
           band('Focal length', b.f > 0 ? b.f : Infinity, 48, 52, 30, 70, b.f > 0 && b.f < 1000 ? f1(b.f) + ' mm' : 'none')],
         rows: [['Abbe numbers, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
-          ...(b.f > 0 && b.f < 1000 ? focusRows(b.K.surfaces, b.K.back) : [])] };
+          ...focusRows(b.K.surfaces, b.K.back, b.f > 0 && b.f < 1000)] };
     },
   },
   // ───────────────────────────────────────────────────────────── wide
@@ -272,7 +273,7 @@ export const LEVELS = [
     key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side (also 550 nm)'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop, f/11'], ['k-target', 'Sensor, at the best focus for the middle']],
     bounds: [-46, -24, 68, 30],
     params: [
-      { id: 'q', label: 'Lens faces, front / back', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },
+      { id: 'q', label: 'Lens faces', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },
       { id: 'xi', label: 'Stop position', min: -30, max: -6, step: 0.25, value: -6, show: (v) => f1(-v) + ' mm in front of the lens' },   // slider and stop move the same way
     ],
     build(p) {
