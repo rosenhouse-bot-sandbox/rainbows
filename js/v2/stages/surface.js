@@ -80,7 +80,9 @@ vec3 dropSkin(vec3 ro, vec3 rd, float w, float zc){
 // Where the cut is, for a camera at `eye` (µm from the crossing): in the plane of the ray from any
 // distance this scale's own camera can reach, and further toward the camera the further off it is,
 // so that from the Drop scale's distances the drop is whole and the cut closes in as the camera does.
-export const cutAt = eye => Math.max(0, 0.8 * (V.len(eye) - 30));
+// (This scale's camera goes out to 25 µm, and up to three times that on a narrow screen, where it
+// stands further back to fit the scene in: the cut has to be in the plane of the ray from all of those.)
+export const cutAt = eye => Math.max(0, 0.8 * (V.len(eye) - 80));
 // how wide that blend is, for a camera at `eye`
 export const skinWidth = eye => Math.min(300, Math.max(3, 0.6 * (V.len(eye) - 25)));
 function setup(S) {

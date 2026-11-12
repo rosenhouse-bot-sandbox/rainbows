@@ -80,7 +80,7 @@ const rand = rng(11);
 // Where the drop is cut open, in drop radii (see the Surface scale's cutAt: the same plane).
 export function cutPlane(R, S) {
   const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
-  return Math.max(0, 0.8 * (d - 0.03));
+  return Math.max(0, 0.8 * (d - 0.08));
 }
 export function skinBlend(R, S) {
   const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
