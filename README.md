@@ -219,6 +219,9 @@ Meet the goal and let go, and the panel says what you just built and why it work
 - Nothing moves unless you move it, with one exception: when the match lights it flares, with
   sparks, for four seconds and then the flame holds still. With reduced motion switched on it is
   simply alight. The flame is a drawing, not a model of combustion.
+- The solar tower's boiler glows by the share of the mirrors' light that lands on it, from dull red
+  to white-hot, so each mirror that finds it makes it visibly brighter. The colours are a drawing,
+  not a temperature.
 - Beside the eye is an eye chart as that eye sees it. The chart is laid out at its true size on the
   retina (a 20/20 letter is five minutes of arc, 26 µm, tall; the eye turns angles into distances
   about the centre of the cornea's curve) and every point of it is spread into the spot the traced

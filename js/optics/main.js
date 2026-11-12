@@ -236,10 +236,18 @@ const ITEMS = {
     g.fillStyle = 'rgba(135,146,184,.35)'; g.fillRect(sx(o.x), sy(o.h + 1.5), V.k * 3.5, V.k * (2 * o.h + 3));
     g.strokeStyle = lit ? '#6fe3a1' : '#e8553d'; g.lineWidth = 3; g.lineCap = 'butt'; line(o.x, -o.h, o.x, o.h);
   },
-  tower(o, lit) {
+  tower(o, lit, m) {
+    // The boiler glows by how much of the mirrors' light is landing on it: dull red with none,
+    // brighter with each mirror that finds it, white-hot with all three.
+    const f = Math.min(1, m.viaShare), mix = (a, b) => Math.round(a + (b - a) * f);
     g.fillStyle = 'rgba(135,146,184,.3)'; g.fillRect(sx(o.x), sy(o.y1), V.k * o.w, V.k * o.y1);
-    g.fillStyle = lit ? '#fff1c9' : '#e8553d'; g.fillRect(sx(o.x) - 1.5, sy(o.y1), V.k * o.w + 1.5, V.k * (o.y1 - o.y0));
-    if (lit) { const cx = sx(o.x), cy = sy((o.y0 + o.y1) / 2), r = V.k * 26; const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r); gr.addColorStop(0, 'rgba(255,200,110,.6)'); gr.addColorStop(1, 'rgba(255,120,30,0)'); g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); }
+    g.fillStyle = `rgb(${mix(150, 255)},${mix(58, 244)},${mix(44, 208)})`; g.fillRect(sx(o.x) - 1.5, sy(o.y1), V.k * o.w + 1.5, V.k * (o.y1 - o.y0));
+    if (f > 0.01) {
+      const cx = sx(o.x + o.w / 2), cy = sy((o.y0 + o.y1) / 2), r = V.k * (12 + 30 * f);
+      const gr = g.createRadialGradient(cx, cy, 0, cx, cy, r);
+      gr.addColorStop(0, `rgba(255,${mix(150, 215)},${mix(70, 130)},${(0.25 + 0.55 * f).toFixed(3)})`); gr.addColorStop(1, 'rgba(255,120,30,0)');
+      g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill(); g.restore();
+    }
   },
   heliostat(o) {
     g.strokeStyle = `rgba(${INK},.3)`; g.lineWidth = 2; line(o.px, 0, o.px, o.py);
@@ -253,7 +261,7 @@ function draw() {
   g.setTransform(V.dpr, 0, 0, V.dpr, 0, 0);
   g.clearRect(0, 0, V.w, V.h);
   g.lineCap = 'butt'; g.setLineDash([]);
-  for (const o of b.items) if (o.t === 'axis' || o.t === 'ground' || o.t === 'rail' || o.t === 'post') ITEMS[o.t](o, lit);
+  for (const o of b.items) if (o.t === 'axis' || o.t === 'ground' || o.t === 'rail' || o.t === 'post') ITEMS[o.t](o, lit, m);
   // the light, added up where rays overlap
   g.globalCompositeOperation = 'lighter'; g.strokeStyle = LIGHT; g.lineWidth = 1.4; g.lineJoin = 'round';
   for (const pass of ['absorbed', 'target']) {
@@ -266,7 +274,7 @@ function draw() {
     g.stroke();
   }
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-  for (const o of b.items) if (!(o.t === 'axis' || o.t === 'ground' || o.t === 'rail' || o.t === 'post')) ITEMS[o.t](o, lit);
+  for (const o of b.items) if (!(o.t === 'axis' || o.t === 'ground' || o.t === 'rail' || o.t === 'post')) ITEMS[o.t](o, lit, m);
   // knobs: the things a finger can move
   for (const h of b.handles) for (const [kx, ky] of h.knobs) {
     const on = S.held && S.held.h.param === h.param;
