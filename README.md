@@ -75,8 +75,14 @@ The physics, all in `js/v2/optics.js`:
   the flight between the two never turns, the drop's skin and blue water are drawn by the same
   shader code in both, and the water stays on the side it was on. The light drawn is polarised with
   its electric field across the plane of the bend, so from that direction it swings mostly toward
-  and away from you; drag to look along the surface and see it from the side. Whichever crossing
-  you came from, the last scale shows light going from air into water.
+  and away from you; drag to look along the surface and see it from the side. The last scale shows
+  light going from air into water, which happens where the ray enters the drop: zooming in from the
+  back wall or the way out flies round to the entering crossing first.
+- Between the Drop and Surface scales the Drop scene draws the one ray the Surface scale follows,
+  the rainbow ray of its colour, through the very spot the Surface scene sits on, and its other
+  rays give way. Each colour's rainbow ray crosses the skin at its own place (red and violet are
+  about 10 µm apart on a 1 mm drop), so the spot moves with the colour. Arriving from the Drop
+  scale, the colour is the one that drop is sending to the eye where it sits in the bow.
 - In the last scale the wave's energy is split into electric field, magnetic field, stretched
   molecules and moving electrons. Energy held in matter does not travel, which gives the energy
   velocity; nearer the ultraviolet resonance more is held, so violet is slower than red.

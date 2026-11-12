@@ -52,11 +52,21 @@ function pointAt(br, l) {
   }
   return null;
 }
-// Where the rainbow ray meets the drop's surface, as an angle round the drop in the plane of the ray:
-// it enters, and each later crossing is the same step further round.
+// Where the rainbow ray of wavelength l (nm) meets the drop's surface, as an angle round the drop in
+// the plane of the ray: it enters, and each later crossing is the same step further round. Each colour's
+// rainbow ray comes in at its own height, so the crossings of red and violet are some 10 µm apart on a
+// 1 mm drop: as far as the Surface scale's whole view is wide, which is why the colour matters here.
 export const CROSSINGS = ['enter', 'back', 'exit'];
-const CROSS_AT = (() => { const t = O.traceDrop(O.bowB(N_MID), N_MID, 1); return CROSSINGS.map((_, i) => Math.atan2(t.hits[0][1], t.hits[0][0]) - i * (Math.PI - 2 * t.refr)); })();
-export const crossAngle = c => CROSS_AT[Math.max(0, CROSSINGS.indexOf(c))];
+export function crossAngle(c, l = 550) {
+  const n = O.nWater(l), b = O.bowB(n);
+  return Math.PI - Math.asin(b) - Math.max(0, CROSSINGS.indexOf(c)) * (Math.PI - 2 * Math.asin(b / n));
+}
+// The one ray the Surface scale follows: the rainbow ray of that wavelength, in the plane of the picture.
+let follow = null;
+function followed(l) {
+  if (follow?.l !== l) { const n = O.nWater(l), c = O.wlRGB(l); follow = { l, phi: 0, sp: { part: c }, tr: O.traceDrop(O.bowB(n), n, 1) }; }
+  return follow;
+}
 const OWN = { '-1': 1, 0: 0, 1: 2, 2: 3 };       // first leg a branch does not share with an earlier one
 
 const PH_SPEED = 2.4;      // photon speed along its route, drop radii per second
@@ -68,7 +78,7 @@ const rand = rng(11);
 // radii: 3 µm with the camera at the Surface scale's distance from the crossing, wider from further off
 // (where a flight is moving faster), and never wide enough to show at the Drop scale's own distances.
 export function skinBlend(R, S) {
-  const a = S.crossPhi ?? crossAngle(S.cross), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
+  const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), d = V.len(V.sub(R.view.eye, [Math.cos(a), Math.sin(a), 0]));
   return Math.min(0.3, Math.max(0.003, 0.6 * (d - 0.025)));
 }
 function build(S) {
@@ -213,7 +223,7 @@ export default {
   // light arriving from the right direction: the ray always travels the same way round the drop, so
   // the patch's x axis is the tangent in that sense at every crossing and anywhere between two.
   embed(S) {
-    const a = S.crossPhi ?? crossAngle(S.cross), Y = [Math.cos(a), Math.sin(a), 0];
+    const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), Y = [Math.cos(a), Math.sin(a), 0];
     return { o: Y, s: 1e-3, X: [Y[1], -Y[0], 0], Y, Z: [0, 0, 1] };
   },
 
@@ -252,7 +262,7 @@ export default {
 
   init(R) {
     prog = R.rayProgram(`
-uniform float uBody, uSkin;
+uniform float uBody, uSkin, uReach;
 void main(){ vec3 ro = uEye, rd = rayDir();
   float b = dot(ro, rd), c = dot(ro, ro)-1.0, h = b*b-c;
   if(h < 0.0 || sqrt(h) <= b){ o = vec4(0.0); return; }      // the sight line misses the drop, or the drop is behind the camera
@@ -264,9 +274,13 @@ void main(){ vec3 ro = uEye, rd = rayDir();
   // last stretch outside (uSkin wide), and skin right at the eye is not drawn, so that nothing changes
   // at once as the camera passes through.
   float wo = smoothstep(0.0, uSkin, sqrt(c + 1.0) - 1.0);
-  vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1)*mix(1.0 - exp(-2.0*tF/uSkin), 1.0, wo);
+  // (How near counts as "right at the eye" is uReach, much longer than uSkin while the camera is still
+  // far from the crossing: a camera skimming in just above the skin sees the drop's edge, and that edge
+  // closes up on it very fast at the end, so by then the skin out to the edge has to have gone dim.)
+  float there = mix(1.0 - exp(-2.0*tF/uReach), 1.0, wo);      // 0 for skin right at the eye
+  vec3 col = vec3(0.30,0.52,0.95)*(0.035 + 0.55*f1)*there;
   col += vec3(1.0,0.95,0.85)*pow(max(dot(reflect(rd,n1), sun),0.0), 90.0)*2.5*wo;          // the Sun's glint
-  col += vec3(0.5,0.7,1.0)*pow(max(dot(reflect(rd,-n2), -sun),0.0), 30.0)*0.25;         // light gathered at the back
+  col += vec3(0.5,0.7,1.0)*pow(max(dot(reflect(rd,-n2), -sun),0.0), 30.0)*0.25*there;         // light gathered at the back
   col += vec3(0.25,0.4,0.7)*0.05*smoothstep(0.0, 2.0, tF - max(tN, 0.0));      // the water looked through
   o = vec4(col*uFade*uBody, 0.0); }`);
   },
@@ -300,6 +314,15 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       R.flushLines(); R.flushPoints({ minPx: 2 });
     }
 
+    // On the way to or from the Surface scale, the one ray that scale follows is drawn by itself, through
+    // the very spot the Surface scene sits on, so its corners are that scene's corners; and the other
+    // rays, which cross the skin tens of micrometres to either side of it, give way before the camera is
+    // close enough for one of them to be taken for it.
+    const toSurface = R.zoom?.from === 'drop' ? R.zoom.k : 0, others = 1 - sstep(0.25, 0.6, toSurface);
+    if (toSurface > 0) {
+      drawRay(R, followed(S.lambda), 0.9 * sstep(0.02, 0.3, toSurface), { inc: 1, leg: 1, legs: 2, '-1': 0.6, 0: 0.8, 1: 1, 2: 0 }, 1.8);
+      R.flushLines({ gain: near });
+    }
     if (!wave) {
       const k = 0.62;       // rays sit under the photons
       if (f === 'both') {
@@ -318,7 +341,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
         const show = { inc: 1, leg: 2.4, legs: 2, '-1': 0, 0: 0, 1: 4, 2: 0 };
         for (const r of c.eye) drawRay(R, r, a, show, 1.7);
       }
-      R.flushLines({ gain: near });
+      R.flushLines({ gain: near * others });
       // photons: each one is a single colour and takes one route, chosen with the Fresnel odds
       const pk = key + f;
       if (photons.length === 0) for (let i = 0; i < 460; i++) photons.push({});
@@ -364,7 +387,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
     }
 
     const gl = R.gl;
-    gl.useProgram(prog.p); R.setRayUniforms(prog, T); gl.uniform1f(prog.u.uBody, 1); gl.uniform1f(prog.u.uSkin, skinBlend(R, S));
+    gl.useProgram(prog.p); R.setRayUniforms(prog, T); gl.uniform1f(prog.u.uBody, 1); { const w = skinBlend(R, S); gl.uniform1f(prog.u.uSkin, w); gl.uniform1f(prog.u.uReach, Math.min(2, 10 * w)); }
     R.fullscreen(prog, 'add');
   },
 };

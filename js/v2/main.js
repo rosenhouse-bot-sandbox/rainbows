@@ -131,7 +131,20 @@ function go(to) {
   // a jump of several scales passes through each one in turn, more briskly
   const far = Math.abs(to - S.stage) > 1;
   if (far) { queued = to; to = S.stage + Math.sign(to - S.stage); }
+  // The Molecules scale shows light going from air into water, which is what happens where the ray
+  // enters the drop. From either of the other crossings, fly round to that one first, then in.
+  if (to === ATOMS && S.stage === SURFACE && S.cross !== 'enter') {
+    S.cross = 'enter'; S.theta = presetAngle(S); syncUI();
+    if (!RM.matches) { queued = ATOMS; syncNav(); return; }      // (the hop starts on the next frame, and carries on to `queued`)
+  }
   ready(to);
+  let wasLambda = null;
+  // The Surface scale follows one colour: arriving from the drop, the colour this drop is sending to
+  // the eye where it sits in the bow (violet at the bow's inner edge and inside it, red at and beyond the outer edge).
+  if (to === SURFACE && S.stage === DROP) {
+    const l = O.wavelengthAt(lerp(O.bowAngle(O.nWater(400)), O.bowAngle(O.nWater(700)), clamp(S.bowpos, 0, 1)));
+    wasLambda = S.lambda; S.lambda = Math.round(clamp(l ?? S.lambda, 400, 700)); if (D) D.lambda = S.lambda;
+  }
   // going deeper, set the next scene to match the thing being entered
   if (to === ATOMS && S.stage === SURFACE && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
   // The Surface and Molecules scales are one place seen from one direction: the camera keeps the way
@@ -144,6 +157,7 @@ function go(to) {
   const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
   const dir = to > S.stage ? 1 : -1, dur = RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5);
   tr = { hi: hiS, q: dir > 0 ? 0 : 1, dir, v: dir / dur, dur, capWait: 0 };
+  if (wasLambda !== null) tr.wasLambda = wasLambda;
   // the marked drop keeps falling during the flight: set the Drop scene to where it will be on arrival
   if (to === DROP && S.stage === RAIN) { tr.was = { bowpos: S.bowpos, exag: S.exag }; const th = STAGES[RAIN].embed(S, paused ? 0 : tr.dur).theta, a0 = O.bowAngle(O.nWater(400)), a1 = O.bowAngle(O.nWater(700)); S.bowpos = clamp((th - a0) / (a1 - a0), -0.8, 1.6); S.exag = false; tr.fromRain = true; }
   hopping = far;
@@ -357,7 +371,7 @@ function frame(now) {
   D ??= Object.assign(Object.create(S), { lambda: S.lambda, cross: S.cross, theta: S.theta });
   // ---- which crossing the Surface scale is at ----
   {
-    const goal = crossAngle(S.cross), near3 = tr?.hi === DROP;
+    const goal = crossAngle(S.cross, D.lambda), near3 = tr?.hi === DROP;
     phi ??= goal;
     if (RM.matches || !(near3 || (!tr && S.stage === SURFACE))) phi = goal;       // nothing to fly: change over at once
     const gap = goal - phi, far = Math.abs(gap) > 0.12;
@@ -372,7 +386,7 @@ function frame(now) {
     }
     S.crossPhi = phi;
     // The scene drawn is the crossing the camera is nearest, so it changes over while far too small to see.
-    const at = CROSSINGS.reduce((b, c) => Math.abs(crossAngle(c) - phi) < Math.abs(crossAngle(b) - phi) ? c : b);
+    const at = CROSSINGS.reduce((b, c) => Math.abs(crossAngle(c, D.lambda) - phi) < Math.abs(crossAngle(b, D.lambda) - phi) ? c : b);
     if (at === S.cross) { D.cross = at; D.theta = S.theta; }
     else if (at !== D.cross) { D.cross = at; D.theta = presetAngle(D); }
   }
@@ -449,6 +463,7 @@ function frame(now) {
     if (deeper ? tr.q >= 1 && !(tr.hop && tr.out) : tr.q <= 0) {
       const done = to;
       if (tr.was && done === RAIN) Object.assign(S, tr.was);      // turned back before reaching the drop: nothing about it was changed
+      if (tr.wasLambda != null && done === DROP) S.lambda = D.lambda = tr.wasLambda;      // likewise the colour, turning back short of the surface
       tr = null; S.stage = done; syncUI(); $('panel').classList.remove('swap');
       if (queued !== null && queued !== done) { const q = queued; queued = null; go(q); } else { queued = null; hopping = false; $('labels').classList.remove('off'); }
     }

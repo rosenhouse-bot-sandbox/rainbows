@@ -48,13 +48,14 @@ vec3 skin(vec3 P, vec3 rd){
 // between is kept faint. A flight can carry the camera through the skin, so the two views are blended
 // over its last few µm outside (w: wider from far off, to match the Drop scale), and skin right at the eye is not drawn: nothing changes at once there.
 vec3 dropSkin(vec3 ro, vec3 rd, float w){
+  float reach = min(2.0*RD, 10.0*w);      // how near counts as right at the eye (see the Drop scale's shader)
   float cc = dot(ro,ro) + 2.0*RD*ro.y, bb = dot(ro,rd) + RD*rd.y, hh = bb*bb - cc;
   float tFar = sqrt(max(hh, 0.0)) - bb;
   if(hh <= 0.0 || tFar <= 0.0) return vec3(0.0);
   float wo = smoothstep(0.0, w, cc/(2.0*RD)), tNear = max(cc, 0.0)/tFar;
   vec3 s = vec3(0.0);
   if(wo > 0.0) s += wo*skin(ro + rd*tNear, rd);
-  if(wo < 1.0) s += (1.0 - wo)*(1.0 - exp(-2.0*tFar/w))*skin(ro + rd*tFar, rd);
+  if(wo < 1.0) s += (1.0 - wo)*(1.0 - exp(-2.0*tFar/reach))*skin(ro + rd*tFar, rd);
   return s + vec3(0.010,0.028,0.070)*mix(0.45, 1.5, wo)*(1.0 - exp(-(tFar - tNear)/7.0));
 }
 `;
@@ -82,7 +83,7 @@ export default {
   // nearly on end at the back, and underneath where it leaves. This turns a direction given in the
   // drop's axes into this scene's, whose y is the outward normal there (see the Drop scale's embed).
   camFrame(S) {
-    const a = S.crossPhi ?? crossAngle(S.cross), s = Math.sin(a), c = Math.cos(a);
+    const a = S.crossPhi ?? crossAngle(S.cross, S.lambda), s = Math.sin(a), c = Math.cos(a);
     return v => [v[0] * s - v[1] * c, v[0] * c + v[1] * s, v[2]];
   },
   // The Molecules scene is the same surface where the beam meets it: its +x runs down into the water,
