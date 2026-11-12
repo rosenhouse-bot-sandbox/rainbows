@@ -5,12 +5,11 @@
 // Sunlight is gold, slanted and carries arrowheads; rain is cool, vertical and tear-shaped.
 import { V, DEG, rng, clamp, sstep, lerp } from '../gl.js';
 import * as O from '../optics.js';
-import { SUN, sunRay, bowTexture, drawFigure, coneDir, wavefrontSheets, colourName } from './common.js';
+import { SUN, sunRay, bowTexture, drawFigure, wavefrontSheets, colourName } from './common.js';
 import { EYE, sunDir, sunColour, drawEnv, initEnv } from './sky.js';
 import { drawFar } from './drop.js';
 
 const BOX0 = [-8, 0, -13], BOXS = [16, 9, 10.5], NDROPS = 30000;
-const CONE = [[650, O.bowAngle(O.nWater(650))], [550, O.bowAngle(O.nWater(550))], [450, O.bowAngle(O.nWater(450))]].map(([l, th]) => ({ th, col: O.wlRGB(l) }));
 const B1 = O.bowAngle(O.nWater(550)), B2 = O.bowAngle(O.nWater(550), 2);
 const DROP = 0.01, FALL = 1.1 / 16;      // a marked drop's drawn radius, and how fast it falls, in metres (per second)
 const HEROES = [[-2.6, -7.5, 0.0], [0.4, -6.2, 0.37], [2.9, -8.4, 0.71], [-0.9, -9.6, 0.55]];
@@ -73,7 +72,7 @@ export default {
     if (S.sun > 42) return { title: 'Too high a Sun, no bow',
       body: 'The bow is a circle 42° from the point directly opposite the Sun. With the Sun more than 42° up, that whole circle lies below the horizon, which is why rainbows belong to mornings and late afternoons. Only drops close by and below your eye line can still send you colour, as a garden sprinkler does. Lower the Sun to bring the bow back.' };
     if (S.focus === 'eye') return { title: 'Only some drops are aimed at you',
-      body: 'The coloured lines leave your eye 42° away from the line to your head\'s shadow. A drop sends you colour only while it sits on one of them, near or far. Falling through, it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
+      body: 'The arrows are the light that marked drops send to your eye. A drop sends you colour only while it is 42° away from the line to your head\'s shadow, near or far. Falling through, it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
     if (S.focus === 'sun') return { title: 'Every drop does the same thing',
       body: 'The Sun is behind you, and its light, drawn in gold, passes over your shoulder into the rain. Each drop takes in parallel sunlight and throws a hollow cone of colour back toward the Sun, red on the outside. All the cones point the same way. Whether you see a drop as coloured depends only on whether its cone happens to pass through your eye.' };
     return { title: 'Sun behind, rain ahead',
@@ -174,23 +173,9 @@ void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vU
     const hs = lastHeroes = heroes(S, T);
     for (const h of hs) {
       const M = frame(h.P, s);
-      drawFar(R, S, h, EYE, here, here, p => [M.o[0] + (M.X[0] * p[0] + M.Y[0] * p[1] + M.Z[0] * p[2]) * DROP, M.o[1] + (M.X[1] * p[0] + M.Y[1] * p[1] + M.Z[1] * p[2]) * DROP, M.o[2] + (M.X[2] * p[0] + M.Y[2] * p[1] + M.Z[2] * p[2]) * DROP], DROP);
+      drawFar(R, S, h, EYE, T, here, here, p => [M.o[0] + (M.X[0] * p[0] + M.Y[0] * p[1] + M.Z[0] * p[2]) * DROP, M.o[1] + (M.X[1] * p[0] + M.Y[1] * p[1] + M.Z[1] * p[2]) * DROP, M.o[2] + (M.X[2] * p[0] + M.Y[2] * p[1] + M.Z[2] * p[2]) * DROP], DROP);
     }
     R.flushLines();
-    if (f !== 'sun') {
-      // the cone of sight-lines that carry colour back to you: red, green and blue in turn, each at its
-      // own angle, out through the near drops and on toward the bow in the far rain
-      const aE = (f === 'eye' ? 0.5 : 0.14) * here;
-      for (let k = -24; k <= 24; k++) {
-        const c = CONE[(k + 24) % 3], d = coneDir(s, c.th, k * 0.075);
-        const dip = sstep(-0.09, -0.03, d[1]);      // lines that would run into the ground fade out as the Sun climbs
-        if (dip <= 0) continue;
-        const L = d[1] < -1e-3 ? Math.min(1400, EYE[1] / -d[1]) : 1400;
-        R.seg(EYE, V.mad(EYE, d, Math.min(L, 40)), c.col, aE * dip, 1.3, aE * 0.5 * dip, k);
-        if (L > 40 && close < 1) R.seg(V.mad(EYE, d, 40), V.mad(EYE, d, L), c.col, aE * 0.5 * (1 - close) * dip * sstep(40, 60, L), 1.3, 0.02 * aE * dip, k + 40);      // the far reach only in the wide view
-      }
-      R.flushLines({ dash: [1.2, -T * 2.5, 0.6] });
-    }
     R.pt(EYE, [1, 1, 1], 0.9 * here, 0.09);
     R.flushPoints({ minPx: 2 });
   },

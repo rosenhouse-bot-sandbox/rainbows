@@ -4,7 +4,7 @@
 // about the axis by its azimuth.
 import { V, DEG, rng, modelTRS, lerp, sstep } from '../gl.js';
 import * as O from '../optics.js';
-import { vis, backdrop, eyeGlyph } from './common.js';
+import { vis, backdrop, eyeGlyph, sunRay } from './common.js';
 
 const SPEC = O.spectrumSet([430, 470, 510, 550, 590, 630, 670]);
 const SPEC3 = O.spectrumSet([450, 545, 640]);
@@ -127,16 +127,18 @@ function ensure(S) {
 }
 
 // ---- the drop as the Rain scale shows it ----
-// From metres away a drop is a glint and the one ray that finds the eye. Both the Rain scene and this
+// From metres away a drop is a glint and the one ray that finds the eye (T: the clock, for its arrowheads). Both the Rain scene and this
 // one draw it with this, so the two agree while one is flown into the other. (The cone of colour the drop
 // throws back is left to the Drop scale: among the rain and the sunlight it was one thing too many.)
 // h: the marked drop (its colour and brightness at the eye); toEye: the far end of the ray to the eye;
 // gain dims the lines and glint dims the glow that stands in for the drop itself;
 // xf places a point of this scene in the caller's world, where one drop radius is `unit` long.
-export function drawFar(R, S, h, toEye, gain = 1, glint = gain, xf = p => p, unit = 1) {
+export function drawFar(R, S, h, toEye, T, gain = 1, glint = gain, xf = p => p, unit = 1) {
   const f = S.focus, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
   const o = xf([0, 0, 0]);
-  R.seg(o, toEye, h.col, (0.25 + 0.75 * h.level) * aE, 2.4);
+  // the ray carries arrowheads travelling toward the eye, as sunlight does: it is light arriving, not a line of sight
+  const aR = (0.25 + 0.75 * h.level) * aE;
+  sunRay(R, o, toEye, aR, aR, T, { gap: 130 * unit, size: 22 * unit, speed: 190 * unit, w: 2.4, col: h.col });
   // The glow stands in for a drop too small to see. From close by it would fill the view (a marked drop
   // falling past the camera during a flight was a coloured flash for one frame), so past a quarter of
   // its distance across it thins out as it spreads.
@@ -294,7 +296,7 @@ void main(){ vec3 ro = uEye, rd = rayDir();
       // the rain scene still shows through until this one covers it (R.zoom.cover), and it draws these
       // same lines: scale ours by the cover so that the two together always make one set
       const cov = R.zoom?.cover ?? 1;
-      drawFar(R, S, dive.M.hero, V.mul([-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), far * cov, (1 - sstep(0.25, 0.8, dive.k)) * cov);
+      drawFar(R, S, dive.M.hero, V.mul([-Math.cos(t), -Math.sin(t), 0], dive.M.eyeDist), T, far * cov, (1 - sstep(0.25, 0.8, dive.k)) * cov);
       R.flushLines(); R.flushPoints({ minPx: 2 });
     }
 
