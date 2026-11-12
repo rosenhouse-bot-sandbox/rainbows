@@ -143,7 +143,9 @@ through the same objective:
 - A docked 42 nm vesicle comes out a little under 1% darker than the background at 630 nm, fading
   as it flattens; larger vesicles turn bright partway through the collapse. The camera panel shows
   a second column (field, magnified centre, contrast trace) in grey, ±3.5% of the background. Six other docked vesicles sit within 300 nm of ours and
-  blur into one spot about 2% dark, which stays after ours has merged.
+  blur into one spot about 2% dark, which stays after ours has merged. **Subtract the first
+  frame** shows the change since the start of the event instead (±1.5%, with the first frame's
+  own shot noise carried along): docked vesicles cancel and a merged one leaves a bright spot.
 - The wavelength is longer than the laser's to stay clear of the pHluorin band, not because long
   wavelengths resolve more: within the slider's range, shorter light gives a sharper, stronger spot.
 - **One objective, two colours.** No lens focuses every colour at the same depth. The objective
@@ -205,7 +207,7 @@ The model and sampler are in `js/vesicle/infer.js`, the charts in `js/vesicle/in
 Around the scene:
 
 - The address bar tracks the view after `#` (`mode`, `p`, `size`, `angle`, `cut`, `orbit`, `tilt`,
-  `dist`, `labels`, `irm`, `wl`, `focus`, plus `t`, `power`, `frame`, `prior`, `seed`, `truth` in the inference view), so any state can be bookmarked or shared; there is also a copy-link button.
+  `dist`, `labels`, `irm`, `wl`, `focus`, `sub`, plus `t`, `power`, `frame`, `prior`, `seed`, `truth` in the inference view), so any state can be bookmarked or shared; there is also a copy-link button.
 - On a desktop, hovering a label opens a short explanation with a Wikipedia link
   (text in `js/vesicle/info.js`).
 - Hovering an entry in the colour key picks those molecules out and dims the rest; clicking holds it.

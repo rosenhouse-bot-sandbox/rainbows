@@ -28,6 +28,7 @@ export const N_MEDIUM = 1.335, N_LIPID = 1.48, MEM = 4;     // medium and vesicl
 export const IRM = { lambda: 630, min: 560, max: 720 };     // nm; above 560 it stays clear of the pHluorin emission band
 export const WELL = 2e4;                                    // photoelectrons per pixel per millisecond from the reference wave
 export const SHOW_MS = 10;                                  // exposure of one displayed frame
+export const SPAN_DIFF = 0.015;                             // the same, when the first frame has been subtracted
 export const SPAN = 0.035;                                  // the display's full grey range is -SPAN .. +SPAN of the background
 const PI = Math.PI;
 
@@ -141,11 +142,10 @@ export class IrmCamera {
     this.img = this.ctx.createImageData(CAM.px, CAM.px); this.f = new Float32Array(CAM.px * CAM.px);
     this.noise = new Float32Array(CAM.px * CAM.px); this.r = rng(57);
   }
+  // The noise-free picture of a set of spots, as fractional change from the background.
   // spots: [[x, z, strength (real part), strength (imaginary part)]...], as returned by moment
-  render(o, spots, reshuffle) {
-    if (!reshuffle && this.drawn) return;                              // like the other camera: one new picture per exposure
-    this.drawn = true;
-    const n = CAM.px, f = this.f, half = n / 2;
+  field(o, spots, f) {
+    const n = CAM.px, half = n / 2;
     f.fill(0);
     const R = Math.ceil(PSF_N * PSF_DR / CAM.nm), c = [0, 0];
     for (const [x, z, cr, ci] of spots) {
@@ -156,10 +156,26 @@ export class IrmCamera {
         for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(n - 1, Math.ceil(cx + R)); i++)
           f[j * n + i] += o.spot(c, CAM.nm * Math.hypot(i - cx, j - cy));
     }
+    return f;
+  }
+  // Keep the picture of the event's first frame, to subtract from later ones. It was one exposure
+  // like any other, so it carries its own shot noise, which then sits in every subtracted picture.
+  reference(o, spots) {
+    const n = CAM.px * CAM.px;
+    if (!this.ref) { this.ref = new Float32Array(n); this.refNoise = new Float32Array(n); const r = rng(58); for (let i = 0; i < n; i++) this.refNoise[i] = r.gauss(); }
+    this.field(o, spots, this.ref); this.drawn = false;
+  }
+  // subtract: show the change since the first frame (see reference) in place of the picture itself.
+  render(o, spots, reshuffle, subtract) {
+    if (!reshuffle && this.drawn) return;                              // like the other camera: one new picture per exposure
+    this.drawn = true;
+    const n = CAM.px, f = this.field(o, spots, this.f);
     if (reshuffle) for (let i = 0; i < n * n; i++) this.noise[i] = this.r.gauss();
     const d = this.img.data, sd = 1 / Math.sqrt(WELL * SHOW_MS);       // shot noise of the reference wave
+    const span = subtract ? SPAN_DIFF : SPAN, ref = subtract ? this.ref : null, rn = this.refNoise;
     for (let i = 0; i < n * n; i++) {
-      const g = 255 * Math.min(1, Math.max(0, 0.5 + (f[i] + this.noise[i] * sd) / (2 * SPAN)));
+      const v = ref ? f[i] - ref[i] + (this.noise[i] - rn[i]) * sd : f[i] + this.noise[i] * sd;
+      const g = 255 * Math.min(1, Math.max(0, 0.5 + v / (2 * span)));
       d[i * 4] = g; d[i * 4 + 1] = g * 0.97; d[i * 4 + 2] = g * 0.93; d[i * 4 + 3] = 255;
     }
     this.ctx.putImageData(this.img, 0, 0);

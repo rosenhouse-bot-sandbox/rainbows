@@ -4,7 +4,7 @@ import { Scene } from './scene.js';
 import { PH } from './profile.js';
 import { INFO } from './info.js';
 import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles, progressOf } from './infer.js';
-import { IrmCamera, irmOptics, moment, contrastCurve, hue, css, IRM, APO, SPAN, WELL, N_MEDIUM, N_LIPID } from './irm.js';
+import { IrmCamera, irmOptics, moment, contrastCurve, hue, css, IRM, APO, SPAN, SPAN_DIFF, WELL, N_MEDIUM, N_LIPID } from './irm.js';
 import { Dashboard } from './inferui.js';
 import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
 
@@ -63,7 +63,7 @@ const st = {
   vitro: params.get('mode') === 'vitro', angle: +params.get('angle') || 68,
   play: false, spin: !reduced && !params.has('still'), labels: !params.has('nolabels'), hi: 0,
   infer: params.get('mode') === 'infer', t: +params.get('t') || 0, power: 1.5, dt: 10, prior: 1, seed: 1, truth: false,
-  irm: false, lambda: IRM.lambda, focus: 0,
+  irm: false, lambda: IRM.lambda, focus: 0, sub: false,
 };
 // The reflection optics for the current wavelength and focus (a pupil integral, so worked out once per setting).
 let irmO = null;
@@ -87,6 +87,7 @@ const HASH = {
   irm: [() => (st.irm ? 1 : 0), (v) => { st.irm = v === '1'; }],
   wl: [() => st.lambda, (v) => { st.lambda = clamp(Math.round((+v || IRM.lambda) / 5) * 5, IRM.min, IRM.max); }],
   focus: [() => st.focus, (v) => { st.focus = [0, 0.5, 1].includes(+v) ? +v : 0; }],
+  sub: [() => (st.sub ? 1 : 0), (v) => { st.sub = v === '1'; }],
   cut: [() => Math.round(st.cut), (v) => { st.cut = clamp(+v || 0, 0, 180); }],
   orbit: [() => +st.az.toFixed(1), (v) => { st.az = ((+v || 0) % 360 + 360) % 360; }],
   tilt: [() => +st.el.toFixed(1), (v) => { st.el = clamp(+v || 0, -85, 88); }],
@@ -103,8 +104,8 @@ function readHash() {
   return true;
 }
 const INF_KEYS = new Set(['t', 'power', 'frame', 'prior', 'seed', 'truth']);
-const VITRO_KEYS = new Set(['angle', 'irm', 'wl', 'focus']);
-const hashNow = () => Object.entries(HASH).filter(([k]) => (!VITRO_KEYS.has(k) || st.vitro) && ((k !== 'wl' && k !== 'focus') || st.irm) && (st.infer ? k !== 'p' : !INF_KEYS.has(k))).map(([k, [get]]) => k + '=' + get()).join('&');
+const VITRO_KEYS = new Set(['angle', 'irm', 'wl', 'focus', 'sub']);
+const hashNow = () => Object.entries(HASH).filter(([k]) => (!VITRO_KEYS.has(k) || st.vitro) && ((k !== 'wl' && k !== 'focus' && k !== 'sub') || st.irm) && (st.infer ? k !== 'p' : !INF_KEYS.has(k))).map(([k, [get]]) => k + '=' + get()).join('&');
 let hashTimer = 0;
 function writeHash() {
   clearTimeout(hashTimer);
@@ -213,15 +214,18 @@ $('angle').addEventListener('input', (e) => { st.angle = +e.target.value; syncUI
 $('wl').min = IRM.min; $('wl').max = IRM.max;
 function applyIrm() {
   const on = st.irm && st.vitro;
-  $('irm').checked = st.irm; $('ctl-wl').hidden = !st.irm; $('irmCol').hidden = !on; $('keyIrm').hidden = !on; $('keyAlone').hidden = !on;
+  $('irm').checked = st.irm; $('irmSub').checked = st.sub; $('ctl-wl').hidden = !st.irm; $('irmCol').hidden = !on; $('keyIrm').hidden = !on; $('keyAlone').hidden = !on;
   $('pip').classList.toggle('dual', on); $('inf').classList.toggle('dual', on); document.body.classList.toggle('irm', on);
   for (const t of document.querySelectorAll('.irmTile')) t.hidden = !on;
   $('obsCap').textContent = on ? 'TIRF' : 'Recorded'; $('expectCap').textContent = on ? 'Expected' : 'Model expects';
   $('pipNote').textContent = on
-    ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`
+    ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. ` + (st.sub
+      ? `The first frame of the event has been subtracted, so mid-grey means no change since then, and black and white are ${+(SPAN_DIFF * 100).toFixed(1)}% of the background darker and brighter. Vesicles that stay docked cancel out; one that merges leaves a bright spot where its dark one used to be.`
+      : `Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`)
     : `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
 }
 $('irm').addEventListener('change', (e) => { st.irm = e.target.checked; applyIrm(); stageIdx = -1; delete shown.wl; syncUI(); resize(); pipRect = $(st.infer ? 'inf' : 'pip').getBoundingClientRect(); });
+$('irmSub').addEventListener('change', (e) => { st.sub = e.target.checked; irmCam.drawn = false; irmRefKey = ''; applyIrm(); syncUI(); });
 $('wl').addEventListener('input', (e) => { st.lambda = +e.target.value; applyIrm(); syncUI(); });
 for (const b of document.querySelectorAll('.seg button')) b.addEventListener('click', () => { st.focus = +b.dataset.focus; syncUI(); });
 function setMode(mode) {
@@ -406,7 +410,7 @@ function drawCamera(now) {
 // The reflection camera looks at the same field. Each vesicle near the glass is a faint spot whose
 // contrast comes from its membrane shape at this moment; vesicles that never fuse are worked out once.
 const irmCam = new IrmCamera($('irmCam'), $('irmZoom'), $('irmTrace'));
-let irmFor = null, irmStill = null, irmKey = '', irmSpots = [], irmCurve = null, irmCurveKey = '';
+let irmFor = null, irmStill = null, irmKey = '', irmSpots = [], irmCurve = null, irmCurveKey = '', irmRefKey = '';
 function drawIrm(reshuffle) {
   const R = st.diam / 2 - 2.4, half = CAM.px * CAM.nm / 2 + 1250, m = [0, 0];
   const inField = (x, z) => Math.abs(x) < half && Math.abs(z) < half;
@@ -423,9 +427,17 @@ function drawIrm(reshuffle) {
     moment(irmO, st.p, R, m); irmSpots.push([0, 0, m[0], m[1]]);
     for (const nb of scene.neigh) if (nb.off !== null && inField(nb.x, nb.z)) { moment(irmO, clamp(st.p + nb.off, 0, 1), nb.rad - 2, m); irmSpots.push([nb.x, nb.z, m[0], m[1]]); }
   }
-  irmCam.render(irmO, irmSpots, reshuffle);
-  const ck = st.diam + '|' + st.lambda + '|' + st.focus;
-  if (ck !== irmCurveKey) { irmCurveKey = ck; irmCurve = contrastCurve(irmO, R); }
+  const ck = st.diam + '|' + st.lambda + '|' + st.focus + '|' + st.sub;
+  // The first frame of the event: everything as it stood at progress 0.
+  if (st.sub && irmRefKey !== ck) {
+    irmRefKey = ck;
+    const first = irmStill.slice();
+    moment(irmO, 0, R, m); first.push([0, 0, m[0], m[1]]);
+    for (const nb of scene.neigh) if (nb.off !== null && inField(nb.x, nb.z)) { moment(irmO, clamp(nb.off, 0, 1), nb.rad - 2, m); first.push([nb.x, nb.z, m[0], m[1]]); }
+    irmCam.reference(irmO, first);
+  }
+  irmCam.render(irmO, irmSpots, reshuffle, st.sub);
+  if (ck !== irmCurveKey) { irmCurveKey = ck; irmCurve = contrastCurve(irmO, R); if (st.sub) irmCurve = irmCurve.map((v) => v - irmCurve[0]); }
   irmCam.drawTrace(irmCurve, st.p, 'rgba(234,240,255,.95)');
 }
 $('irmBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%'; $('irmZoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';
