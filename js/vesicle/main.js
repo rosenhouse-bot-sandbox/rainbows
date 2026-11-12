@@ -549,7 +549,7 @@ function frame(now) {
   }
   setCamera();
   scene.draw(cam, view, clock);
-  if (st.labels) placeLabels();
+  placeLabels();                         // also keeps the scale bar current; hidden labels cost little
   if (st.vitro && !st.infer) drawCamera(now);
   // If the device cannot keep up, thin the lipids (each one is then drawn a little larger).
   if (++frames > 30 && !params.has('q')) {
