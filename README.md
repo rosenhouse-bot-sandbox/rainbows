@@ -113,13 +113,20 @@ fewer pixels to keep the frame rate.
 A second experience, at `vesicle/`: a real-time 3D model of a synaptic vesicle fusing with the
 presynaptic membrane, drawn lipid by lipid and to scale in nanometres.
 
-- **Fusion progress** starts with the vesicle's arrival (the last 120 nm down to the release site,
-  with synaptobrevin still free and syntaxin and SNAP-25 waiting on the membrane), then scrubs
+- **Fusion progress** starts with the vesicle's arrival: it wanders the last 120 nm by Brownian
+  motion until tethers on the active zone (Munc13 and RIM, drawn as rods) catch it about 42 nm up
+  and reel it in, with synaptobrevin free until syntaxin and SNAP-25 can reach it. The wander is a
+  fixed path, so the slider is repeatable, and only its up-and-down part is drawn. It then scrubs
   from a docked vesicle through SNARE zippering, the hemifusion stalk,
   the opening and widening of the fusion pore, to full collapse into the membrane.
 - The vesicle carries more than its fusion machinery: about 30 synaptophysins, 10 glutamate
   transporters, 10 Rab3 and a proton pump, in the numbers counted on an average vesicle (Takamori
-  et al., 2006). They ride into the cell membrane with its lipids. Shapes are schematic, and they
+  et al., 2006). They ride into the cell membrane with its lipids, but each only once it fits: around
+  a narrow neck the cytoplasm is a wedge a few nanometres high, so the small proteins leave soon
+  after the pore opens, Rab3 later, and the proton pump, whose head stands 13 nm tall, only when the
+  neck has opened to the vesicle's full width. A tagged synaptobrevin waits until the pore's lumen
+  is wide enough for its tag. The fit is tested against the membrane shape in code (`gates` in
+  `scene.js`); that the pump stays whole is a simplification. Shapes are schematic, and they
   are not counted as scatterers by the reflection camera.
 - **Vesicle diameter** resizes the vesicle (and its glutamate load, at 150 mM).
 - **Cutaway, orbit, tilt, distance** fly the camera; drag, pinch and scroll work too.
@@ -278,6 +285,8 @@ every push to `main`. In the repository settings, set Pages → Source to
   (`profile.js` geometry, `scene.js` molecules and drawing, `vitro.js` microscope, `shaders.js` GLSL,
   `main.js` controls).
 - `drafts/`: review boards from each design round.
+- `tests/vesicle/placement.mjs`: steps Vesicle fusion through every frame without a GPU and fails if a
+  protein is on the wrong side of a membrane or pushed into one.
 - `tests/smooth/`: the smooth-interaction tests for Rainbows (`run.mjs` drives the page, `inject.js` is the
   stepped clock and the probes, `scenarios.mjs` the gestures, `analyze.mjs` the checks and the report).
 

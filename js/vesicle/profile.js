@@ -23,7 +23,13 @@ export const TABW = 2048;      // samples per lookup row
 export const BAREA = Math.PI * 30 * 30;   // nm^2 of plasma membrane covered by the second row
 // Before it docks the vesicle has to get there. Progress runs from -ARRIVE up to 0 while it comes
 // down the last APPROACH nanometres; from 0 on, everything is as before.
-export const ARRIVE = 0.14, APPROACH = 120;
+export const ARRIVE = 0.2, APPROACH = 120;
+// The arrival has two parts. First the vesicle wanders by Brownian motion, drifting down; then,
+// CAPTURE of the way from docking and REACH nanometres up, a tether on the active zone catches it,
+// which quiets the wandering, and reels it in. The wander is a fixed sum of sines so that the
+// slider always shows the same path; only its up-and-down part is drawn.
+export const CAPTURE = 0.42, REACH = 42;
+const wander = (u) => 0.5 * Math.sin(33.3 * u + 1.1) + 0.3 * Math.sin(55.9 * u + 4.0) + 0.2 * Math.sin(89.2 * u + 2.3);
 export const PH = { CA: 0.10, STALK: 0.22, PORE: 0.36, DILATE: 0.50, OMEGA: 0.70, MERGED: 0.92 };
 const PI = Math.PI, NC = 220, NF = 160;
 
@@ -33,7 +39,10 @@ export function shape(p, R) {
   else if (p < PH.STALK) n = -RHO0 + (RHO0 - D) * sstep(PH.CA, PH.STALK, p);
   else if (p < PH.PORE) n = -D + 2 * D * sstep(PH.STALK, PH.PORE, p);
   else n = D + 1.6 * sstep(PH.PORE, PH.DILATE, p);
-  const approach = APPROACH * sstep(0, 1, Math.min(1, Math.max(0, -p / ARRIVE)));   // height still to come down before docking
+  const u = Math.min(1, Math.max(0, -p / ARRIVE));
+  const approachBase = u > CAPTURE ? REACH + (APPROACH - REACH) * sstep(CAPTURE, 1, u) : REACH * sstep(0, CAPTURE, u);
+  const jitter = wander(u) * (16 * sstep(CAPTURE - 0.04, CAPTURE + 0.1, u) + 4 * sstep(0.02, 0.2, u));
+  const approach = u > 0 ? Math.max(0, approachBase + jitter) : 0;   // height still to come down before docking
   const extra = approach + 5 * (1 - sstep(0, PH.CA, p));   // plus the docking gap that the SNAREs close
   const th50 = PI - Math.asin((D + 1.6 + RHO0) / (R + RHO0));
   let theta, rho = RHO0;
@@ -47,7 +56,7 @@ export function shape(p, R) {
   // Past the omega stage the cap keeps its area and spreads, so its radius of curvature grows.
   const Rc = theta >= PI / 2 ? R : R / Math.sqrt(1 - Math.cos(theta));
   const c = (Rc + rho) * Math.sin(theta), h = rho - (Rc + rho) * Math.cos(theta);
-  return { p, R, theta, rho, Rc, c, h, extra, approach, neck: c - rho };
+  return { p, R, theta, rho, Rc, c, h, extra, approach, approachBase, tethered: u <= CAPTURE, neck: c - rho };
 }
 
 function poly() { return { r: [], y: [], nr: [], ny: [], a: [0] }; }
@@ -83,7 +92,7 @@ function leaflet(S, o) {
 // Point on a polyline at cumulative area a; past its end the membrane is flat.
 function at(P, L, a, out, k, hint) {
   const n = P.r.length, end = P.a[n - 1];
-  if (a >= end) {
+  if (a > end) {       // strictly past it: the last sample of a free vesicle is its own pole, not the plane
     out[k] = Math.sqrt(P.r[n - 1] * P.r[n - 1] + (a - end) / PI); out[k + 1] = L.o; out[k + 2] = 0; out[k + 3] = L.sg;
     return n - 1;
   }

@@ -210,7 +210,7 @@ export function irmBeam(lambda) {
 }
 
 // Contrast at the centre of the spot for a whole event, arrival included, for the trace.
-export function contrastCurve(o, R, n = 72) {
+export function contrastCurve(o, R, n = 260) {
   const out = [], m = [0, 0];
   for (let i = 0; i < n; i++) out.push(o.spot(moment(o, -ARRIVE + (1 + ARRIVE) * i / (n - 1), R, m), 0));
   return out;

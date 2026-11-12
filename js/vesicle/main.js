@@ -1,7 +1,7 @@
 // Vesicle fusion: page state, camera, input and the frame loop.
 import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
-import { PH, ARRIVE, APPROACH } from './profile.js';
+import { PH, ARRIVE, APPROACH, REACH } from './profile.js';
 import { INFO } from './info.js';
 import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles, progressOf } from './infer.js';
 import { IrmCamera, irmOptics, moment, contrastCurve, hue, css, IRM, APO, SPAN, SPAN_DIFF, WELL, N_MEDIUM, N_LIPID } from './irm.js';
@@ -16,8 +16,8 @@ const phone = matchMedia('(max-width: 899px)');
 
 const STAGES = [
   { at: -ARRIVE, name: 'Arrival', title: 'A vesicle arrives',
-    body: `A synaptic vesicle packed with glutamate is brought down the last ${APPROACH} nanometres to the release site. Its synaptobrevin strands still hang free. On the membrane below, syntaxin and SNAP-25 wait for them.`,
-    vitro: `A vesicle comes down the last ${APPROACH} nanometres toward the membrane on the glass. Its pHluorin tags are quenched, so the fluorescence camera sees almost nothing. A reflection camera needs no dye, and its spot changes with every nanometre of height.` },
+    body: `A synaptic vesicle packed with glutamate wanders the last ${APPROACH} nanometres by Brownian motion. About ${REACH} nanometres up, tethers on the active zone catch it and reel it in. Its synaptobrevin strands hang free until syntaxin and SNAP-25 can reach them.`,
+    vitro: `A vesicle wanders toward the membrane on the glass until tethers catch it about ${REACH} nanometres up. Its pHluorin tags are quenched, so the fluorescence camera sees almost nothing. A reflection camera needs no dye: its spot flickers as the vesicle's height changes, then settles.` },
   { at: 0, name: 'Docked', title: 'Docked and loaded',
     body: 'A synaptic vesicle packed with glutamate waits a few nanometres above the cell membrane. Half-zipped SNARE proteins hold it there, ready to fire.',
     vitro: 'The vesicle waits just above the membrane, about 50 nanometres over the glass. Its pHluorin tags sit in acid and stay dark, so the camera sees almost nothing.' },
