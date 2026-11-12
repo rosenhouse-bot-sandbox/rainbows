@@ -17,6 +17,7 @@ const PLAIN = '#9fb4ff', EDGE = '#aab6d6', TURNED = '#ff5d73', INK = '#eaf0ff';
 // What can be set. Each is read from the address after # and written back to it.
 const CONTROLS = [
   { id: 'cyc', m: 'layered', stage: 1, label: 'Edges to turn', options: [['greedy', 'Greedy'], ['dfs', 'Depth first'], ['file', 'File order']] },
+  { id: 'grp', m: 'layered', stage: 2, label: 'Groups', options: [['box', 'Boxes'], ['colour', 'Colour only']], only: () => graph && graph.groups.length > 0 },
   { id: 'lay', m: 'layered', stage: 2, label: 'Layer for each node', options: [['longest', 'Longest path'], ['tight', 'Short edges'], ['width', 'Width limit']] },
   { id: 'wmax', m: 'layered', stage: 2, label: 'Most nodes in a layer', min: 1, max: 10, only: () => P.lay === 'width' },
   { id: 'sw', m: 'layered', stage: 3, label: 'Sorting passes', min: 0, max: 10 },
@@ -29,11 +30,11 @@ const CONTROLS = [
   { id: 'lgap', m: 'layered', stage: 4, label: 'Space between layers', min: 20, max: 100 },
   { id: 'dir', stage: { layered: 2, search: 2 }, label: 'Direction', options: [['down', 'Down'], ['right', 'Right']] },
 ];
-const P = { g: 'topology', m: 'layered', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
+const P = { g: 'topology', m: 'layered', grp: 'box', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
 const STAGE_NAME = { input: 'Input', cycles: 'Turn', layers: 'Layers', order: 'Sort', place: 'Align', route: 'Route', boxes: 'Group', search: 'Search' };
 const NOTE = {
   layered: 'The five steps of ELK Layered, written again for this page. This is not ELK’s own code.',
-  search: 'This is not TALA’s code. It is a simpler search written for this page that shares TALA’s outline: boxes first, several seeds scored and the best kept, edges at right angles.',
+  search: 'Not TALA’s code. Real TALA first finds trees, hubs, clusters and layered parts, then places and routes. This simpler search keeps its outline: boxes, seeded tries, the best score, right-angle edges.',
 };
 
 let graph = null, layout = null, stage = 0, q = 0, mix = 1, from = null, shown = null;
@@ -116,11 +117,13 @@ function caption(id) {
     case 'cycles': return f.reversed
       ? 'A cycle is a route along the arrows that comes back to where it began. ' + (f.reversed === 1 ? 'One arrow is' : f.reversed + ' arrows are') + ' turned round, drawn in red, so that no cycle is left.'
       : 'A cycle is a route along the arrows that comes back to where it began. This graph has none, so no arrow is turned.';
-    case 'layers': return 'A layer is one ' + (down ? 'row' : 'column') + '. Each node goes in a layer after every node that points to it. An edge that passes over a layer gets a dot in it' + (f.bends ? ': ' + n(f.bends, 'dot', 'dots') + ' here.' : '; here no edge does.');
+    case 'layers': if (layout.grouped) return 'A layer is one ' + (down ? 'row' : 'column') + '. Inside each group’s box, a node goes in a layer after every node that points to it. The boxes are then put in layers the same way, each as one large node.';
+      return 'A layer is one ' + (down ? 'row' : 'column') + '. Each node goes in a layer after every node that points to it. An edge that passes over a layer gets a dot in it' + (f.bends ? ': ' + n(f.bends, 'dot', 'dots') + ' here.' : '; here no edge does.');
     case 'order': { const a = stats(2).crossings, b = stats(3).crossings; return 'Each layer is sorted so that a node sits near the nodes it joins in the next layer. Crossings ' + (a === b ? 'stay at ' + a : 'go from ' + a + ' to ' + b) + '.'; }
-    case 'place': return 'Nodes slide along their layer, keeping their order, until joined nodes line up and edges run straight.';
+    case 'place': if (layout.grouped) return 'Nodes slide along their layer, and boxes along theirs, keeping their order, until joined ones line up.';
+      return 'Nodes slide along their layer, keeping their order, until joined nodes line up and edges run straight.';
     case 'route': return P.m === 'layered'
-      ? 'Each edge is drawn through its dots.' + (f.reversed ? ' Turned arrows point their true way again, still in red.' : '')
+      ? (layout.grouped ? 'Edges inside a box are drawn through their dots. Edges between boxes are routed last, at right angles around the nodes.' : 'Each edge is drawn through its dots.') + (f.reversed ? ' Turned arrows point their true way again, still in red.' : '')
       : 'Each edge takes the cheapest path of horizontal and vertical runs. A path pays for its length, its bends and any box it cuts through, and may not pass through a node.';
     case 'boxes': return g.groups.length
       ? 'The file puts each node in a group. Each group gets a box, and boxes and nodes sit on grids in file order.'
@@ -306,7 +309,9 @@ function draw() {
 
   // layers
   const layer = (snap, alpha) => { if (!snap.bands.length || alpha <= 0) return; ctx.globalAlpha = alpha * m; ctx.fillStyle = 'rgba(234,240,255,.045)'; for (const b of snap.bands) { rounded(b.x, b.y, b.w, b.h, 9); ctx.fill(); } };
-  if (A.bands === B.bands) layer(A, 1); else { layer(A, 1 - f); layer(B, f); }
+  if (A.bands === B.bands) layer(A, 1);
+  else if (A.bands.length && A.bands.length === B.bands.length) layer({ bands: A.bands.map((b, k) => mixBox(b, B.bands[k], f)) }, 1);
+  else { layer(A, 1 - f); layer(B, f); }
   // boxes
   const box = (b, alpha) => { const c = GROUP[b.k % GROUP.length]; ctx.globalAlpha = alpha * 0.07; ctx.fillStyle = c; rounded(b.x, b.y, b.w, b.h, 12); ctx.fill(); ctx.globalAlpha = alpha * 0.55; ctx.strokeStyle = c; ctx.lineWidth = 1.1 / s; ctx.stroke(); };
   if (A.boxes.length && B.boxes.length) A.boxes.forEach((b, k) => box({ ...mixBox(b, B.boxes[k], f), k: b.k }, m));
@@ -388,6 +393,7 @@ addEventListener('hashchange', () => { const st = readHash(); setGraph(P.g, true
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(kick);
 
 buildControls();
+{ const a = area(); if (a.w > a.h * 1.05) P.dir = 'right'; }   // start with the direction that fits the screen
 const first = readHash();
 if (first >= 0) stage = q = first; else stage = q = 99;
 setGraph(P.g, true);

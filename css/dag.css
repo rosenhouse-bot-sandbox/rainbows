@@ -41,7 +41,7 @@ body{background:radial-gradient(1200px 800px at 70% 30%,#0b1226 0%,var(--bg) 70%
 .cap h2{font-family:var(--display);font-weight:600;font-size:1.1875rem;letter-spacing:-.015em;line-height:1.15;margin:0}
 /* The caption keeps room for its longest text, so the controls below do not move from step to step. */
 .cap p{margin:0;font-size:0.8438rem;line-height:1.42;color:var(--ink2);max-width:62ch;text-wrap:pretty;min-height:4.26em}
-.note{margin:0;font-size:0.7812rem;line-height:1.4;color:var(--ink3);text-wrap:pretty;min-height:2.8em}
+.note{margin:0;font-size:0.7812rem;line-height:1.4;color:var(--ink3);text-wrap:pretty;min-height:4.2em}
 .pick{margin:0;font-family:var(--mono);font-size:0.75rem;color:var(--ink2);min-height:1.45em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 .meters{display:grid;gap:8px;grid-template-columns:repeat(3,1fr)}

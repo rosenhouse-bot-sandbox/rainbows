@@ -4,6 +4,7 @@
 //   - layered: once the chosen edges are turned, no cycle is left, and every edge runs forward
 //     through the layers (turned edges run backward)
 //   - a routed edge starts on its source's border and ends on its target's
+//   - with boxes, every node is inside its group's box and no two boxes overlap
 //   - the same settings give the same layout twice (the search is seeded, not random)
 //
 //   node tests/dag/run.mjs
@@ -18,7 +19,7 @@ const root = path.resolve(import.meta.dirname, '../..');
 const graphs = SAMPLES.map((s) => [s.id, s.graph || parseTopology(fs.readFileSync(path.join(root, 'dag', s.url), 'utf8'))]);
 let fails = 0, runs = 0;
 const fail = (what) => { fails++; console.log('FAIL ' + what); };
-const base = { nodeW: 44, nodeH: 26, aspect: 1.4, gap: 22, dir: 'down', cyc: 'greedy', lay: 'longest', wmax: 4, sweeps: 6, lgap: 44, rt: 'ortho', seed: 1, tries: 2, flow: 3, cross: 5 };
+const base = { nodeW: 44, nodeH: 26, aspect: 1.4, gap: 22, dir: 'down', cyc: 'greedy', lay: 'longest', wmax: 4, sweeps: 6, lgap: 44, rt: 'ortho', grp: 'colour', seed: 1, tries: 2, flow: 3, cross: 5 };
 
 function common(tag, g, o, out) {
   runs++;
@@ -35,6 +36,14 @@ function common(tag, g, o, out) {
   if (!Number.isFinite(m.length)) fail(`${tag}: length is not a number`);
 }
 
+// every node inside its own group's box, and no two boxes overlapping
+function boxed(tag, g, o, snap) {
+  const B = snap.boxes;
+  if (B.length !== g.groups.length) return fail(`${tag}: ${B.length} boxes for ${g.groups.length} groups`);
+  snap.pos.forEach((p, v) => { const b = B.find((x) => x.k === g.group[v]); if (p[0] - o.nodeW / 2 < b.x - 0.01 || p[0] + o.nodeW / 2 > b.x + b.w + 0.01 || p[1] - o.nodeH / 2 < b.y - 0.01 || p[1] + o.nodeH / 2 > b.y + b.h + 0.01) fail(`${tag}: ${g.names[v]} is outside its box`); });
+  for (let i = 0; i < B.length; i++) for (let j = i + 1; j < B.length; j++) if (B[i].x < B[j].x + B[j].w && B[j].x < B[i].x + B[i].w && B[i].y < B[j].y + B[j].h && B[j].y < B[i].y + B[i].h) fail(`${tag}: two boxes overlap`);
+}
+
 for (const [id, g] of graphs) {
   for (const cyc of ['greedy', 'dfs', 'file']) {
     const rev = breakCycles(g, cyc), deg = new Int32Array(g.n), out = Array.from({ length: g.n }, () => []);
@@ -43,18 +52,21 @@ for (const [id, g] of graphs) {
     for (let v = 0; v < g.n; v++) if (!deg[v]) ready.push(v);
     while (ready.length) { const v = ready.pop(); seen++; for (const w of out[v]) if (--deg[w] === 0) ready.push(w); }
     if (seen !== g.n) fail(`${id}: a cycle is left after "${cyc}"`);
-    for (const lay of ['longest', 'tight', 'width']) for (const rt of ['ortho', 'poly', 'curve']) for (const dir of ['down', 'right']) for (const sweeps of [0, 6]) for (const gap of [8, 22, 60]) {
-      const o = { ...base, cyc, lay, rt, dir, sweeps, gap, wmax: 3 }, tag = `${id} layered ${cyc}/${lay}/${rt}/${dir}/${sweeps}/${gap}`;
+    for (const lay of ['longest', 'tight', 'width']) for (const rt of ['ortho', 'poly', 'curve']) for (const dir of ['down', 'right']) for (const sweeps of [0, 6]) for (const gap of [8, 22, 60]) for (const grp of g.groups.length ? ['colour', 'box'] : ['colour']) {
+      const o = { ...base, cyc, lay, rt, dir, sweeps, gap, grp, wmax: 3 }, tag = `${id} layered ${cyc}/${lay}/${rt}/${dir}/${sweeps}/${gap}/${grp}`;
       const r = layered(g, o);
       common(tag, g, o, r);
       const pos = r.snaps[4].pos, ax = dir === 'down' ? 1 : 0;
-      g.edges.forEach(([s, t], e) => { if ((pos[t][ax] - pos[s][ax]) * (r.rev[e] ? -1 : 1) <= 0) fail(`${tag}: edge ${g.names[s]} to ${g.names[t]} does not run forward`); });
+      // forward through the layers: every edge without boxes, and with boxes the edges inside one box
+      g.edges.forEach(([s, t], e) => { if ((grp === 'colour' || g.group[s] === g.group[t]) && (pos[t][ax] - pos[s][ax]) * (r.rev[e] ? -1 : 1) <= 0) fail(`${tag}: edge ${g.names[s]} to ${g.names[t]} does not run forward`); });
+      if (grp === 'box') boxed(tag, g, o, r.snaps[5]);
     }
   }
   for (const dir of ['down', 'right']) for (const seed of [1, 7]) for (const gap of [8, 22, 60]) for (const flow of [0, 10]) for (const aspect of [0.6, 1.8]) {
     const o = { ...base, dir, seed, gap, flow, aspect }, tag = `${id} search ${dir}/${seed}/${gap}/${flow}/${aspect}`;
     const r = gridSearch(g, o);
     common(tag, g, o, r);
+    if (g.groups.length) boxed(tag, g, o, r.snaps[3]);
     if (JSON.stringify(gridSearch(g, o).snaps[3].pos) !== JSON.stringify(r.snaps[3].pos)) fail(`${tag}: two runs differ`);
   }
 }

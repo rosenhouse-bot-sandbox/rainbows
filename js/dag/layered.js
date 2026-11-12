@@ -6,6 +6,7 @@
 // layers. For "down" a is x and c is y; for "right" they swap.
 
 import { inputGrid, along, bounds } from './common.js';
+import { routeOrtho } from './route.js';
 
 export const LAYERED_STAGES = ['input', 'cycles', 'layers', 'order', 'place', 'route'];
 
@@ -180,7 +181,7 @@ function layoutPiece(n, E, o, S) {
   for (let v = 0; v < M; v++) first[lay[v]].push(v);
   const ordered = sortLayers(first, up, down, o.sweeps);
 
-  const sep = (u, v) => ((u < n ? S.sa : 0) + (v < n ? S.sa : 0)) / 2 + (u < n && v < n ? S.gap : S.gap * 0.55);
+  const sep = (u, v) => ((u < n ? S.sa[u] : 0) + (v < n ? S.sa[v] : 0)) / 2 + (u < n && v < n ? S.gap : S.gap * 0.55);
   const packed = (layers) => {
     const a = new Float64Array(M);
     for (const l of layers) { let x = 0; l.forEach((v, i) => { if (i) x += sep(l[i - 1], v); a[v] = x; }); for (const v of l) a[v] -= x / 2; }
@@ -198,7 +199,7 @@ function layoutPiece(n, E, o, S) {
   const pOut = new Float64Array(E.length), pIn = new Float64Array(E.length);
   const spread = (list, key, store, v) => {
     list.sort((p, q) => key(p) - key(q));
-    const m = list.length, step = m > 1 ? Math.min(8, (S.sa - 12) / (m - 1)) : 0;
+    const m = list.length, step = m > 1 ? Math.min(8, (S.sa[v] - 12) / (m - 1)) : 0;
     list.forEach((e, k) => { store[e] = a4[v] + (k - (m - 1) / 2) * step; });
   };
   for (let v = 0; v < n; v++) { spread(outs[v], (e) => a4[chains[e][1]], pOut, v); spread(ins[v], (e) => a4[chains[e][chains[e].length - 2]], pIn, v); }
@@ -222,18 +223,20 @@ function layoutPiece(n, E, o, S) {
       });
     });
   }
+  const thick = new Array(L).fill(0);   // a layer is as thick as its thickest node
+  for (let v = 0; v < n; v++) thick[lay[v]] = Math.max(thick[lay[v]], S.sc[v]);
   const top = [0];
-  for (let l = 0; l + 1 < L; l++) top.push(top[l] + S.sc + Math.max(S.layerGap, (tracks[l] + 1) * 7));
-  const shift = (top[L - 1] + S.sc) / 2;
+  for (let l = 0; l + 1 < L; l++) top.push(top[l] + thick[l] + Math.max(S.layerGap, (tracks[l] + 1) * 7));
+  const shift = (top[L - 1] + thick[L - 1]) / 2;
   for (let l = 0; l < L; l++) top[l] -= shift;
-  const mid = (l) => top[l] + S.sc / 2, bot = (l) => top[l] + S.sc;
+  const mid = (l) => top[l] + thick[l] / 2, bot = (l) => top[l] + thick[l];
+  const leave = (v) => (v < n ? mid(lay[v]) + S.sc[v] / 2 : bot(lay[v])), enter = (v) => (v < n ? mid(lay[v]) - S.sc[v] / 2 : top[lay[v]]);
 
   const paths = chains.map((ch, e) => {
-    const l0 = lay[ch[0]], l1 = lay[ch[ch.length - 1]];
-    if (o.rt === 'poly') return [[pOut[e], bot(l0)], ...ch.slice(1, -1).map((d) => [a4[d], mid(lay[d])]), [pIn[e], top[l1]]];
+        if (o.rt === 'poly') return [[pOut[e], leave(ch[0])], ...ch.slice(1, -1).map((d) => [a4[d], mid(lay[d])]), [pIn[e], enter(ch[ch.length - 1])]];
     const pts = [];
     for (let k = 0; k + 1 < ch.length; k++) {
-      const l = lay[ch[k]], s = segs[l].find((q) => q.e === e && q.k === k), P = [s.a1, bot(l)], Q = [s.a2, top[l + 1]];
+      const l = lay[ch[k]], s = segs[l].find((q) => q.e === e && q.k === k), P = [s.a1, leave(ch[k])], Q = [s.a2, enter(ch[k + 1])];
       if (o.rt === 'ortho') {
         pts.push(P);
         if (s.t >= 0) { const c = bot(l) + (top[l + 1] - bot(l)) * (s.t + 1) / (tracks[l] + 1); pts.push([s.a1, c], [s.a2, c]); }
@@ -250,43 +253,47 @@ function layoutPiece(n, E, o, S) {
   });
 
   let a0 = Infinity, a1 = -Infinity;
-  for (const a of [a2, a3, a4]) for (let v = 0; v < M; v++) { const h = v < n ? S.sa / 2 : 0; a0 = Math.min(a0, a[v] - h); a1 = Math.max(a1, a[v] + h); }
-  return { n, M, L, lay, chains, a: [a2, a3, a4], top, mid, paths, ext: [a0, a1, top[0], top[L - 1] + S.sc] };
+  for (const a of [a2, a3, a4]) for (let v = 0; v < M; v++) { const h = v < n ? S.sa[v] / 2 : 0; a0 = Math.min(a0, a[v] - h); a1 = Math.max(a1, a[v] + h); }
+  return { n, M, L, lay, chains, a: [a2, a3, a4], top, thick, mid, paths, ext: [a0, a1, top[0], top[L - 1] + thick[L - 1]] };
 }
 
-export function layered(g, o) {
-  const N = g.n, down = o.dir !== 'right';
-  const S = { sa: down ? o.nodeW : o.nodeH, sc: down ? o.nodeH : o.nodeW, gap: o.gap, layerGap: o.lgap };
-  const rev = breakCycles(g, o.cyc);
-  const dag = g.edges.map(([s, t], i) => (rev[i] ? [t, s] : [s, t]));
+// A whole graph, which may be in several pieces: n nodes of sizes w by h, and its edges. Returns
+// each node's centre at the Layers, Sort and Align steps, each edge's line at every step, and
+// the size of the whole, centred on (0, 0).
+function layoutGraph(n, edges, w, h, o) {
+  const down = o.dir !== 'right';
+  const rev = breakCycles({ n, edges }, o.cyc);
+  const dag = edges.map(([s, t], i) => (rev[i] ? [t, s] : [s, t]));
 
   // connected pieces, each laid out by itself; nodes with no edge at all go in one block
-  const comp = new Int32Array(N).fill(-1), adj = Array.from({ length: N }, () => []);
-  for (const [s, t] of g.edges) { adj[s].push(t); adj[t].push(s); }
+  const comp = new Int32Array(n).fill(-1), adj = Array.from({ length: n }, () => []);
+  for (const [s, t] of edges) { adj[s].push(t); adj[t].push(s); }
   const pieces = [], alone = [];
-  for (let r = 0; r < N; r++) {
+  for (let r = 0; r < n; r++) {
     if (comp[r] >= 0) continue;
     if (!adj[r].length) { comp[r] = -2; alone.push(r); continue; }
     const id = pieces.length, nodes = [], stack = [r]; comp[r] = id;
-    while (stack.length) { const v = stack.pop(); nodes.push(v); for (const w of adj[v]) if (comp[w] < 0) { comp[w] = id; stack.push(w); } }
+    while (stack.length) { const v = stack.pop(); nodes.push(v); for (const x of adj[v]) if (comp[x] < 0) { comp[x] = id; stack.push(x); } }
     nodes.sort((p, q) => p - q);
     pieces.push({ nodes, local: new Map(nodes.map((v, i) => [v, i])), edges: [] });
   }
   dag.forEach(([s], e) => pieces[comp[s]].edges.push(e));
   const blocks = [];
   for (const p of pieces) {
+    const S = { sa: p.nodes.map((v) => (down ? w[v] : h[v])), sc: p.nodes.map((v) => (down ? h[v] : w[v])), gap: o.gap, layerGap: o.lgap };
     p.out = layoutPiece(p.nodes.length, p.edges.map((e) => [p.local.get(dag[e][0]), p.local.get(dag[e][1])]), o, S);
+    p.S = S;
     const [a0, a1, c0, c1] = p.out.ext;
     blocks.push({ p, w: down ? a1 - a0 : c1 - c0, h: down ? c1 - c0 : a1 - a0 });
   }
-  const cw = o.nodeW + Math.max(10, o.gap * 0.6), ch = o.nodeH + Math.max(10, o.gap * 0.6);
   let lone = null;
   if (alone.length) {
+    const pad = Math.max(10, o.gap * 0.6), cw = Math.max(...alone.map((v) => w[v])) + pad, ch = Math.max(...alone.map((v) => h[v])) + pad;
     const cols = Math.max(1, Math.round(Math.sqrt(alone.length * 1.3 * ch / cw)));
-    lone = { cols, w: Math.min(cols, alone.length) * cw - (cw - o.nodeW), h: Math.ceil(alone.length / cols) * ch - (ch - o.nodeH) };
+    lone = { cols, cw, ch, pad, w: Math.min(cols, alone.length) * cw - pad, h: Math.ceil(alone.length / cols) * ch - pad };
     blocks.push(lone);
   }
-  // pack the blocks in rows, widest area first, towards the shape of the screen
+  // pack the blocks in rows, tallest first, towards the shape of the screen
   const between = Math.max(28, o.gap * 1.6);
   let area = 0, widest = 0;
   for (const b of blocks) { area += (b.w + between) * (b.h + between); widest = Math.max(widest, b.w); }
@@ -302,39 +309,90 @@ export function layered(g, o) {
   for (const b of blocks) { b.x -= W / 2; b.y -= H / 2; }
 
   const at = (b, a, c) => { const [a0, , c0] = b.p.out.ext; return down ? [b.x + a - a0, b.y + c - c0] : [b.x + c - c0, b.y + a - a0]; };
-  const pos0 = inputGrid(N, o), stagePos = [pos0, pos0];
+  const pos = [];
   for (let k = 0; k < 3; k++) {
-    const pos = new Array(N);
-    for (const b of blocks) if (b.p) b.p.nodes.forEach((v, i) => { pos[v] = at(b, b.p.out.a[k][i], b.p.out.mid(b.p.out.lay[i])); });
-    alone.forEach((v, i) => { pos[v] = [lone.x + o.nodeW / 2 + (i % lone.cols) * cw, lone.y + o.nodeH / 2 + Math.floor(i / lone.cols) * ch]; });
-    stagePos.push(pos);
+    const P = new Array(n);
+    for (const b of blocks) if (b.p) b.p.nodes.forEach((v, i) => { P[v] = at(b, b.p.out.a[k][i], b.p.out.mid(b.p.out.lay[i])); });
+    alone.forEach((v, i) => { P[v] = [lone.x + (lone.cw - lone.pad) / 2 + (i % lone.cols) * lone.cw, lone.y + (lone.ch - lone.pad) / 2 + Math.floor(i / lone.cols) * lone.ch]; });
+    pos.push(P);
   }
-  stagePos.push(stagePos[4]);
-
   const where = new Map();   // edge -> its block and its number in that block
   for (const b of blocks) if (b.p) b.p.edges.forEach((e, i) => where.set(e, [b, i]));
   const bands = [];
+  let bends = 0, layers = 0;
   for (const b of blocks) if (b.p) {
     const t = b.p.out, [a0, a1] = t.ext;
-    for (let l = 0; l < t.L; l++) { const p = at(b, a0 - 8, t.top[l] - 5), q = at(b, a1 + 8, t.top[l] + S.sc + 5); bands.push({ x: Math.min(p[0], q[0]), y: Math.min(p[1], q[1]), w: Math.abs(q[0] - p[0]), h: Math.abs(q[1] - p[1]) }); }
+    bends += t.M - t.n; layers = Math.max(layers, t.L);
+    for (let l = 0; l < t.L; l++) { const p = at(b, a0 - 8, t.top[l] - 5), q = at(b, a1 + 8, t.top[l] + t.thick[l] + 5); bands.push({ x: Math.min(p[0], q[0]), y: Math.min(p[1], q[1]), w: Math.abs(q[0] - p[0]), h: Math.abs(q[1] - p[1]) }); }
   }
-  let bends = 0, layers = 0;
-  for (const b of blocks) if (b.p) { bends += b.p.out.M - b.p.out.n; layers = Math.max(layers, b.p.out.L); }
+  const points = (e) => where.get(e)[0].p.out.chains[where.get(e)[1]].length;
+  // the edge's line at step st (2 Layers, 3 Sort, 4 Align, 5 Route), from its source to its target
+  const line = (e, st) => {
+    const [b, i] = where.get(e), out = b.p.out, ch = out.chains[i];
+    const pts = st < 5 ? ch.map((v) => at(b, out.a[st - 2][v], out.mid(out.lay[v]))) : out.paths[i].map((p) => at(b, p[0], p[1]));
+    if (rev[e]) pts.reverse();
+    return pts;
+  };
+  return { W, H, pos, rev, bands, bends, layers, points, line };
+}
 
-  const snaps = [];
-  for (let st = 0; st < 6; st++) {
-    const pos = stagePos[st];
-    const edges = g.edges.map(([s, t], e) => {
-      const [b, i] = where.get(e), out = b.p.out, ch = out.chains[i];
-      let pts, kind = 'line';
-      if (st < 2) pts = along(pos[s], pos[t], ch.length);
-      else if (st < 5) { pts = ch.map((v) => at(b, out.a[st - 2][v], out.mid(out.lay[v]))); if (rev[e]) pts.reverse(); }
-      else { pts = out.paths[i].map((p) => at(b, p[0], p[1])); if (rev[e]) pts.reverse(); kind = o.rt === 'curve' ? 'curve' : o.rt === 'ortho' ? 'ortho' : 'poly'; }
-      return { pts, kind, turned: rev[e] && st >= 1 && st < 5, mark: rev[e] && st >= 1 };
-    });
-    const snap = { pos, edges, boxes: [], bands: st >= 2 ? bands : [], dots: st >= 2 && st <= 4 };
-    snap.bbox = bounds(pos, o, snap.bands);
-    snaps.push(snap);
+const moved = (pts, d) => pts.map((p) => [p[0] + d[0], p[1] + d[1]]);
+
+// o.grp 'box' on a graph with groups: each group is laid out by itself and becomes a box, the
+// boxes are then laid out as if each were one large node, and edges between boxes are routed last
+// around the nodes. ELK can do this in one pass (hierarchyHandling: INCLUDE_CHILDREN), with the
+// edges between boxes taking part in the layering inside them. This two-level version cannot.
+export function layered(g, o) {
+  const N = g.n, kindOf = o.rt === 'curve' ? 'curve' : o.rt === 'ortho' ? 'ortho' : 'poly';
+  const pos0 = inputGrid(N, o), snaps = [];
+  const finish = (snap) => { snap.bbox = bounds(snap.pos, o, snap.bands.concat(snap.boxes)); snaps.push(snap); };
+  if (!(o.grp === 'box' && g.groups.length)) {
+    const G = layoutGraph(N, g.edges, new Array(N).fill(o.nodeW), new Array(N).fill(o.nodeH), o);
+    for (let st = 0; st < 6; st++) {
+      const pos = st < 2 ? pos0 : G.pos[Math.min(st, 4) - 2];
+      const edges = g.edges.map(([s, t], e) => ({
+        pts: st < 2 ? along(pos[s], pos[t], G.points(e)) : G.line(e, st), kind: st < 5 ? 'line' : kindOf,
+        turned: G.rev[e] && st >= 1 && st < 5, mark: G.rev[e] && st >= 1,
+      }));
+      finish({ pos, edges, boxes: [], bands: st >= 2 ? G.bands : [], dots: st >= 2 && st <= 4 });
+    }
+    return { stages: LAYERED_STAGES, snaps, facts: { reversed: G.rev.filter(Boolean).length, layers: G.layers, bends: G.bends }, rev: G.rev, grouped: false };
   }
-  return { stages: LAYERED_STAGES, snaps, facts: { reversed: rev.filter(Boolean).length, layers, bends }, rev };
+
+  const K = g.groups.length, pad = 13;
+  const members = Array.from({ length: K }, () => []), local = new Int32Array(N);
+  g.group.forEach((k, v) => { local[v] = members[Math.max(0, k)].length; members[Math.max(0, k)].push(v); });
+  const grp = g.group.map((k) => Math.max(0, k));
+  const innerEdges = Array.from({ length: K }, () => []), innerOf = new Int32Array(g.edges.length).fill(-1);
+  const between = [], pairOf = new Map(), crossOf = new Int32Array(g.edges.length).fill(-1);
+  g.edges.forEach(([s, t], e) => {
+    if (grp[s] === grp[t]) { innerOf[e] = innerEdges[grp[s]].length; innerEdges[grp[s]].push([local[s], local[t]]); return; }
+    const key = grp[s] * K + grp[t];
+    if (!pairOf.has(key)) { pairOf.set(key, between.length); between.push([grp[s], grp[t]]); }
+    crossOf[e] = pairOf.get(key);
+  });
+  const inner = members.map((m, k) => layoutGraph(m.length, innerEdges[k], new Array(m.length).fill(o.nodeW), new Array(m.length).fill(o.nodeH), o));
+  const outer = layoutGraph(K, between, inner.map((G) => G.W + 2 * pad), inner.map((G) => G.H + 2 * pad), { ...o, gap: o.gap + 14, lgap: Math.max(o.lgap, 30) });
+  const rev = g.edges.map((_, e) => (innerOf[e] >= 0 ? inner[grp[g.edges[e][0]]].rev[innerOf[e]] : outer.rev[crossOf[e]]));
+
+  const place = (st) => { const O = outer.pos[st - 2]; return { O, pos: grp.map((k, v) => [O[k][0] + inner[k].pos[st - 2][local[v]][0], O[k][1] + inner[k].pos[st - 2][local[v]][1]]) }; };
+  const end = place(4);
+  const boxesAt = (O) => O.map((c, k) => ({ x: c[0] - inner[k].W / 2 - pad, y: c[1] - inner[k].H / 2 - pad, w: inner[k].W + 2 * pad, h: inner[k].H + 2 * pad, k }));
+  const cross = [];
+  g.edges.forEach((_, e) => { if (innerOf[e] < 0) cross.push(e); });
+  const routes = routeOrtho(g, end.pos, boxesAt(end.O), o, cross);
+  let bends = 0;
+  for (const G of inner) bends += G.bends;
+  for (let st = 0; st < 6; st++) {
+    const P = st < 2 ? null : place(Math.min(st, 4)), pos = P ? P.pos : pos0;
+    const edges = g.edges.map(([s, t], e) => {
+      const k = grp[s], i = innerOf[e], flags = { turned: rev[e] && st >= 1 && st < 5, mark: rev[e] && st >= 1 };
+      if (i < 0) return st < 5 ? { pts: [pos[s], pos[t]], kind: 'line', ...flags } : { pts: routes[e], kind: 'ortho', ...flags };
+      return { pts: st < 2 ? along(pos[s], pos[t], inner[k].points(i)) : moved(inner[k].line(i, st), P.O[k]), kind: st < 5 ? 'line' : kindOf, ...flags };
+    });
+    const bands = [];
+    if (P) inner.forEach((G, k) => { for (const b of G.bands) bands.push({ x: b.x + P.O[k][0], y: b.y + P.O[k][1], w: b.w, h: b.h }); });
+    finish({ pos, edges, boxes: P ? boxesAt(P.O) : [], bands, dots: st >= 2 && st <= 4 });
+  }
+  return { stages: LAYERED_STAGES, snaps, facts: { reversed: rev.filter(Boolean).length, layers: outer.layers, bends }, rev, grouped: true };
 }

@@ -436,7 +436,12 @@ the switch.
   and random restarts.
 - Align is an isotonic regression per layer towards the average of the neighbours. ELK's default is
   Brandes and Köpf.
-- Groups are shown by colour only. ELK can nest nodes inside nodes; this cannot.
+- Groups: with "Boxes", each group is laid out by itself and becomes a box, the boxes are laid out
+  as if each were one large node, and edges between boxes are routed last around the nodes with
+  the same A* router the search uses (always at right angles). ELK does this in one pass
+  (`hierarchyHandling: INCLUDE_CHILDREN`), where edges between boxes also shape the layers inside
+  them; this two-level version cannot, so it crosses more edges than ELK would. "Colour only"
+  ignores the groups when placing nodes.
 - Connected pieces are laid out one at a time and packed in rows; nodes with no edge go in one block.
 
 **Search** stands in for TALA, D2's layout engine, in `js/dag/search.js`. It is not TALA's code
@@ -450,9 +455,14 @@ starts from a random arrangement and swaps two nodes or two boxes, keeping the s
 score drops (simulated annealing: early on, some swaps that raise it are kept too). The score adds
 edge length, bends, crossings and edges that point against the chosen direction. Several seeds are
 tried, each shown as a small picture with its score, and the lowest is kept. Edges are then routed
-with an A* search over lines laid through and beside the nodes. TALA also scores symmetry,
-median distance and the clustering of like nodes; those, its label placement and its per-container
-directions are not modelled.
+with an A* search over lines laid through and beside the nodes. 
+What the real TALA does that this does not, from its source (`d2layouts/d2talalayout` in D2, about
+64 000 lines of Go): each seed first discovers structure in the graph (sequences, hubs, clusters,
+trees, and layered parts ranked by network simplex), then places nodes and refines the placement
+(swaps, transposes, gap normalisation, cluster optimisation, symmetry balancing, equal spacing),
+packs disconnected parts, routes edges over an orthogonal visibility graph with channel nudging,
+places labels, and scores the finished layout; the lowest penalty wins, then the smallest area.
+None of the structure discovery, symmetry, label placement or per-container direction is here.
 
 The numbers in the panel are measured from the lines as drawn (`measure` in `js/dag/common.js`):
 crossings are counted where two drawn edges cross, and edge length is in node widths.
@@ -466,7 +476,7 @@ graphs that each show one thing: a shortcut edge, a fan, cycles, a tangle, a tre
 Hovering or tapping a node, or the arrow keys with the drawing focused, picks out the node and its
 edges. The address after `#` holds the graph, the method, the step and every setting.
 
-Code: `layered.js` and `search.js` are the two layouts, `common.js` the shared measurements and
+Code: `layered.js` and `search.js` are the two layouts, `route.js` the right-angle router, `common.js` the shared measurements and
 seeded random number, `graphs.js` the samples, `main.js` the page. `css/dag.css` is the stylesheet.
 `node tests/dag/run.mjs` checks the layouts' rules without a browser; `node tests/dag/page.mjs`
 presses every control in a real one.
