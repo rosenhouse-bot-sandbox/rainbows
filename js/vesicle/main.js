@@ -3,10 +3,10 @@ import { perspective, lookAt, sstep } from './glx.js';
 import { Scene } from './scene.js';
 import { PH, ARRIVE, APPROACH, REACH } from './profile.js';
 import { INFO } from './info.js';
-import { Experiment, Sampler, PARAMS, T_TOTAL, quantiles, progressOf } from './infer.js';
-import { IrmCamera, irmOptics, moment, contrastCurve, hue, css, IRM, APO, SPAN, SPAN_DIFF, WELL, N_MEDIUM, N_LIPID } from './irm.js';
+import { Experiment, Sampler, PARAMS, NP, T_TOTAL, FAR_P, DOCKED_P, quantiles, progressOf } from './infer.js';
+import { IrmCamera, irmOptics, orangeBlur, orangeDefocus, moment, contrastCurve, hue, css, IRM, APO, SPAN, SPAN_DIFF, WELL, N_MEDIUM, N_LIPID } from './irm.js';
 import { Dashboard } from './inferui.js';
-import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, EV, GAP } from './vitro.js';
+import { Camera, CAM, optics, THETA_MAX, LAMBDA_EX, LAMBDA_EM, LAMBDA_EM_O, QUENCH, QUENCH_O, PKA_O, PH_IN, EV, GAP } from './vitro.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view');
@@ -17,18 +17,18 @@ const phone = matchMedia('(max-width: 899px)');
 const STAGES = [
   { at: -ARRIVE, name: 'Arrival', title: 'A vesicle arrives',
     body: `A synaptic vesicle packed with glutamate wanders the last ${APPROACH} nanometres by Brownian motion. About ${REACH} nanometres up, tethers on the active zone catch it and reel it in. Its synaptobrevin strands hang free until syntaxin and SNAP-25 can reach them.`,
-    vitro: `A vesicle wanders toward the membrane on the glass until tethers catch it about ${REACH} nanometres up. Its pHluorin tags are quenched, so the fluorescence camera sees almost nothing. A reflection camera needs no dye: its spot flickers as the vesicle's height changes, then settles.` },
+    vitro: `A vesicle wanders toward the membrane on the glass until tethers catch it about ${REACH} nanometres up. Its pHluorin is quenched, but the orange protein beside it is still half lit, so the vesicle shows in orange and brightens as it sinks into the field. A reflection camera needs no dye: its spot flickers as the vesicle's height changes, then settles.` },
   { at: 0, name: 'Docked', title: 'Docked and loaded',
     body: 'A synaptic vesicle packed with glutamate waits a few nanometres above the cell membrane. Half-zipped SNARE proteins hold it there, ready to fire.',
-    vitro: 'The vesicle waits just above the membrane, about 50 nanometres over the glass. Its pHluorin tags sit in acid and stay dark, so the camera sees almost nothing.' },
+    vitro: 'The vesicle waits just above the membrane, about 50 nanometres over the glass. In its acid pHluorin stays dark, so the camera sees a steady orange spot and almost nothing at 510 nanometres.' },
   { at: PH.CA, name: 'Trigger', title: 'Calcium pulls the trigger',
     body: 'A nerve impulse opens calcium channels. Calcium binds synaptotagmin, and the SNAREs zip shut toward their anchors, forcing the two membranes into contact.',
-    vitro: 'Calcium enters and the SNAREs zip shut, pulling the vesicle down into the brighter part of the evanescent field. The tags are still quenched.' },
+    vitro: 'Calcium enters and the SNAREs zip shut, pulling the vesicle down into the brighter part of the evanescent field. The orange spot brightens a little; pHluorin is still quenched.' },
   { at: PH.STALK, name: 'Hemifusion', title: 'The facing layers merge',
     body: 'The near halves of the two bilayers join in an hourglass stalk. Their lipids start to mix, but the far layers are intact and the contents stay sealed.' },
   { at: PH.PORE, name: 'Pore opens', title: 'A fusion pore opens',
     body: 'The far layers give way and a channel barely two nanometres across connects the vesicle to the outside. The first glutamate slips through.',
-    vitro: 'A pore two nanometres wide opens. Protons rush out, the pH inside jumps from 5.5 to 7.4, and every pHluorin lights up at once: a flash on the camera.' },
+    vitro: 'A pore two nanometres wide opens. Protons rush out, the pH inside jumps from 5.5 to 7.4, and every pHluorin lights up at once: the spot on the camera flashes from orange to yellow. The orange protein only doubles.' },
   { at: PH.DILATE, name: 'Release', title: 'The pore widens',
     body: 'The neck dilates and glutamate pours into the 20-nanometre cleft. It reaches receptors on the next cell in microseconds, and their channels open.',
     vitro: 'The neck dilates and glutamate pours into the thin layer of medium over the glass. The glowing tags slide down toward the glass, where the laser field is strongest.' },
@@ -41,21 +41,23 @@ const STAGES = [
 ];
 const LABELS = Object.fromEntries(Object.entries(INFO).map(([id, v]) => [id, v.label]));
 LABELS.cleft = 'Synaptic cleft, 20 nm'; LABELS.gap = `Medium, ${GAP} nm`; LABELS.coverslip = 'Coverslip, 0.17 mm';
-LABELS.objective = 'Objective, 100×, NA 1.49'; LABELS.laser = '488 nm laser in'; LABELS.emission = '510 nm fluorescence to camera';
+LABELS.objective = 'Objective, 100×, NA 1.49'; LABELS.laser = '488 nm laser in'; LABELS.emission = `${LAMBDA_EM} and ${LAMBDA_EM_O} nm fluorescence to camera`;
 LABELS.dish = 'Glass-bottom dish, 35 mm'; LABELS.neigh = 'Other vesicles, some fusing';
 // The story the inference view tells, keyed to milliseconds since the (hidden) moment of fusion.
 const INF_STAGES = [
-  { at: -1e9, name: 'Before', title: 'Nothing has happened yet',
-    body: 'Only a dim, quenched spot. The beliefs on the right are still the priors: what the literature would let us assume before seeing this video. The gold band in the scene is where the membrane could be.',
-    irm: 'Only a dim, quenched spot, and a reflection picture that is not changing. The cell has a static pattern of its own, so a picture that stays the same tells us nothing yet. The beliefs are still the priors.' },
-  { at: 0, name: 'The flash', title: 'The flash pins the moment',
-    body: 'Brightness jumps when the pore opens. Within two frames the moment of fusion is known to a few milliseconds, and the number of tags follows from how bright the flash is.' },
+  { at: -1e9, name: 'Waiting', title: 'Nothing at the membrane yet',
+    body: 'The vesicle is still high in the field, a faint orange smudge. The beliefs on the right are the priors: what the literature would let us assume before seeing this video. The gold band in the scene is where the membrane could be.' },
+  { arrive: true, name: 'Arrival', title: 'Orange without green: it has arrived',
+    body: 'The 589 nm band steps up and the 510 nm band does not. No pore has opened, so the change must be position: the vesicle has come down into brighter light. The green outline is the 510 nm band alone, which barely notices.',
+    irm: 'The 589 nm band steps up and the 510 nm band does not, so no pore has opened: the vesicle has come down into brighter light. The reflection picture changes at the same moment, because the vesicle now sits at a different height.' },
+  { at: 0, name: 'The flash', title: 'Green catches up: the pore',
+    body: `The ${LAMBDA_EM} nm band jumps ${Math.round(1 / QUENCH)}-fold and the ${LAMBDA_EM_O} nm band only doubles. Only acid leaving through a pore does that. Within two frames the moment of fusion is known to a few milliseconds, and the number of tags follows from how bright the flash is.` },
   { at: 25, name: 'Settling', title: 'The shape of the rise',
-    body: 'As the vesicle flattens its tags sink into brighter light. How fast that happens says how quickly it collapsed. Size is harder: a bigger vesicle with fewer tags looks much the same.',
-    irm: 'The reflection picture starts to change as the vesicle flattens. How large the change is depends on the size of the vesicle and not on its tags, and how fast it happens follows the pore as it widens.' },
+    body: 'Both bands now climb together as the vesicle flattens and its tags sink into brighter light. How fast that happens says how quickly it collapsed. Size is harder: it shows only in how much dimmer the docked vesicle was.',
+    irm: 'The reflection picture changes as the vesicle flattens. How large the change is depends on the size of the vesicle and not on its tags, and how fast it happens follows the pore as it widens.' },
   { at: 120, name: 'Spreading', title: 'Spreading reveals diffusion',
     body: 'The spot widens as tagged synaptobrevin drifts away, and every extra frame sharpens the diffusion estimate. The blue fan is the forecast for frames not yet seen.',
-    irm: 'The spot widens as the tags drift away, which gives diffusion. The green outlines are what the fluorescence video alone would allow: compare them with the gold for vesicle size, collapse time and pore width.' },
+    irm: 'The spot widens as the tags drift away, which gives diffusion. The green outlines are what the two fluorescence bands alone would allow: compare them with the gold for vesicle size, collapse time and pore width.' },
 ];
 const FAR = new Set(['reserve', 'mito', 'psd']);
 
@@ -189,8 +191,8 @@ function syncUI() {
   }
   const pl = st.play ? 'Pause' : (st.infer ? st.t > T_TOTAL - 2 : st.p > 0.995) ? 'Replay' : st.infer ? 'Play the video' : 'Play the fusion';
   if (shown.play !== pl) { shown.play = pl; $('play').setAttribute('aria-pressed', st.play); $('play').setAttribute('aria-label', pl); }
-  const SG = st.infer ? INF_STAGES : STAGES, pos = st.infer ? st.t - truthOf(st.seed)[0] : st.p;
-  let i = 0; while (i < SG.length - 1 && pos >= SG[i + 1].at) i++;
+  const SG = st.infer ? INF_STAGES : STAGES, tr = st.infer ? truthOf(st.seed) : null, pos = st.infer ? st.t - tr[0] : st.p;
+  let i = 0; while (i < SG.length - 1 && pos >= (SG[i + 1].arrive ? tr[5] - tr[0] : SG[i + 1].at)) i++;
   if (i !== stageIdx) {
     const first = stageIdx < 0; stageIdx = i;
     const apply = () => {
@@ -218,15 +220,15 @@ $('angle').addEventListener('input', (e) => { st.angle = +e.target.value; syncUI
 $('wl').min = IRM.min; $('wl').max = IRM.max;
 function applyIrm() {
   const on = st.irm && st.vitro;
-  $('irm').checked = st.irm; $('irmSub').checked = st.sub; $('ctl-wl').hidden = !st.irm; $('irmCol').hidden = !on; $('keyIrm').hidden = !on; $('keyAlone').hidden = !on;
+  $('irm').checked = st.irm; $('irmSub').checked = st.sub; $('ctl-wl').hidden = !st.irm; $('irmCol').hidden = !on; $('keyIrm').hidden = !on; $('keyAloneText').textContent = on ? 'From fluorescence alone' : `From the ${LAMBDA_EM} nm band alone`;
   $('pip').classList.toggle('dual', on); $('inf').classList.toggle('dual', on); document.body.classList.toggle('irm', on);
   for (const t of document.querySelectorAll('.irmTile')) t.hidden = !on;
   $('obsCap').textContent = on ? 'TIRF' : 'Recorded'; $('expectCap').textContent = on ? 'Expected' : 'Model expects';
   $('pipNote').textContent = on
-    ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. ` + (st.sub
+    ? `Left: fluorescence, ${LAMBDA_EM} nm drawn in green and ${LAMBDA_EM_O} nm in orange. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. ` + (st.sub
       ? `A frame taken before our vesicle arrived has been subtracted, so mid-grey means no change since then, and black and white are ${+(SPAN_DIFF * 100).toFixed(1)}% of the background darker and brighter. Vesicles that were already docked cancel out. Ours shows alone, and fades to nothing as it merges into the flat membrane.`
       : `Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Each spot is a vesicle seen through the flat membrane, not a dent in it, and it shows whether its tags are lit or not. A real cell would add a static mottle of its own, left out here.`)
-    : `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
+    : `Two pictures laid over each other: ${LAMBDA_EM} nm light from pHluorin, drawn in green, and ${LAMBDA_EM_O} nm light from the orange protein, drawn in orange. Orange alone is a vesicle that has not fused; yellow is one whose pore has opened. Each square is one ${CAM.nm} nm pixel, and the grain is shot noise.`;
 }
 $('irm').addEventListener('change', (e) => { st.irm = e.target.checked; applyIrm(); stageIdx = -1; delete shown.wl; syncUI(); resize(); pipRect = $(st.infer ? 'inf' : 'pip').getBoundingClientRect(); });
 $('irmSub').addEventListener('change', (e) => { st.sub = e.target.checked; irmCam.drawn = false; irmRefKey = ''; applyIrm(); syncUI(); });
@@ -251,7 +253,8 @@ for (const [id, m] of [['modeVivo', 'vivo'], ['modeVitro', 'vitro'], ['modeInfer
   setMode(m);
   if (m === 'infer' && !reduced) { st.t = 0; st.play = true; syncUI(); }     // start the video from the top
 });
-$('energy').textContent = `Excitation ${LAMBDA_EX} nm, ${EV(LAMBDA_EX).toFixed(2)} eV per photon. Emission ${LAMBDA_EM} nm, ${EV(LAMBDA_EM).toFixed(2)} eV. The difference is lost as heat in the protein.`;
+$('energy').textContent = `One ${LAMBDA_EX} nm laser excites both proteins, ${EV(LAMBDA_EX).toFixed(2)} eV per photon. pHluorin gives back ${LAMBDA_EM} nm, ${EV(LAMBDA_EM).toFixed(2)} eV; the orange protein ${LAMBDA_EM_O} nm, ${EV(LAMBDA_EM_O).toFixed(2)} eV. The difference is lost as heat in the protein. In the vesicle's acid pHluorin keeps ${Math.round(QUENCH * 100)}% of its brightness and the orange protein ${Math.round(QUENCH_O * 100)}%.`;
+for (const el of document.querySelectorAll('[data-fill]')) el.textContent = { em: LAMBDA_EM, emO: LAMBDA_EM_O, q: QUENCH, qO: QUENCH_O.toFixed(2), pKa: PKA_O, pH: PH_IN, ratio: Math.round(QUENCH_O / QUENCH) }[el.dataset.fill];
 $('spin').addEventListener('change', (e) => { st.spin = e.target.checked; });
 $('lab').addEventListener('change', (e) => { st.labels = e.target.checked; $('labels').classList.toggle('off', !st.labels); writeHash(); });
 $('share').addEventListener('click', async () => {
@@ -400,12 +403,12 @@ function drawCamera(now) {
   if (reshuffle) camTick = now;
   // Other docked vesicles are in the field too, tags quenched; deeper light means more haze.
   // Brightness is scaled so a fully lit vesicle resting on the glass would just saturate.
-  const W = 5.5 / 36, emit = scene.emit.map((e) => [e[0], e[1], e[2] * W]);
-  for (const [x, z, rad] of scene.docked) emit.push([x, z, 36 * 0.04 * W * o.at(GAP + rad + 6)]);
-  for (const e of scene.emitN) emit.push([e[0], e[1], e[2] * W, e[3]]);
+  const W = 5.5 / 36, emit = scene.emit.map((e) => [e[0], e[1], e[2] * W, 0, e[4] * W]);
+  for (const [x, z, rad] of scene.docked) { const b = 36 * W * o.at(GAP + rad + 6); emit.push([x, z, QUENCH * b, 0, QUENCH_O * b]); }
+  for (const e of scene.emitN) emit.push([e[0], e[1], e[2] * W, e[3], e[4] * W]);
   const bg = 0.035 + 0.05 * (o.I0 / 4) * Math.min(o.depth, 2600) / 100;
-  camera.render(emit, bg, reshuffle, st.irm ? irmNow().blurF : 1);
-  if (reshuffle) $('pipPeak').textContent = camera.peak;
+  camera.render(emit, bg, reshuffle, st.irm ? irmNow().blurF : 1, st.irm ? orangeBlur(st.lambda, st.focus) : orangeBlur());
+  if (reshuffle) { $('pipPeak').textContent = camera.peak; $('pipPeakO').textContent = camera.peakO; }
   const key = st.diam + '|' + st.angle;
   if (key !== curveKey && now - curveAt > 160) { curveKey = key; curveAt = now; curve = scene.fluorCurve(st.diam / 2 - 2.4); }
   if (curve) camera.drawTrace(curve, whole(st.p));
@@ -456,12 +459,12 @@ $('zoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';
 function truthOf(seed) {
   const r = (k) => { const v = Math.sin(seed * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
   const g = (k) => Math.sqrt(-2 * Math.log(r(k) + 1e-9)) * Math.cos(6.2832 * r(k + 0.5));
-  return [110 + 90 * r(1), Math.log(st.diam), Math.log(30) + 0.4 * g(2), Math.log(30) + 0.7 * g(3), Math.log(0.2) + 0.7 * g(4)];
+  return [110 + 90 * r(1), Math.log(st.diam), Math.log(30) + 0.4 * g(2), Math.log(30) + 0.7 * g(3), Math.log(0.2) + 0.7 * g(4), 30 + 50 * r(5)];
 }
 // The maths summary. Prior values are read from the model so the text cannot drift from the code.
 for (const P of PARAMS) {
   const li = document.createElement('li');
-  li.textContent = P.log ? `${P.name}: ${P.med} ${P.unit} ×/÷ ${P.gsd}` : `${P.name}: anywhere in the ${T_TOTAL} ms of video, equally likely`;
+  li.textContent = P.log ? `${P.name}: ${P.med} ${P.unit} ×/÷ ${P.gsd}` : P.key === 'ta' ? `${P.name}: any time before the fusion, equally likely` : `${P.name}: anywhere in the ${T_TOTAL} ms of video, equally likely`;
   $('mathPriors').append(li);
 }
 for (const t of [
@@ -474,10 +477,12 @@ $('mathBtn').addEventListener('click', () => { st.play = false; syncUI(); $('mat
 $('mathClose').addEventListener('click', () => $('math').close());
 $('math').addEventListener('click', (e) => { if (e.target === $('math')) $('math').close(); });   // a click on the backdrop
 const dash = new Dashboard({ obs: $('obs'), exp: $('expect'), obs2: $('obs2'), exp2: $('expect2'), fan: $('fan'), pore: $('pore'), strips: $('strips'), pair: $('pair') });
-let samplerT = null;         // with the reflection camera on: a second sampler that sees the fluorescence video only
+// A second sampler that is given less, to show what the rest added: the 510 nm band only, or,
+// with the reflection camera on, both fluorescence bands but no reflection video.
+let samplerT = null;
 let exper = null, sampler = null, expKey = '', viewDiam = 42, diamAt = 0, infTick = 0, goal = null;
-const belief = { p: [0.2, 0.2, 0.2, 0.2, 0.2], R: [20, 20, 20, 20, 20], sp: [80, 80, 80, 80, 80], fused: 0, ready: false };
-const rowBuf = new Float32Array(1300 * 5), qP = new Float32Array(1300), qR = new Float32Array(1300), qS = new Float32Array(1300);
+const belief = { p: [FAR_P, FAR_P, FAR_P, FAR_P, FAR_P], R: [20, 20, 20, 20, 20], sp: [80, 80, 80, 80, 80], fused: 0, ready: false };
+const rowBuf = new Float32Array(1300 * NP), qP = new Float32Array(1300), qR = new Float32Array(1300), qS = new Float32Array(1300);
 function runInference(now, dt) {
   const key = [st.dt, st.power, st.angle, st.prior, st.seed, st.diam, st.irm ? st.lambda + '/' + st.focus : 0].join('|');
   if (key !== expKey) {
@@ -485,7 +490,7 @@ function runInference(now, dt) {
     exper = new Experiment({ dt: st.dt, power: st.power, angle: st.angle, prior: st.prior, irm: st.irm, lambda: st.lambda, focus: st.focus });
     exper.simulate(truthOf(st.seed), st.seed * 7 + 3);
     if (sampler) { sampler.both = st.irm; sampler.reset(exper); } else sampler = new Sampler(exper, 7, st.irm);
-    if (!st.irm) samplerT = null; else if (samplerT) samplerT.reset(exper); else samplerT = new Sampler(exper, 11, false);
+    if (samplerT) { samplerT.orange = st.irm; samplerT.reset(exper); } else samplerT = new Sampler(exper, 11, false, st.irm);
     belief.ready = false; goal = null;
   }
   const upto = Math.min(exper.nf, Math.floor(st.t / st.dt + 1e-6)), budget = phone.matches ? 5 : 7;
@@ -495,13 +500,13 @@ function runInference(now, dt) {
   // happen to be this instant, and ease everything on screen toward that summary. The picture
   // then moves when the evidence moves, not with every step of the sampler.
   if (infTick % 3 === 0 || !belief.ready) {
-    const n = sampler.rows(rowBuf, 1200), s3 = new Float64Array(5);
+    const n = sampler.rows(rowBuf, 1200), s3 = new Float64Array(6);
     if (n >= 40) {
       let fused = 0;
       for (let s = 0; s < n; s++) {
-        const u = rowBuf.subarray(s * 5, s * 5 + 5); exper.state(u, st.t, s3);
+        const u = rowBuf.subarray(s * NP, s * NP + NP); exper.state(u, st.t, s3);
         const f = st.t > u[0]; fused += f;
-        qP[s] = f ? progressOf(s3[2]) : 0.2; qR[s] = Math.exp(u[1]) / 2 - 2.4; qS[s] = Math.sqrt(s3[1]) * CAM.nm;
+        qP[s] = f ? progressOf(s3[2]) : st.t > u[5] ? DOCKED_P : FAR_P; qR[s] = Math.exp(u[1]) / 2 - 2.4; qS[s] = Math.sqrt(s3[1]) * CAM.nm;
       }
       const Q = [0.05, 0.25, 0.5, 0.75, 0.95];
       goal = { p: quantiles(qP, n, Q), R: quantiles(qR, n, Q), sp: quantiles(qS, n, Q), fused: fused / n };
@@ -516,7 +521,7 @@ function runInference(now, dt) {
   const d = 2 * (belief.R[2] + 2.4);
   if (Math.abs(d - viewDiam) >= 2 && now - diamAt > 800) { viewDiam = Math.min(90, Math.max(30, Math.round(d))); diamAt = now; }
   if (++infTick % 3 === 0) {
-    dash.draw(exper, sampler, st.t, st.truth, samplerT);
+    dash.draw(exper, sampler, st.t, st.truth, samplerT, st.irm ? 'TIRF alone' : `${LAMBDA_EM} nm alone`);
     if (dash.poreText && shown.pore !== dash.poreText) { shown.pore = dash.poreText; $('poreInfo').textContent = dash.poreText; }
     const fr = `frame ${sampler.upto} of ${exper.nf}`;
     if (shown.fr !== fr) { shown.fr = fr; $('infFrames').textContent = fr; }

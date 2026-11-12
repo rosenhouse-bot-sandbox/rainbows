@@ -134,19 +134,36 @@ presynaptic membrane, drawn lipid by lipid and to scale in nanometres.
   facing leaflets from hemifusion onward, the far leaflets only once the pore is open.
 
 An **In vivo / In vitro** switch changes the setting. In vitro, the cell sits on a glass-bottom
-dish over a TIRF microscope, and synaptobrevin carries superecliptic pHluorin on its lumenal end:
+dish over a TIRF microscope, and synaptobrevin carries two fluorescent proteins in a row on its
+lumenal end, superecliptic pHluorin and an orange protein:
 
 - A 488 nm laser hits the glass at an adjustable angle. Past the critical angle it reflects
   totally and leaves an evanescent field that decays exponentially with height
   (`d = λ / 4π√(n₁² sin²θ − n₂²)`); below it, the beam refracts into the cell and lights all of it.
   The field is drawn as a glow, as light falling on the molecules, and in cross-section on the
   cutaway faces with a ruler line at each multiple of the penetration depth.
-- pHluorin is quenched at the vesicle's pH 5.5 and lights up when the pore opens. 510 nm
-  emission leaves in all directions.
+- pHluorin is quenched at the vesicle's pH 5.5 (to 4% of its brightness outside) and lights up
+  when the pore opens. 510 nm emission leaves in all directions.
+- The orange protein is modelled on CyOFP1, whose Stokes shift is large enough for the same
+  488 nm laser to excite it: emission peak 589 nm, pKa 5.5. It is treated as one acid group, lit
+  fraction `1 / (1 + 10^(pKa − pH))`, which leaves it at 51% of its outside brightness in the
+  vesicle. So it shows where a vesicle is before any pore opens (its light follows the
+  evanescent field at the tags' height), and at the pore it only doubles while pHluorin rises
+  25-fold. One of each per synaptobrevin, taken to be equally bright once both are lit.
+- A dichroic mirror is assumed to send the two bands to separate halves of the sensor with no
+  light from one protein landing in the other's half. The camera panel lays the two pictures
+  back over each other, 510 nm drawn in green and 589 nm in orange (a spot lit in both comes out
+  yellow), each with its own shot noise, and the trace has one line per band. The 589 nm blur
+  is wider (202 nm against 175 nm), and wider again (237 nm) because the objective, focused for
+  510 nm, is 162 nm out of focus at 589 nm in the page's model of its chromatic error.
+- Not modelled: bleed between the bands, the two proteins' different bleaching and maturation,
+  energy transfer between them (they sit a few nanometres apart, and pHluorin's emission overlaps
+  the orange protein's absorption, so a real tandem tag would pass some of the green light's
+  energy to the orange protein), and the time protons take to leave through a narrow pore.
 - The distance slider runs from 40 nm out to 160 mm, so you can pull back through the cell, the
   0.17 mm coverslip and the immersion oil to the dish and the 100×, NA 1.49 objective, all to scale.
 - A picture-in-picture camera view shows what the microscope records: each tag blurred to the
-  175 nm diffraction limit, 65 nm pixels, shot noise, and a trace of brightness over the event.
+  diffraction limit, 65 nm pixels, shot noise, and a trace of brightness over the event.
 
 - The laser footprint is tens of micrometres wide, so the whole underside of the cell is lit.
   A few hundred other vesicles sit near the glass; just under half fuse at their own moment
@@ -157,7 +174,7 @@ Optics, bench geometry and the camera simulation are in `js/vesicle/vitro.js`.
 An optional **Interference reflection camera** (a checkbox in vitro) adds a second, dye-free view
 through the same objective:
 
-- Light of one colour, 560 to 720 nm (630 nm by default), goes straight up through the objective.
+- Light of one colour, 620 to 720 nm (630 nm by default), goes straight up through the objective.
   The 0.4% reflected where glass meets medium is the reference wave; membranes and the vesicle's
   watery interior scatter a far weaker wave back, with a phase of `4πnz/λ` set by their height.
   The camera records the two added together.
@@ -173,7 +190,8 @@ through the same objective:
   baseline's own shot noise carried along): vesicles already docked cancel, ours shows alone and
   fades to nothing as it merges. During the arrival the spot swings from bright to dark as the
   vesicle comes down through part of a fringe. The inference view still starts from a docked vesicle.
-- The wavelength is longer than the laser's to stay clear of the pHluorin band, not because long
+- The wavelength is longer than the laser's to stay clear of both emission bands (the slider
+  starts at 620 nm, past the 589 nm band), not because long
   wavelengths resolve more: within the slider's range, shorter light gives a sharper, stronger spot.
 - On the cutaway faces, beside the lines that mark each multiple of the evanescent depth, level
   lines in the reflection colour mark the heights where a small piece of membrane looks brightest
@@ -199,13 +217,28 @@ The model is in `js/vesicle/irm.js`.
 A third setting, **Inference**, turns the problem around. It simulates a noisy 400 ms TIRF video
 of one fusion event from hidden parameters, then infers them back with Bayes' rule, live:
 
-- Five unknowns: the moment of fusion, vesicle diameter, number of pHluorin copies, collapse
-  time and the tags' diffusion coefficient, each with a prior (log-normal, or flat for the time).
-- The forward model gives the expected photons in every pixel of every frame; the likelihood is
-  Poisson. An affine-invariant ensemble of 40 walkers samples the posterior in the browser.
+- Six unknowns: the moment of arrival, the moment of fusion, vesicle diameter, number of tag
+  copies, collapse time and the tags' diffusion coefficient, each with a prior (log-normal; flat
+  for the fusion time; for the arrival, any time before the fusion).
+- Until it arrives the vesicle hangs about 120 nm above its docked height, where the page's
+  Arrival stage begins, and then it is docked: one step, not the wander and reeling-in of the
+  3D view.
+- The forward model gives the expected photons in every pixel of every frame of each band. The
+  bands share every unknown and the evanescent field, and differ only in how much the acid dims
+  them. Each band's likelihood is Poisson and the two add. A change of position moves both bands
+  by the same factor; a pore moves the 510 nm band about 13 times more than the 589 nm band.
+  An affine-invariant ensemble of 40 walkers samples the posterior in the browser.
+- A second sampler is given the 510 nm band alone and drawn as green outlines. For the default
+  event (42 nm, all frames seen, arrival truly at 40 ms) it puts the arrival between 10 and
+  54 ms; with the 589 nm band the range is 36 to 43 ms. The second band also narrows collapse
+  time (42–236 ms to 75–205 ms) and the pore width 40 ms after fusion (3–50 nm to 3–34 nm).
+  It does little for vesicle diameter (32–63 nm to 40–68 nm): size shows only in how much dimmer
+  the docked vesicle is than the flattened one, and a field 107 nm deep changes slowly over
+  a vesicle's height.
 - The video-time slider sets how many frames have been seen, so you can watch beliefs sharpen as
-  evidence arrives: the flash fixes the fusion time, the rise gives collapse time, the spreading
-  gives diffusion. Vesicle size stays vague, because it trades off against copy number.
+  evidence arrives: an orange step without a green one is the arrival, the green flash fixes
+  the fusion time, the rise gives collapse time, the spreading gives diffusion. Vesicle size
+  stays vague.
 - Uncertainty is drawn three ways: density strips (prior in grey, posterior in gold, with a 90%
   range and the bits learned), a fan chart that turns into a forecast past the last frame seen,
   and in the 3D scene a gold band around the best-estimate vesicle that holds 90% of the plausible
@@ -218,16 +251,17 @@ of one fusion event from hidden parameters, then infers them back with Bayes' ru
   nanometres. It is derived from each sample's fusion time, collapse time and vesicle size
   through the membrane shape; the model's pore opens at the moment of fusion and widens as the
   vesicle flattens, so there is no separate pore parameter.
-- With the interference reflection camera on, its video is a second likelihood on the same five
+- With the interference reflection camera on, its video is a further likelihood on the same six
   unknowns (Gaussian shot noise, 20,000 photoelectrons per pixel per millisecond). Every pixel
   has an unknown static brightness of its own, standing for the cell's fixed pattern, which is
-  integrated out, so only changes over time count and a docked vesicle tells nothing. A second
-  sampler runs on the fluorescence video alone and is drawn as green outlines, so the narrowing
-  is visible. For the default event (42 nm, all frames seen) the 90% range for vesicle diameter
-  goes from 33–63 nm to 41–43 nm, for collapse time from 41–216 ms to 79–92 ms, and for pore
-  width 40 ms after fusion from 3–51 nm to 21–27 nm (630 nm, focus on the fluorescence). At
-  720 nm, where the reflection camera is 541 nm out of focus, the same three are 41–44 nm,
-  73–90 ms and 21–29 nm: the model knows its own blur, so defocus costs contrast, not truth.
+  integrated out, so only changes over time count and a picture that stays the same tells
+  nothing. The green outlines then show the two fluorescence bands without the reflection video,
+  so the narrowing is visible. For the default event (42 nm, all frames seen) the 90% range for
+  vesicle diameter goes from 40–68 nm to 41–43 nm, for collapse time from 75–205 ms to 79–92 ms,
+  and for pore width 40 ms after fusion from 3–34 nm to 21–26 nm (630 nm, focus on the
+  fluorescence). At 720 nm, where the reflection camera is 541 nm out of focus, the same three
+  are 40–43 nm, 74–91 ms and 20–28 nm: the model knows its own blur, so defocus costs contrast,
+  not truth.
 
 A "How it works" button in that view opens a short summary of the mathematics (Bayes' rule, the
 priors, the forward model, the Poisson likelihood, the sampler, and how to read the results).

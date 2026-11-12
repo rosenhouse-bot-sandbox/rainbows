@@ -93,7 +93,7 @@
       </div>
       <div class="ctl" id="ctl-wl" hidden>
         <label for="wl"><span>Reflection wavelength</span><b id="wlV">630 nm</b></label>
-        <input id="wl" class="irm" type="range" min="560" max="720" step="5" value="630">
+        <input id="wl" class="irm" type="range" min="620" max="720" step="5" value="630">
         <small id="wlNote"></small>
         <div class="seg" role="group" aria-label="Which camera the shared objective is focused for">
           <span>Focus on</span>
@@ -131,7 +131,7 @@
     <ul class="key" id="keyInfer" aria-label="Key for the inference view" hidden>
       <li><i style="--c:#a0acd0"></i>Prior: assumed beforehand</li>
       <li><i style="--c:#ffcf6b"></i>Posterior: believed now</li>
-      <li id="keyAlone" hidden><i style="--c:#73ff5a"></i>From fluorescence alone</li>
+      <li id="keyAlone"><i style="--c:#73ff5a"></i><span id="keyAloneText">From the 510 nm band alone</span></li>
       <li><i style="--c:#78beff"></i>Forecast of unseen frames</li>
       <li><i style="--c:#ffffff"></i>True value (hidden)</li>
       <li class="wide">The posterior is sampled live by an ensemble of 40 walkers, each scoring a guess against every photon recorded so far. Bits count how many times the video has halved the uncertainty.</li>
@@ -139,8 +139,10 @@
     <ul class="key" id="keyVitro" aria-label="Colour key for light" hidden>
       <li data-cat="11" tabindex="0" role="button" aria-pressed="false"><i style="--c:#19b8ff"></i>488 nm laser light</li>
       <li data-cat="12" tabindex="0" role="button" aria-pressed="false"><i style="--c:#73ff5a"></i>510 nm fluorescence</li>
+      <li data-cat="21" tabindex="0" role="button" aria-pressed="false"><i style="--c:#ff8f24"></i>589 nm fluorescence</li>
       <li data-cat="13" tabindex="0" role="button" aria-pressed="false"><i style="--c:#4dff66"></i>pHluorin, lit</li>
       <li data-cat="14" tabindex="0" role="button" aria-pressed="false"><i style="--c:#4d6657"></i>pHluorin, quenched</li>
+      <li data-cat="20" tabindex="0" role="button" aria-pressed="false"><i style="--c:#ff801a"></i>Orange protein</li>
       <li id="keyIrm" hidden><i id="keyIrmDot"></i><span id="keyIrmText">Reflection light</span></li>
       <li class="wide" id="energy"></li>
     </ul>
@@ -173,7 +175,7 @@
     <div class="pipCol">
       <b class="pipHead" id="tirfHead">Fluorescence</b>
       <div class="pipImg">
-        <canvas id="cam" width="128" height="128" aria-label="Simulated fluorescence image of the whole lit field around the fusion site"></canvas>
+        <canvas id="cam" width="128" height="128" aria-label="Simulated fluorescence image of the whole lit field around the fusion site, 510 nm light drawn in green and 589 nm light in orange"></canvas>
         <i class="pipBox" id="pipBox"></i>
         <div class="pipScale"><i id="pipBar"></i><em>1 µm</em></div>
       </div>
@@ -183,7 +185,7 @@
       </div>
       <div class="pipTrace">
         <span class="axY" aria-hidden="true">Intensity</span>
-        <canvas id="trace" width="336" height="96" aria-label="Spot intensity at the fusion site against time over the course of fusion"></canvas>
+        <canvas id="trace" width="336" height="96" aria-label="Spot intensity at the fusion site against time over the course of fusion, one line for 510 nm and one for 589 nm"></canvas>
         <span class="axX" aria-hidden="true">Time</span>
       </div>
     </div>
@@ -205,18 +207,18 @@
       </div>
     </div>
   </div>
-  <p class="pipCount">Brightest pixel in the zoom this frame: <b id="pipPeak">0</b> photons</p>
+  <p class="pipCount">Brightest pixel in the zoom this frame, in photons:<br><b id="pipPeak">0</b> at 510 nm, <b id="pipPeakO">0</b> at 589 nm</p>
   <p id="pipNote"></p>
 </figure>
 
 <section class="inf" id="inf" aria-label="Inference from the video" hidden>
   <header><b>Evidence</b><span id="infFrames">frame 0 of 40</span><button class="mathBtn" id="mathBtn" aria-haspopup="dialog">How it works</button></header>
   <div class="infTop">
-    <figure><canvas id="obs" width="24" height="24" aria-label="The fluorescence frame the camera recorded"></canvas><figcaption id="obsCap">Recorded</figcaption></figure>
+    <figure><canvas id="obs" width="24" height="24" aria-label="The fluorescence frame the camera recorded, both bands overlaid"></canvas><figcaption id="obsCap">Recorded</figcaption></figure>
     <figure><canvas id="expect" width="24" height="24" aria-label="The fluorescence frame the model expects"></canvas><figcaption id="expectCap">Model expects</figcaption></figure>
     <figure class="irmTile" hidden><canvas id="obs2" width="24" height="24" aria-label="Recorded change in the reflection picture since the first frame"></canvas><figcaption>Reflection</figcaption></figure>
     <figure class="irmTile" hidden><canvas id="expect2" width="24" height="24" aria-label="The change in the reflection picture that the model expects"></canvas><figcaption>Expected</figcaption></figure>
-    <canvas id="fan" aria-label="Brightness over time with belief and forecast bands"></canvas>
+    <canvas id="fan" aria-label="Brightness over time in the 510 nm and 589 nm bands, with belief and forecast bands"></canvas>
   </div>
   <header><b>Pore width</b><span id="poreInfo"></span></header>
   <canvas id="pore" aria-label="Believed width of the fusion pore in nanometres against video time"></canvas>
@@ -229,7 +231,7 @@
 <dialog class="math" id="math" aria-labelledby="mathTitle">
   <button class="mathClose" id="mathClose" aria-label="Close">×</button>
   <h2 id="mathTitle">How the inference works</h2>
-  <p class="lede">The video is a few thousand photon counts. The question is which values of five biological unknowns, written θ, could have produced them, and how sure we can be.</p>
+  <p class="lede">The video is a few thousand photon counts. The question is which values of six unknowns, written θ, could have produced them, and how sure we can be.</p>
 
   <h3>1. Bayes' rule</h3>
   <p class="eq">p(θ | video) ∝ p(video | θ) × p(θ)</p>
@@ -240,20 +242,21 @@
   <ul id="mathPriors"></ul>
 
   <h3>3. The forward model: from θ to expected photons</h3>
-  <p>A guess is turned into the image it predicts. The spot is a blurred point, so pixel at distance <i>r</i> from the centre, at time <i>t</i>, expects</p>
+  <p>A guess is turned into the two images it predicts, one for each band of the camera. The spot is a blurred point, so in either band the pixel at distance <i>r</i> from the centre, at time <i>t</i>, expects</p>
   <p class="eq">λ(<i>r</i>, <i>t</i>) = <i>b</i> + <i>A</i>(<i>t</i>) / (2π<i>s</i>²) · exp(−<i>r</i>² / 2<i>s</i>²)</p>
   <p>with background <i>b</i>, total brightness <i>A</i> and blur <i>s</i>:</p>
   <p class="eq"><i>A</i>(<i>t</i>) = <i>N</i> · <i>P</i> · <i>q</i>(<i>t</i>) · <i>E</i>(<i>t</i>)<br><i>s</i>(<i>t</i>)² = σ<sub>PSF</sub>² + footprint + 2<i>D</i>·(<i>t</i> − <i>t</i><sub>f</sub>)</p>
-  <p><i>N</i> is the number of tags and <i>P</i> the laser power. <i>q</i> jumps from 0.04 to 1 at the moment of fusion <i>t</i><sub>f</sub>, when the acid escapes. <i>E</i> is the evanescent intensity at the tags' height, e<sup>−z/d</sup>; it rises as the vesicle flattens by a fraction 1 − e<sup>−(t − t<sub>f</sub>)/τ</sup> and the tags sink toward the glass. <i>D</i> is how fast they then diffuse apart.</p>
+  <p><i>N</i> is the number of tags and <i>P</i> the laser power. <i>q</i> is the only thing that differs between the bands. At the moment of fusion <i>t</i><sub>f</sub>, when the acid escapes, it jumps to 1 from <span data-fill="q"></span> at <span data-fill="em"></span> nm (pHluorin) and from <span data-fill="qO"></span> at <span data-fill="emO"></span> nm (the orange protein, pK<sub>a</sub> <span data-fill="pKa"></span>, in a vesicle at pH <span data-fill="pH"></span>). <i>E</i> is the evanescent intensity at the tags' height, e<sup>−z/d</sup>, the same for both. It steps up at the moment of arrival, when the vesicle comes down to the membrane, and rises again as the vesicle flattens by a fraction 1 − e<sup>−(t − t<sub>f</sub>)/τ</sup> and the tags sink toward the glass. <i>D</i> is how fast they then diffuse apart.</p>
+  <p>So a change in <i>E</i> (position) moves both bands by the same factor, and a change in <i>q</i> (the pore) moves the 510 nm band about <span data-fill="ratio"></span> times more than the 589 nm band. That difference is what lets the two be told apart.</p>
 
   <h3>4. The likelihood</h3>
   <p>Photon counts scatter around their expected value by Poisson statistics. For a count <i>k</i> in each pixel of each frame seen so far:</p>
-  <p class="eq">ln p(video | θ) = Σ<sub>frames</sub> Σ<sub>pixels</sub> ( <i>k</i> ln λ − λ )</p>
-  <p>Moving the video-time slider changes which frames are in that sum.</p>
+  <p class="eq">ln p(video | θ) = Σ<sub>bands</sub> Σ<sub>frames</sub> Σ<sub>pixels</sub> ( <i>k</i> ln λ − λ )</p>
+  <p>Each band is its own picture with its own noise, so each has a likelihood of its own and the two add. Moving the video-time slider changes which frames are in the sum. The green outlines repeat the whole inference with the 510 nm band only, to show what the orange protein added.</p>
 
   <h3>5. Sampling the posterior</h3>
   <p>There is no formula for the result, so it is explored by 40 "walkers", each holding one guess. A walker proposes a step along the line to another walker, stretched by a random factor <i>z</i>, and takes it with probability</p>
-  <p class="eq">min( 1, <i>z</i><sup>4</sup> · p(θ′ | video) / p(θ | video) )</p>
+  <p class="eq">min( 1, <i>z</i><sup>5</sup> · p(θ′ | video) / p(θ | video) )</p>
   <p>Better guesses are always accepted, worse ones sometimes. Over many steps the walkers visit each region in proportion to its posterior probability, and those visits are the samples everything else is drawn from.</p>
 
   <h3>6. Reading the result</h3>
@@ -266,7 +269,7 @@
   <h3>7. A second camera</h3>
   <p>With the interference reflection camera on, each frame brings a second picture. A guess predicts it too: a spot whose contrast <i>C</i> (its brightness as a fraction of the background) follows from the membrane's shape, so from the vesicle size and how far it has flattened, and not from the tags at all.</p>
   <p class="eq">ln p(both | θ) = ln p(video | θ) − Σ ( <i>y</i>′ − <i>C</i>′ )² / 2σ²</p>
-  <p>Here <i>y</i> is the recorded contrast in a pixel and σ its shot noise. The primes mean "less this pixel's own average over the frames seen": the cell has a static pattern nobody knows, so only changes count. The green outlines repeat the whole inference without this term, to show what the second camera added.</p>
+  <p>Here <i>y</i> is the recorded contrast in a pixel and σ its shot noise. The primes mean "less this pixel's own average over the frames seen": the cell has a static pattern nobody knows, so only changes count. With this camera on, the green outlines are the inference from both fluorescence bands without this term, to show what the second camera added.</p>
   <ul id="mathIrm"></ul>
 
   <p class="fine">The video here is generated from this same model, so the inference is being tested on its own assumptions. The spot centre, blur, background and field depth are treated as known.</p>

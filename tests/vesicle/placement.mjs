@@ -5,7 +5,7 @@
 // Runs the scene without a GPU at every step of fusion progress, for three vesicle sizes, in the
 // cell and on glass, and tests every protein ball against the membrane shape. It fails if part of
 // a cytoplasmic protein is on the far side of a membrane (in the vesicle's lumen or the cleft), if
-// a protein's bulk is pushed into a membrane, or if a pHluorin tag is outside the lumen or lies
+// a protein's bulk is pushed into a membrane, or if a fluorescent tag (either protein) is outside the lumen or lies
 // across the axis of a pore too narrow for it. It cannot see anything that is only wrong to the
 // eye: colours, timing, or two proteins overlapping each other.
 import { Scene } from '../../js/vesicle/scene.js';
@@ -14,7 +14,7 @@ import { surf, D, ARRIVE } from '../../js/vesicle/profile.js';
 // A stand-in for WebGL: constants are their own names, calls do nothing.
 const gl = new Proxy({}, { get: (t, k) => typeof k === 'symbol' ? undefined : /^[A-Z0-9_]+$/.test(k) ? k
   : (...a) => k === 'getShaderParameter' ? true : k === 'getProgramParameter' ? (a[1] === 'ACTIVE_UNIFORMS' ? 0 : true) : k === 'getAttribLocation' ? 0 : {} });
-const NAMES = { 3: 'syntaxin', 4: 'SNAP-25', 5: 'synaptobrevin', 6: 'synaptotagmin', 13: 'pHluorin', 14: 'pHluorin', 15: 'proton pump', 16: 'synaptophysin', 17: 'VGLUT', 18: 'Rab3', 19: 'tether' };
+const NAMES = { 3: 'syntaxin', 4: 'SNAP-25', 5: 'synaptobrevin', 6: 'synaptotagmin', 13: 'pHluorin', 14: 'pHluorin', 20: 'orange protein', 15: 'proton pump', 16: 'synaptophysin', 17: 'VGLUT', 18: 'Rab3', 19: 'tether' };
 // How far a ball may sink into a membrane surface. Synaptotagmin's C2 domains are meant to dip in.
 const SINK = { 6: 1.3 }, STEP = 0.005, tmp = new Float64Array(6);
 const scene = new Scene(gl);
@@ -36,14 +36,14 @@ for (const vitro of [false, true]) for (const diam of [30, 42, 70]) {
     for (let b = 0; b < scene.dyn.n; b++) {
       const k = b * 8, cat = Math.floor(d[k + 7] / 8), rad = d[k + 3];
       if (!NAMES[cat]) continue;
-      const tag = (cat === 13 || cat === 14) && Math.abs(rad - 1.15) < 0.01;
+      const tag = (cat === 13 || cat === 14 || cat === 20) && Math.abs(rad - 1.15) < 0.01;
       if ((cat === 13 || cat === 14) && !tag) continue;                    // glows, not molecules
       const r = Math.hypot(d[k], d[k + 2]), y = d[k + 1], cyto = sd(0, r, y), lumen = sd(1, r, y);
       let why = null;
       if (tag) {
         if (cyto > 0.4 && lumen < 0) why = 'is on the cytoplasmic side';
         else if (lumen > 0 && lumen < rad - 0.75) why = 'is pushed into the membrane';
-        else if (r < rad - 0.3 && y > -D && y < S.hV) why = 'lies across the axis of the pore';
+        else if (r < rad - 0.3 && y > -D && y < S.hV && lumen < 2 * rad) why = 'lies across the axis of the pore';   // only where the lumen is narrow: in a wide one a folded tag may cross the axis
       } else if (cat === 5 && rad < 0.35 && lumen < 1.3 && cyto < 0) continue;    // the stem that carries the tag
       else if (lumen > 0.4 && cyto < 0) why = 'is on the lumen or cleft side';
       else if (rad >= 0.9 && cyto > 0.05 && cyto < rad - (SINK[cat] || 0.9)) why = 'is pushed into a membrane';

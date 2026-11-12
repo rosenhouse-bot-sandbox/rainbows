@@ -5,6 +5,16 @@ import { rng } from './glx.js';
 
 export const N_GLASS = 1.518, N_CELL = 1.36;         // coverslip / immersion oil, and watery cytoplasm
 export const LAMBDA_EX = 488, LAMBDA_EM = 510;       // nm: argon-line laser, pHluorin emission peak
+// The tag is two fluorescent proteins in a row on synaptobrevin's lumenal end, so there is one of
+// each per copy. The second is CyOFP1, an orange protein with so large a Stokes shift that the
+// same 488 nm laser excites it (excitation peak 497 nm, emission peak 589 nm, pKa 5.5). Each is
+// treated as one acid group that must lose its proton to fluoresce, so the lit fraction at a
+// given pH is 1 / (1 + 10^(pKa - pH)). pHluorin (pKa about 7.1) is almost all dark in the
+// vesicle's acid; CyOFP1 is still half lit there. QUENCH values are brightness in the vesicle as
+// a fraction of brightness outside. The two are taken to be equally bright once both are lit.
+export const LAMBDA_EM_O = 589, PKA_O = 5.5, PH_IN = 5.5, PH_OUT = 7.4;
+const litAt = (pKa, pH) => 1 / (1 + Math.pow(10, pKa - pH));
+export const QUENCH = 0.04, QUENCH_O = litAt(PKA_O, PH_IN) / litAt(PKA_O, PH_OUT);
 export const NA = 1.49, F_OBJ = 2e6;                 // 100x TIRF objective, 2 mm focal length
 export const GAP = 40;                               // nm of medium between the cell and the glass
 export const UM = 1e3, MM = 1e6;
@@ -97,8 +107,9 @@ export function buildBench(gl) {
   B.cells = mesh(lathe(prof, 28), inst);
   B.nuclei = nuc;
   // Fluorescence collected by the objective: a cone up to the NA limit, then a collimated beam.
-  const em = [0.25, 1.0, 0.35, 1];
-  B.emission = mesh(lathe([[0, GLASS_TOP, em], [1.45 * MM, Y, em], [NA * F_OBJ, Y - 3.2 * MM, em], [NA * F_OBJ, Y - 70 * MM, em]], 40));
+  // One mesh per emission band (drawn in green for 510 nm and in orange for 589 nm); they add.
+  const cone = (em) => mesh(lathe([[0, GLASS_TOP, em], [1.45 * MM, Y, em], [NA * F_OBJ, Y - 3.2 * MM, em], [NA * F_OBJ, Y - 70 * MM, em]], 40));
+  B.emission = cone([0.25, 1.0, 0.35, 1]); B.emissionO = cone([1.0, 0.50, 0.10, 1]);
   return B;
 }
 
@@ -119,67 +130,87 @@ export function beamPath(o) {
 // ---- the camera image ----------------------------------------------------------------------------
 // What a camera behind the objective records: every fluorophore becomes a diffraction-limited
 // blur about 175 nm wide, sampled by 65 nm pixels, with photon shot noise on top.
+// A dichroic mirror behind the objective sends the 510 nm and 589 nm bands to separate halves of
+// the sensor, so each pixel of the field is recorded twice, once per band, with its own shot noise
+// (the split is taken to be clean: no light from one protein lands in the other's half). The two
+// half-pictures are laid back over each other for display, 510 nm drawn in green and 589 nm in
+// orange, so a spot that is lit in both comes out yellow. The longer wavelength blurs a little more.
 // zoom: side, in pixels, of the central crop shown magnified in the second display.
 // photons: how many photons a pixel collects in one frame at brightness 1 (a fully lit vesicle on
 // the glass peaks near 180); read: the sensor's read noise in electrons, added to every pixel.
-export const CAM = { px: 128, zoom: 24, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA, photons: 80, read: 1.5 };
+export const CAM = { px: 128, zoom: 24, nm: 65, sigma: 0.21 * LAMBDA_EM / NA, fwhm: 0.51 * LAMBDA_EM / NA, sigmaO: 0.21 * LAMBDA_EM_O / NA, fwhmO: 0.51 * LAMBDA_EM_O / NA, photons: 80, read: 1.5 };
+// Display colour for a pixel that counted g photons at 510 nm and o at 589 nm; white is the count that saturates.
+export function overlay(d, i, g, o, white, gamma) {
+  const t = Math.pow(Math.min(1, g / white), gamma), s = Math.pow(Math.min(1, o / white), gamma);
+  d[i] = Math.min(255, 255 * (Math.pow(t, 2.6) * 0.85 + Math.min(1, s * 1.08)));
+  d[i + 1] = Math.min(255, 255 * (Math.min(1, t * 1.08) + 0.46 * Math.pow(s, 1.3)));
+  d[i + 2] = Math.min(255, 255 * (Math.pow(t, 1.9) * 0.55 + Math.pow(s, 2.6) * 0.25)); d[i + 3] = 255;
+}
 export class Camera {
   constructor(canvas, trace, zoom) {
     this.canvas = canvas; this.zctx = zoom ? zoom.getContext('2d') : null;
     this.ctx = canvas.getContext('2d'); this.img = this.ctx.createImageData(CAM.px, CAM.px);
     this.f = new Float32Array(CAM.px * CAM.px); this.trace = trace; this.tctx = trace.getContext('2d');
-    this.r = rng(99); this.curve = null; this.count = new Int32Array(CAM.px * CAM.px); this.peak = 0;
+    this.fo = new Float32Array(CAM.px * CAM.px);
+    this.r = rng(99); this.curve = null; this.peak = 0; this.peakO = 0;
   }
-  // emit: [[x, z, brightness, spread]...] in nm, where spread is how far a vesicle's tags have
-  // wandered (it widens the blur and lowers the peak); bg: out-of-focus background.
+  // emit: [[x, z, brightness at 510 nm, spread, brightness at 589 nm]...] in nm, where spread is how
+  // far a vesicle's tags have wandered (it widens the blur and lowers the peak); bg: out-of-focus background.
   // Returns without drawing unless a new frame is due: the picture only changes once per exposure.
-  // blur: how much wider than its best the objective's blur is (1 when this camera is in focus).
-  render(emit, bg, reshuffle, blur = 1) {
+  // blur, blurO: how much wider than its best the objective's blur is in each band (1 when in focus).
+  render(emit, bg, reshuffle, blur = 1, blurO = 1) {
     if (!reshuffle && this.drawn) return;
     this.drawn = true;
-    const n = CAM.px, f = this.f, s0 = CAM.sigma / CAM.nm, s = s0 * blur, half = n / 2;
-    f.fill(bg);
-    for (const [x, z, b0, spread] of emit) {
-      if (b0 < 1e-4) continue;
-      const sw = spread ? Math.hypot(s, spread / CAM.nm) : s, k = 1 / (2 * sw * sw), b = b0 * s0 * s0 / (sw * sw);
-      const cx = x / CAM.nm + half - 0.5, cy = z / CAM.nm + half - 0.5, R = Math.min(20, Math.ceil(sw * 3.5));
-      if (cx < -R || cy < -R || cx > n + R || cy > n + R) continue;
-      for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(n - 1, Math.ceil(cy + R)); j++)
-        for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(n - 1, Math.ceil(cx + R)); i++)
-          f[j * n + i] += b * Math.exp(-((i - cx) * (i - cx) + (j - cy) * (j - cy)) * k);
+    const n = CAM.px, half = n / 2, s0 = CAM.sigma / CAM.nm;
+    // Brightness 1 means the same number of photons in either band; the wider blur spreads them thinner.
+    for (const [f, at, s] of [[this.f, 2, s0 * blur], [this.fo, 4, CAM.sigmaO / CAM.nm * blurO]]) {
+      f.fill(bg);
+      for (const e of emit) {
+        const b0 = e[at] || 0, spread = e[3];
+        if (b0 < 1e-4) continue;
+        const sw = spread ? Math.hypot(s, spread / CAM.nm) : s, k = 1 / (2 * sw * sw), b = b0 * s0 * s0 / (sw * sw);
+        const cx = e[0] / CAM.nm + half - 0.5, cy = e[1] / CAM.nm + half - 0.5, R = Math.min(20, Math.ceil(sw * 3.5));
+        if (cx < -R || cy < -R || cx > n + R || cy > n + R) continue;
+        for (let j = Math.max(0, Math.floor(cy - R)); j <= Math.min(n - 1, Math.ceil(cy + R)); j++)
+          for (let i = Math.max(0, Math.floor(cx - R)); i <= Math.min(n - 1, Math.ceil(cx + R)); i++)
+            f[j * n + i] += b * Math.exp(-((i - cx) * (i - cx) + (j - cy) * (j - cy)) * k);
+      }
     }
     // One exposure. Light arrives as whole photons, so each pixel records a Poisson-distributed
     // count around its expected value (shot noise), plus a little read noise from the sensor.
     const d = this.img.data, r = this.r, G = CAM.photons, z0 = (n - CAM.zoom) / 2, z1 = z0 + CAM.zoom;
-    let peak = 0;
-    for (let i = 0; i < n * n; i++) {
-      const lam = f[i] * G;
+    const expose = (lam) => {
       let c = 0;
       if (lam < 30) { const L = Math.exp(-lam); for (let q = r(); q > L; q *= r()) c++; }
       else c = Math.round(lam + Math.sqrt(lam) * r.gauss());
-      c = Math.max(0, Math.round(c + CAM.read * r.gauss()));
-      this.count[i] = c;
+      return Math.max(0, Math.round(c + CAM.read * r.gauss()));
+    };
+    let peak = 0, peakO = 0;
+    for (let i = 0; i < n * n; i++) {
+      const c = expose(this.f[i] * G), co = expose(this.fo[i] * G);
       const x = i % n, y = (i - x) / n;
-      if (c > peak && x >= z0 && x < z1 && y >= z0 && y < z1) peak = c;
-      const t = Math.pow(Math.min(1, c / (2.3 * G)), 0.72);
-      d[i * 4] = 255 * Math.pow(t, 2.6) * 0.85; d[i * 4 + 1] = 255 * Math.min(1, t * 1.08); d[i * 4 + 2] = 255 * Math.pow(t, 1.9) * 0.55; d[i * 4 + 3] = 255;
+      if (x >= z0 && x < z1 && y >= z0 && y < z1) { if (c > peak) peak = c; if (co > peakO) peakO = co; }
+      overlay(d, i * 4, c, co, 2.3 * G, 0.72);
     }
-    this.peak = peak;
+    this.peak = peak; this.peakO = peakO;
     this.ctx.putImageData(this.img, 0, 0);
     // The second display is the middle of the very same frame, magnified: no new information.
     if (this.zctx) this.zctx.putImageData(this.img, -z0, -z0, z0, z0, CAM.zoom, CAM.zoom);
   }
-  // curve: fluorescence at the fusion site against progress; p marks where we are.
-  drawTrace(curve, p) {
-    const c = this.tctx, w = this.trace.width, h = this.trace.height, n = curve.length;
-    const max = Math.max(1e-6, ...curve) * 1.12, X = (i) => 4 + (w - 6) * i / (n - 1), Yv = (v) => h - 5 - (h - 10) * v / max;
+  // curves: fluorescence at the fusion site against progress, [510 nm, 589 nm], on one scale; p marks where we are.
+  drawTrace(curves, p) {
+    const c = this.tctx, w = this.trace.width, h = this.trace.height, n = curves[0].length;
+    const max = Math.max(1e-6, ...curves[0], ...curves[1]) * 1.12, X = (i) => 4 + (w - 6) * i / (n - 1), Yv = (v) => h - 5 - (h - 10) * v / max;
     c.clearRect(0, 0, w, h);
-    c.beginPath(); curve.forEach((v, i) => (i ? c.lineTo(X(i), Yv(v)) : c.moveTo(X(i), Yv(v))));
-    c.lineWidth = 2; c.strokeStyle = 'rgba(110,255,140,.95)'; c.stroke();
-    c.lineTo(X(n - 1), h); c.lineTo(X(0), h); c.closePath(); c.fillStyle = 'rgba(110,255,140,.13)'; c.fill();
-    const fi = p * (n - 1), i0 = Math.min(n - 2, Math.floor(fi)), v = curve[i0] + (curve[i0 + 1] - curve[i0]) * (fi - i0);
+    const fi = p * (n - 1), i0 = Math.min(n - 2, Math.floor(fi));
     c.beginPath(); c.moveTo(X(fi), 0); c.lineTo(X(fi), h); c.lineWidth = 1; c.strokeStyle = 'rgba(234,240,255,.35)'; c.stroke();
-    c.beginPath(); c.arc(X(fi), Yv(v), 3.5, 0, 2 * PI); c.fillStyle = '#EAF0FF'; c.fill();
+    [[curves[1], '255,150,50'], [curves[0], '110,255,140']].forEach(([curve, col]) => {
+      c.beginPath(); curve.forEach((v, i) => (i ? c.lineTo(X(i), Yv(v)) : c.moveTo(X(i), Yv(v))));
+      c.lineWidth = 2; c.strokeStyle = `rgba(${col},.95)`; c.stroke();
+      c.lineTo(X(n - 1), h); c.lineTo(X(0), h); c.closePath(); c.fillStyle = `rgba(${col},.10)`; c.fill();
+      const v = curve[i0] + (curve[i0 + 1] - curve[i0]) * (fi - i0);
+      c.beginPath(); c.arc(X(fi), Yv(v), 3.5, 0, 2 * PI); c.fillStyle = `rgb(${col})`; c.fill(); c.lineWidth = 1; c.strokeStyle = '#EAF0FF'; c.stroke();
+    });
     // The axes: intensity up the left edge, time along the bottom.
     c.beginPath(); c.moveTo(1, 0); c.lineTo(1, h - 1); c.lineTo(w, h - 1); c.lineWidth = 2; c.strokeStyle = 'rgba(234,240,255,.45)'; c.stroke();
   }

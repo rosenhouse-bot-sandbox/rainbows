@@ -185,14 +185,14 @@ body.infer #sizeNote{display:none}
 .axY{writing-mode:vertical-rl;transform:rotate(180deg);text-align:center}
 .axX{grid-column:2;text-align:center}
 .pip p{margin:0;font-size:11.5px;line-height:1.35;color:var(--ink3)}
-.pipCount b{font-family:var(--mono);font-weight:400;color:var(--ink);font-variant-numeric:tabular-nums}
+.pipCount b{font-family:var(--mono);font-weight:400;color:var(--ink);font-variant-numeric:tabular-nums;display:inline-block;min-width:3ch;text-align:right}
 
 @media (max-width:899px){
   .inf{top:calc(54px + env(safe-area-inset-top));left:8px;right:8px;bottom:auto;width:auto;padding:8px 10px;gap:5px;grid-template-columns:1fr}
   .infTop{grid-template-columns:62px 62px 1fr;align-items:start}
   .infTop figcaption{font-size:10px}
   #fan{grid-column:auto;height:78px}
-  #strips{height:132px}
+  #strips{height:156px}
   #pair,.inf p,.inf header span{display:none}
   .inf header #poreInfo{display:inline;font-size:10px}
   #pore{height:48px}

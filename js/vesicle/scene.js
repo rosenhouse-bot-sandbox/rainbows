@@ -4,7 +4,7 @@ import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
 import { compute, surf, outline, D, CLEFT, TABW, BAREA, PH, ARRIVE } from './profile.js';
 import * as SH from './shaders.js';
 import { irmBeam, irmOptics, hue } from './irm.js';
-import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
+import { optics, buildBench, beamPath, QUENCH, QUENCH_O, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
 
 const PI = Math.PI, TAU = 2 * PI;
 export const PATCH = 120;            // radius of membrane drawn lipid by lipid
@@ -19,7 +19,7 @@ export const COLORS = {
   post: [0.52, 0.47, 0.70], postIn: [0.44, 0.39, 0.61],
   syntaxin: [0.92, 0.26, 0.28], snap25: [0.33, 0.80, 0.42], synaptobrevin: [0.36, 0.33, 1.0],
   synaptotagmin: [0.72, 0.48, 0.96], calcium: [1.0, 0.90, 0.28], glutamate: [1.0, 0.36, 0.74],
-  phluorin: [0.30, 1.0, 0.40], emission: [0.45, 1.0, 0.35],
+  phluorin: [0.30, 1.0, 0.40], emission: [0.45, 1.0, 0.35], ofp: [1.0, 0.50, 0.10], emissionO: [1.0, 0.56, 0.14],
   channel: [0.86, 0.70, 0.34], ampa: [0.20, 0.72, 0.66], nmda: [0.86, 0.50, 0.30],
   tether: [0.16, 0.60, 0.66], pump: [0.62, 0.70, 0.82], physin: [0.95, 0.56, 0.64], vglut: [0.72, 0.80, 0.30], rab: [0.93, 0.92, 0.84],
   sodium: [0.62, 0.92, 1.0], adhesion: [0.62, 0.62, 0.74],
@@ -108,7 +108,7 @@ export class Scene {
     gl.bindVertexArray(this.beamVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.beamBuf);
     [[0, 3, 0], [1, 3, 12], [2, 4, 24], [3, 3, 40]].forEach(([loc, size, off]) => { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 52, off); });
     gl.bindVertexArray(null);
-    this.opt = optics(68); this.emit = []; this.fluor = 0; this.labelText = {};
+    this.opt = optics(68); this.emit = []; this.fluor = 0; this.fluorO = 0; this.labelText = {};
     this.buildCell();
     this.lineBuf = gl.createBuffer(); this.lineVAO = gl.createVertexArray();
     gl.bindVertexArray(this.lineVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.lineBuf);
@@ -347,7 +347,10 @@ export class Scene {
     this.emit = [];
     // Superecliptic pHluorin: a pH-sensitive GFP fused to the end of synaptobrevin that faces the
     // vesicle interior. At the vesicle's pH 5.5 it is dark; once the pore lets the acid out it
-    // shines, in proportion to the laser intensity at its height above the glass.
+    // shines, in proportion to the laser intensity at its height above the glass. A second
+    // protein, CyOFP1, follows it on the same chain. The same laser excites it, it emits at a
+    // longer wavelength (drawn in orange), and the acid only halves it: before the pore opens its
+    // light already says how deep in the field the vesicle sits.
     const unq = sstep(PH.PORE, PH.PORE + 0.04, p);
     const tag = (A, draw) => {
       // The tag hangs into the lumen. Inside a narrow pore it has to lie along the pore's axis.
@@ -358,12 +361,20 @@ export class Scene {
         for (let t = 0.1; t <= 1.001; t += 0.1) { dir = norm(mixv(shade(A.n, -1), ax, t)); if (rB + 4.9 * (dir[0] * A.p[0] + dir[2] * A.p[2]) / rA >= 1.3) break; }
       }
       const base = add(A.p, A.n, -2 * D), c = add(base, dir, 3.6);
-      const b = opt.at(c[1] + GAP) * (0.04 + 0.96 * unq), lit = b > 0.05;
-      this.emit.push([c[0], c[2], b, c[1]]);
+      // The orange barrel hangs from the far end of the green one on a short flexible linker. With
+      // room it folds to one side; in a narrow pore the two have to go through in single file.
+      const side = norm(cross(dir, Math.abs(dir[1]) > 0.9 ? [1, 0, 0] : [0, 1, 0]));
+      const fold = 1 - sstep(0.05, 0.25, nR) * (1 - sstep(1.3, 5, rB - 4.9 * nR));
+      const dir2 = norm(mixv(dir, add(shade(dir, 0.25), side, 1), fold)), hinge = add(base, dir, 6.0), c2 = add(hinge, dir2, 1.6);
+      const E = opt.at(c[1] + GAP), E2 = opt.at(c2[1] + GAP);
+      const b = E * (QUENCH + (1 - QUENCH) * unq), lit = b > 0.05, bo = E2 * (QUENCH_O + (1 - QUENCH_O) * unq), litO = bo > 0.05;
+      this.emit.push([c[0], c[2], b, c[1], bo]);
       if (!draw) return c;
       const col = lit ? shade(C.phluorin, Math.min(1.25, 0.3 + 1.5 * b)) : [0.30, 0.40, 0.34];
       ball(add(base, dir, 0.9), 0.34, shade(C.synaptobrevin, 0.9), 0, 5);
       for (const t of [2.3, 3.6, 4.9]) ball(add(base, dir, t), 1.15, col, lit ? 1 : 0, lit ? 13 : 14);
+      const colO = litO ? shade(C.ofp, Math.min(1.25, 0.3 + 1.5 * bo)) : [0.42, 0.33, 0.27];
+      for (const t of [0.3, 1.6, 2.9]) ball(add(hinge, dir2, t), 1.15, colO, litO ? 1 : 0, 20);
       return c;
     };
 
@@ -490,14 +501,17 @@ export class Scene {
         if (draw && !anchors.phl) anchors.phl = c;
       });
       // Fluorescence leaves in every direction; the objective below catches about half of it.
-      const lit = this.emit.filter((e) => e[2] > 0.12), hash = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); };
-      if (lit.length) for (let j = 0; j < 80; j++) {
+      // Every other one of these is a 589 nm photon from the orange protein, which starts before the pore opens.
+      const hash = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v); };
+      const lits = [this.emit.filter((e) => e[2] > 0.12), this.emit.filter((e) => e[4] > 0.12)];
+      for (let j = 0; j < 80; j++) {
+        const o = j & 1, lit = lits[o]; if (!lit.length) continue;
         const cyc = time * 0.5 + j * 0.6180339, ph = cyc % 1, id = Math.abs(Math.floor(cyc)) * 131 + j * 17, e = lit[id % lit.length];
         const dy = 1 - 2 * hash(id + 0.3), a = hash(id + 0.7) * TAU, dr = Math.sqrt(1 - dy * dy), L = 170 * ph;
-        ball([e[0] + dr * Math.cos(a) * L, e[3] + dy * L, e[1] + dr * Math.sin(a) * L], 0.62 * (1 - ph) * Math.min(1, e[2] * 1.6), C.emission, 1, 12);
+        ball([e[0] + dr * Math.cos(a) * L, e[3] + dy * L, e[1] + dr * Math.sin(a) * L], 0.62 * (1 - ph) * Math.min(1, e[o ? 4 : 2] * 1.6), o ? C.emissionO : C.emission, 1, o ? 21 : 12);
       }
-      this.fluor = this.emit.reduce((t, e) => t + e[2], 0) / 36;
-      if (st.dist > 4000) ball([0, -6, 0], 0.005 * st.dist, shade(C.emission, Math.min(1, 0.08 + this.fluor * 1.6)), 1, 12);
+      this.fluor = this.emit.reduce((t, e) => t + e[2], 0) / 36; this.fluorO = this.emit.reduce((t, e) => t + e[4], 0) / 36;
+      if (st.dist > 4000) ball([0, -6, 0], 0.005 * st.dist, add(shade(C.emission, Math.min(1, 0.08 + this.fluor * 1.6)), C.emissionO, Math.min(1, this.fluorO * 1.6)), 1, 12);
       // The laser footprint covers the whole cell, so every vesicle near the glass is in the
       // picture: most sit docked and dark, and some fuse a little before or after ours.
       this.emitN = [];
@@ -507,12 +521,13 @@ export class Scene {
         const u = sstep(PH.PORE, PH.PORE + 0.04, pi), sink = sstep(PH.PORE, 0.72, pc);
         const h = GAP + lerp(nb.rad + D + 3.5, -5, sink);
         const spread = 110 * Math.pow(sstep(PH.PORE + 0.02, 1, pc), 0.8) + 260 * Math.max(0, pi - 1);
-        const amp = 36 * opt.at(h) * (0.04 + 0.96 * u) * spot(nb.x, nb.z) * nb.k;
-        this.emitN.push([nb.x, nb.z, amp, spread]);
+        const lit = 36 * opt.at(h) * spot(nb.x, nb.z) * nb.k, amp = lit * (QUENCH + (1 - QUENCH) * u), ampO = lit * (QUENCH_O + (1 - QUENCH_O) * u);
+        this.emitN.push([nb.x, nb.z, amp, spread, ampO]);
         if (pc < 0.72) ball([nb.x, (nb.rad + D + 3.5) * (1 - sink), nb.z], nb.rad * (1 - 0.55 * sstep(0.5, 0.72, pc)), [0.86, 0.62, 0.30], 2, 1);
-        const glow = amp / 36 * 55 * 55 / (55 * 55 + spread * spread);
+        const thin = 55 * 55 / (55 * 55 + spread * spread) / 36, glow = amp * thin, glowO = ampO * thin;
         // A soft glow on each side of the membrane, so a flash shows from inside the cell and from under the glass.
-        if (glow > 0.03) for (const y of [9, -9]) ball([nb.x, y, nb.z], (30 + spread) * 0.5, shade(C.phluorin, Math.min(1.3, glow * 2.2)), 4, 13);
+        // A vesicle that has not fused glows faintly in orange alone.
+        if (glow + glowO > 0.03) for (const y of [9, -9]) ball([nb.x, y, nb.z], (30 + spread) * 0.5, add(shade(C.phluorin, Math.min(1.3, glow * 2.2)), C.ofp, Math.min(1.0, glowO * 1.5)), 4, 13);
         if (nb.off !== null && Math.abs(pi - 0.5) < 0.45 && (!near || Math.hypot(nb.x, nb.z) < Math.hypot(near[0], near[2]))) near = [nb.x, 30, nb.z];
       }
       anchors.neigh = near;
@@ -641,7 +656,7 @@ export class Scene {
         far('medium', [-9 * MM, 3.6 * MM, 0], 8e6), far('dish', [17.5 * MM, 7 * MM, 0], 8e6),
       ];
       this.labelText = {
-        phl: unq > 0.5 ? 'pHluorin, fluorescing' : 'pHluorin, quenched at pH 5.5',
+        phl: unq > 0.5 ? 'Tag: both proteins lit' : 'Tag: pHluorin dark at pH 5.5, orange protein half lit',
         field: opt.tir ? `Evanescent field, 1/e at ${Math.round(opt.depth)} nm` : 'Refracted beam, no evanescent field',
       };
       if (st.irm) { const io = this.irmAt(st.lambda); this.labelText.fringe = `Reflection: brightest at ${Math.round(io.bright)} nm, darkest at ${Math.round(io.dark)} nm`; }
@@ -817,8 +832,8 @@ export class Scene {
       gl.bindVertexArray(this.beamVAO); gl.bindBuffer(gl.ARRAY_BUFFER, this.beamBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW); gl.drawArrays(gl.TRIANGLES, 0, v.length / 13);
     }
-    const em = (0.035 + 0.3 * Math.min(1, this.fluor)) * sstep(5.7, 6.5, lg);
-    if (em > 0) { common(P.mesh); mesh(B.emission, 1, 0, em); }
+    const far = sstep(5.7, 6.5, lg);
+    if (far > 0) { common(P.mesh); mesh(B.emission, 1, 0, (0.035 + 0.3 * Math.min(1, this.fluor)) * far); mesh(B.emissionO, 1, 0, 0.3 * Math.min(1, this.fluorO) * far); }
     gl.enable(gl.DEPTH_TEST);
   }
 
@@ -864,6 +879,7 @@ export class Scene {
       }
       this.curveCache = { R, pts };
     }
-    return this.curveCache.pts.map((pt) => pt.sites.reduce((t, s) => t + this.opt.at(s[1] + GAP) * (0.04 + 0.96 * pt.unq) * Math.exp(-s[0] * s[0] / (2 * 130 * 130)), 0) / 30);
+    // One curve per band: the same tags in the same light, each protein with its own answer to the acid.
+    return [QUENCH, QUENCH_O].map((q) => this.curveCache.pts.map((pt) => pt.sites.reduce((t, s) => t + this.opt.at(s[1] + GAP) * (q + (1 - q) * pt.unq) * Math.exp(-s[0] * s[0] / (2 * 130 * 130)), 0) / 30));
   }
 }

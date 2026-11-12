@@ -5,8 +5,9 @@
 // Everything drawn is eased toward the sampler's running summary, so the charts glide when the
 // evidence changes and hold still when it does not.
 import { PARAMS, NP, ROI, T_TOTAL, WALKERS, KEEP, toValue, quantiles, bitsLearned } from './infer.js';
+import { overlay } from './vitro.js';
 
-const GOLD = [255, 207, 107], INK = '#EAF0FF', INK3 = '#7C88B0', FORE = [120, 190, 255], ALONE = [115, 255, 90];
+const GOLD = [255, 207, 107], INK = '#EAF0FF', INK3 = '#7C88B0', FORE = [120, 190, 255], ALONE = [115, 255, 90], BAND = [[110, 255, 140], [255, 150, 50]];   // the 510 nm and 589 nm bands, as drawn
 const rgba = (c, a) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 const LN = Math.log;
 
@@ -22,7 +23,7 @@ const fmt = (i, v) => (PARAMS[i].digits ? v.toFixed(PARAMS[i].digits) : String(M
 export class Dashboard {
   constructor(el) {
     this.el = el; this.col = new Float32Array(WALKERS * KEEP); this.col2 = new Float32Array(WALKERS * KEEP);
-    this.tile = new Float32Array(ROI * ROI);
+    this.tile = new Float32Array(ROI * ROI); this.tileO = new Float32Array(ROI * ROI);
     this.octx = el.obs.getContext('2d'); this.ectx = el.exp.getContext('2d');
     this.oimg = this.octx.createImageData(ROI, ROI); this.eimg = this.ectx.createImageData(ROI, ROI);
     this.summary = PARAMS.map(() => ({ q: [0, 0, 0], bits: 0 }));
@@ -41,34 +42,32 @@ export class Dashboard {
     ctx.putImageData(img, 0, 0);
   }
 
-  // Photon counts to the same green scale as the microscope camera.
-  paint(ctx, img, data, off, white) {
+  // Photon counts in the two bands, laid over each other in the same colours as the microscope camera.
+  paint(ctx, img, data, dataO, off, white) {
     const d = img.data;
-    for (let i = 0; i < ROI * ROI; i++) {
-      const t = Math.pow(Math.min(1, data[off + i] / white), 0.7);
-      d[i * 4] = 255 * Math.pow(t, 2.6) * 0.85; d[i * 4 + 1] = 255 * Math.min(1, t * 1.08); d[i * 4 + 2] = 255 * Math.pow(t, 1.9) * 0.55; d[i * 4 + 3] = 255;
-    }
+    for (let i = 0; i < ROI * ROI; i++) overlay(d, i * 4, data[off + i], dataO[off + i], white, 0.7);
     ctx.putImageData(img, 0, 0);
   }
 
-  // sam: the sampler using every camera that is switched on. alone: when the reflection camera is
-  // on, a second sampler that sees the fluorescence video only, drawn in green for comparison.
-  draw(exp, sam, t, showTruth, alone) {
+  // sam: the sampler using everything recorded. alone: a second sampler that is given less (the
+  // 510 nm band only, or with the reflection camera on both bands but no reflection video),
+  // drawn as green outlines for comparison; aloneName says which.
+  draw(exp, sam, t, showTruth, alone, aloneName) {
     const nf = exp.nf, dt = exp.set.dt, upto = sam.upto, f = Math.max(0, Math.min(nf - 1, upto - 1));
-    const o = new Float64Array(4);
+    const o = new Float64Array(6); this.aloneName = aloneName;
     // Brightest pixel the truth ever produces sets the display scale.
     if (this.scaleFor !== exp) {
-      let m = 1; for (let k = 0; k < nf; k++) { exp.frame(exp.truth, k, o); m = Math.max(m, o[0] / (2 * Math.PI * o[1]) + exp.bg * dt); }
+      let m = 1; for (let k = 0; k < nf; k++) { exp.frame(exp.truth, k, o); m = Math.max(m, o[0] / (2 * Math.PI * o[1]) + exp.bg * dt, o[4] / (2 * Math.PI * o[5]) + exp.bg * dt); }
       this.white = m * 1.5; this.scaleFor = exp; this.snap = true;      // new experiment: jump, do not glide
     }
     // Tiles: what the camera recorded at this moment, and what the current beliefs expect.
-    if (upto > 0) this.paint(this.octx, this.oimg, exp.img, f * ROI * ROI, this.white);
+    if (upto > 0) this.paint(this.octx, this.oimg, exp.img, exp.imgO, f * ROI * ROI, this.white);
     else { this.octx.fillStyle = '#000'; this.octx.fillRect(0, 0, ROI, ROI); }
-    this.tile.fill(0);
-    for (const w of sam.x) exp.expected(w, f, this.tile);
-    const k = this.snap ? 1 : EASE, T = this.tileS || (this.tileS = new Float32Array(ROI * ROI));
-    for (let i = 0; i < ROI * ROI; i++) T[i] += (this.tile[i] / WALKERS - T[i]) * k;
-    this.paint(this.ectx, this.eimg, T, 0, this.white);
+    this.tile.fill(0); this.tileO.fill(0);
+    for (const w of sam.x) { exp.expected(w, f, this.tile); exp.expected(w, f, this.tileO, true); }
+    const k = this.snap ? 1 : EASE, T = this.tileS || (this.tileS = new Float32Array(ROI * ROI)), TO = this.tileOS || (this.tileOS = new Float32Array(ROI * ROI));
+    for (let i = 0; i < ROI * ROI; i++) { T[i] += (this.tile[i] / WALKERS - T[i]) * k; TO[i] += (this.tileO[i] / WALKERS - TO[i]) * k; }
+    this.paint(this.ectx, this.eimg, T, TO, 0, this.white);
 
     if (exp.irm) {
       // The reflection tiles show the change since the first frame, which is what carries information.
@@ -93,43 +92,53 @@ export class Dashboard {
     this.snap = false;
   }
 
-  // Total brightness over time. Dots are recorded frames. The band is the model's belief about the
-  // underlying brightness: tight where there is data, and fanning out into a forecast beyond it.
+  // Total brightness over time in each band: 510 nm drawn in green, 589 nm in orange. Dots are
+  // recorded frames. The band around each line is the model's belief about the underlying
+  // brightness: gold and tight where there is data, blue and fanning out into a forecast beyond it.
+  // Before the pore opens the two lines stand apart (the acid darkens pHluorin far more than the
+  // orange protein); once both are lit they run together.
   fan(exp, sam, t, showTruth) {
-    const [c, W, H] = fit(this.el.fan), nf = exp.nf, dt = exp.set.dt, bgTot = exp.bg * dt * ROI * ROI, o = new Float64Array(4);
+    const [c, W, H] = fit(this.el.fan), nf = exp.nf, dt = exp.set.dt, bgTot = exp.bg * dt * ROI * ROI, o = new Float64Array(6);
     const padL = 4, padB = 15, X = (ms) => padL + (W - padL - 4) * ms / T_TOTAL;
     const tmp = new Float32Array(WALKERS), e = this.snap ? 1 : EASE;
-    if (!this.bands || this.bands.length !== nf) this.bands = Array.from({ length: nf }, () => null);
-    const bands = this.bands;
+    if (!this.bands || this.bands[0].length !== nf) this.bands = [0, 1].map(() => Array.from({ length: nf }, () => null));
+    const seen = Math.max(0, sam.upto), join = Math.max(0, seen - 1), tots = [exp.tot, exp.totO];
     let max = 1;
-    for (let k = 0; k < nf; k++) {
-      for (let w = 0; w < WALKERS; w++) tmp[w] = exp.frame(sam.x[w], k, o)[0] + bgTot;
-      const q = quantiles(tmp, WALKERS, [0.05, 0.25, 0.5, 0.75, 0.95]);
-      if (!bands[k] || this.snap) bands[k] = q; else for (let j = 0; j < 5; j++) bands[k][j] += (q[j] - bands[k][j]) * e;
-      if (k < sam.upto) max = Math.max(max, exp.tot[k]);
+    for (let ch = 0; ch < 2; ch++) {
+      const bands = this.bands[ch];
+      for (let k = 0; k < nf; k++) {
+        for (let w = 0; w < WALKERS; w++) tmp[w] = exp.frame(sam.x[w], k, o)[ch * 4] + bgTot;
+        const q = quantiles(tmp, WALKERS, [0.05, 0.25, 0.5, 0.75, 0.95]);
+        if (!bands[k] || this.snap) bands[k] = q; else for (let j = 0; j < 5; j++) bands[k][j] += (q[j] - bands[k][j]) * e;
+        if (k < seen) max = Math.max(max, tots[ch][k]);
+        max = Math.max(max, bands[k][3]);
+      }
     }
-    for (const b of bands) max = Math.max(max, b[3]);
     this.fanMax = this.snap || !this.fanMax ? max * 1.12 : this.fanMax + (max * 1.12 - this.fanMax) * e;
     max = this.fanMax;
     const Y = (v) => H - padB - (H - padB - 5) * Math.min(v, max) / max;
-    const area = (lo, hi, from, to, col) => {
-      if (to <= from) return;
-      c.beginPath();
-      for (let k = from; k < to; k++) c.lineTo(X((k + 0.5) * dt), Y(bands[k][hi]));
-      for (let k = to - 1; k >= from; k--) c.lineTo(X((k + 0.5) * dt), Y(bands[k][lo]));
-      c.closePath(); c.fillStyle = col; c.fill();
-    };
-    const seen = Math.max(0, sam.upto), join = Math.max(0, seen - 1);
-    area(0, 4, 0, seen, rgba(GOLD, 0.22)); area(1, 3, 0, seen, rgba(GOLD, 0.42));
-    area(0, 4, join, nf, rgba(FORE, 0.16)); area(1, 3, join, nf, rgba(FORE, 0.28));
-    c.beginPath(); for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(bands[k][2]));
-    c.strokeStyle = 'rgba(234,240,255,.75)'; c.lineWidth = 1.2; c.stroke();
-    if (showTruth) {
-      c.beginPath(); for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(exp.frame(exp.truth, k, o)[0] + bgTot));
-      c.setLineDash([3, 3]); c.strokeStyle = '#fff'; c.lineWidth = 1; c.stroke(); c.setLineDash([]);
+    for (let ch = 1; ch >= 0; ch--) {
+      const bands = this.bands[ch];
+      const area = (lo, hi, from, to, col) => {
+        if (to <= from) return;
+        c.beginPath();
+        for (let k = from; k < to; k++) c.lineTo(X((k + 0.5) * dt), Y(bands[k][hi]));
+        for (let k = to - 1; k >= from; k--) c.lineTo(X((k + 0.5) * dt), Y(bands[k][lo]));
+        c.closePath(); c.fillStyle = col; c.fill();
+      };
+      area(0, 4, 0, seen, rgba(GOLD, 0.16)); area(1, 3, 0, seen, rgba(GOLD, 0.3));
+      area(0, 4, join, nf, rgba(FORE, 0.12)); area(1, 3, join, nf, rgba(FORE, 0.2));
+      c.beginPath(); for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(bands[k][2]));
+      c.strokeStyle = rgba(BAND[ch], 0.9); c.lineWidth = 1.3; c.stroke();
+      if (showTruth) {
+        c.beginPath(); for (let k = 0; k < nf; k++) c.lineTo(X((k + 0.5) * dt), Y(exp.frame(exp.truth, k, o)[ch * 4] + bgTot));
+        c.setLineDash([3, 3]); c.strokeStyle = '#fff'; c.lineWidth = 1; c.stroke(); c.setLineDash([]);
+      }
     }
-    c.fillStyle = INK;
-    for (let k = 0; k < seen; k++) { c.beginPath(); c.arc(X((k + 0.5) * dt), Y(exp.tot[k]), nf > 50 ? 1.4 : 2, 0, 7); c.fill(); }
+    for (let ch = 1; ch >= 0; ch--) {
+      c.fillStyle = rgba(BAND[ch], 1);
+      for (let k = 0; k < seen; k++) { c.beginPath(); c.arc(X((k + 0.5) * dt), Y(tots[ch][k]), nf > 50 ? 1.4 : 2, 0, 7); c.fill(); }
+    }
     // Playhead, and a time axis.
     c.strokeStyle = 'rgba(234,240,255,.5)'; c.lineWidth = 1; c.beginPath(); c.moveTo(X(t), 2); c.lineTo(X(t), H - padB); c.stroke();
     c.fillStyle = INK3; c.font = '10px JetBrains Mono, monospace'; c.textBaseline = 'alphabetic';
@@ -137,8 +146,7 @@ export class Dashboard {
   }
 
   // Width of the fusion pore over time, as believed from the frames seen so far. Gold is the belief
-  // from every camera that is on; with the reflection camera on, the green outline is what the
-  // fluorescence video alone would allow.
+  // from everything recorded; the green outline is what the second sampler, given less, would allow.
   pore(exp, sam, alone, t, showTruth) {
     const cv = this.el.pore; if (!cv.clientWidth) return;
     const [c, W, H] = fit(cv), nf = exp.nf, dt = exp.set.dt, padL = 30, padB = 15, e = this.snap ? 1 : EASE;
@@ -185,7 +193,7 @@ export class Dashboard {
     c.textBaseline = 'top'; c.fillText('nm', padL - 4, 1);
     // The 90% range at the playhead, in words.
     const k = Math.max(0, Math.min(nf - 1, Math.round(t / dt - 0.5))), rng = (q) => `${q[0].toFixed(q[4] < 10 ? 1 : 0)}–${q[4].toFixed(q[4] < 10 ? 1 : 0)}`;
-    this.poreText = A ? `now ${rng(B[k])} nm · TIRF alone ${rng(A[k])}` : `now ${rng(B[k])} nm, 90% range`;
+    this.poreText = A ? `now ${rng(B[k])} nm · ${this.aloneName} ${rng(A[k])}` : `now ${rng(B[k])} nm, 90% range`;
   }
 
   // One strip per unknown. Grey is what we assumed beforehand, gold is what we believe now.
@@ -202,13 +210,14 @@ export class Dashboard {
       const E = this.ease || (this.ease = PARAMS.map(() => ({ h: new Float32Array(bins), q: null, bits: 0 }))), ei = E[i], e = this.snap ? 1 : EASE;
       let peak = 1e-9; const sm = ei.h;
       for (let b = 0; b < bins; b++) { const v = (0.25 * (hist[b - 1] || 0) + 0.5 * hist[b] + 0.25 * (hist[b + 1] || 0)) / Math.max(1, n); sm[b] += (v - sm[b]) * e; peak = Math.max(peak, sm[b]); }
-      // Prior: a flat line for the fusion time, a bell on the working scale for the rest.
+      // Prior: a flat line for the fusion time, a bell on the working scale for most of the rest. The
+      // arrival is equally likely anywhere before the fusion, which leans its prior toward the start.
       c.beginPath(); c.moveTo(0, bot);
       const s0 = P.log ? LN(P.gsd) * priorScale : 0, ph = h * 0.5;
-      for (let px = 0; px <= W; px += 3) { const u = lo + (hi - lo) * px / W, d = P.log ? Math.exp(-0.5 * Math.pow((u - LN(P.med)) / s0, 2)) : 0.55; c.lineTo(px, bot - ph * d); }
+      for (let px = 0; px <= W; px += 3) { const u = lo + (hi - lo) * px / W, d = P.log ? Math.exp(-0.5 * Math.pow((u - LN(P.med)) / s0, 2)) : P.key === 'ta' ? Math.min(1.5, 0.3 * LN(hi / Math.max(u, 1))) : 0.55; c.lineTo(px, bot - ph * d); }
       c.lineTo(W, bot); c.closePath(); c.fillStyle = 'rgba(160,172,205,.16)'; c.fill(); c.strokeStyle = 'rgba(160,172,205,.5)'; c.lineWidth = 1; c.stroke();
       const bw = W / bins;
-      // With two cameras: what the fluorescence video alone would leave us believing, as a green outline.
+      // What the second sampler, given less evidence, would leave us believing, as a green outline.
       if (alone) {
         const n2 = alone.column(i, this.col2), g = ei.g || (ei.g = new Float32Array(bins)); let pk = 1e-9;
         hist.fill(0);

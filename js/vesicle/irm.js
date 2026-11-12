@@ -21,11 +21,11 @@
 // One objective serves both cameras, and no lens focuses every colour at the same depth. See
 // focalShift and pupil below for what that does to each picture.
 import { shape, D, ARRIVE } from './profile.js';
-import { N_GLASS, N_CELL, NA, GAP, CAM, LENS_Y, GLASS_TOP, LAMBDA_EM } from './vitro.js';
+import { N_GLASS, N_CELL, NA, GAP, CAM, LENS_Y, GLASS_TOP, LAMBDA_EM, LAMBDA_EM_O } from './vitro.js';
 import { rng } from './glx.js';
 
 export const N_MEDIUM = 1.335, N_LIPID = 1.48, MEM = 4;     // medium and vesicle interior; bilayer; its thickness in nm
-export const IRM = { lambda: 630, min: 560, max: 720 };     // nm; above 560 it stays clear of the pHluorin emission band
+export const IRM = { lambda: 630, min: 620, max: 720 };     // nm; from 620 up it stays clear of both emission bands (510 and 589 nm)
 export const WELL = 2e4;                                    // photoelectrons per pixel per millisecond from the reference wave
 export const SHOW_MS = 10;                                  // exposure of one displayed frame
 export const SPAN_DIFF = 0.015;                             // the same, when a baseline frame has been subtracted
@@ -72,6 +72,19 @@ export function pupil(lambda, dz) {
   return { re, im };
 }
 const at = (t, r) => { const x = r / PSF_DR, i = Math.floor(x); return i >= PSF_N - 1 ? 0 : t[i] + (t[i + 1] - t[i]) * (x - i); };
+
+// How much wider than its best a fluorescence blur gets when the camera is focused dz nm away:
+// the light is kept but spread, by the drop in the blur's peak (the Strehl ratio).
+const blurs = new Map();
+export function fluorBlur(lambda, dz) {
+  const key = lambda + '|' + dz.toFixed(1);
+  if (!blurs.has(key)) { const f = pupil(lambda, dz), f0 = pupil(lambda, 0); if (blurs.size > 24) blurs.clear(); blurs.set(key, Math.sqrt(f0.re[0] * f0.re[0] / (f.re[0] * f.re[0] + f.im[0] * f.im[0]))); }
+  return blurs.get(key);
+}
+// The orange band shares the objective too. With the focus set for the 510 nm picture it is
+// focalShift(589) - focalShift(510) out; giving some of the focus to a reflection camera moves it again.
+export const orangeDefocus = (lambdaIrm = 0, focus = 0) => focalShift(LAMBDA_EM_O) - focalShift(LAMBDA_EM) - (lambdaIrm ? (focalShift(lambdaIrm) - focalShift(LAMBDA_EM)) * focus : 0);
+export const orangeBlur = (lambdaIrm = 0, focus = 0) => fluorBlur(LAMBDA_EM_O, orangeDefocus(lambdaIrm, focus));
 
 // focus: where the shared objective is focused, from 0 (on the fluorescence) to 1 (on the reflection).
 export function irmOptics(lambda, focus = 0) {
