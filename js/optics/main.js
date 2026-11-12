@@ -353,15 +353,47 @@ function draw() {
 // The spot the light makes on the target, magnified. On the axis of a round lens the spot is
 // round: a ray that lands u from the centre stands for a ring of that radius.
 function inset(spot, m, lit) {
-  const wide = WIDE.matches, size = wide ? 132 : INSET, x = wide ? V.box[2] - size : V.box[0], y = wide ? V.box[1] : (V.box[1] + V.box[3] - size) / 2;
+  const wide = WIDE.matches, size = wide ? 132 : INSET, x = wide ? V.box[2] - size : V.box[0], y = wide ? (spot.low ? V.box[3] - size : V.box[1]) : (V.box[1] + V.box[3] - size) / 2;
   const half = spot.goal * 1.6, k = size / 2 / half, cx = x + size / 2, cy = y + size / 2;
   g.save();
-  g.beginPath(); g.roundRect(x, y, size, size, 10); g.fillStyle = 'rgba(7,11,24,.8)'; g.fill();
+  g.beginPath(); g.roundRect(x, y, size, size, 10); g.fillStyle = spot.slices ? 'rgb(7,11,24)' : 'rgba(7,11,24,.8)'; g.fill();
   g.strokeStyle = `rgba(${INK},.25)`; g.lineWidth = 1; g.stroke(); g.clip();
   // Light per unit area against radius, in rings one pixel wide. Full brightness is what all the
   // light would give spread evenly over the goal circle; the square root compresses the rest so a
   // wide blur still shows.
   const n = Math.ceil(size * 0.72), rg = spot.goal / 2 * k;
+  if (spot.slices) {
+    // Off the axis the spot is not round, and only an up-and-down slice of each beam is traced. So
+    // each direction of light is drawn as that slice: a strip, bright where the rays land, centred
+    // on the middle of its own light. The dashed marks are that direction's goal.
+    spot.slices.forEach((sl, c) => {
+      const G = m.groups[c], px = x + size * (c + 0.5) / spot.slices.length, gy = sl.goal / 2 * k, sw = size * 0.16;
+      if (G && G.w) {
+        // Neighbouring rays share out the light between where they land, so a wide smear is drawn
+        // as a smear and not as a row of dots.
+        const bins = new Float64Array(size), mid = G.u / G.w;
+        let last = null;
+        for (let i = 0; i < m.hits.length; i += 3) {
+          if (m.hits[i + 2] !== c) continue;
+          const r = size / 2 - (m.hits[i] - mid) * k;                      // up on the sensor is up in the inset
+          if (last !== null) {
+            const lo = Math.min(last, r), hi = Math.max(lo + 1, Math.max(last, r)), each = m.hits[i + 1] / (hi - lo);
+            for (let q = Math.max(0, Math.floor(lo)); q < Math.min(size, hi); q++) bins[q] += each * (Math.min(hi, q + 1) - Math.max(lo, q));
+          }
+          last = r;
+        }
+        const gr = g.createLinearGradient(0, y, 0, y + size);
+        for (let r = 0; r < size; r++) gr.addColorStop((r + 0.5) / size, `rgba(${sl.rgb},${clamp(Math.sqrt(bins[r] / G.w * 2 * gy), 0, 1).toFixed(3)})`);
+        g.fillStyle = gr; g.fillRect(px - sw / 2, y, sw, size);
+      }
+      g.strokeStyle = lit ? '#6fe3a1' : `rgba(${INK},.8)`; g.setLineDash([3, 3]); g.lineWidth = 1.25;
+      for (const d of [-gy, gy]) { g.beginPath(); g.moveTo(px - sw * 1.1, cy + d); g.lineTo(px + sw * 1.1, cy + d); g.stroke(); }
+      g.setLineDash([]);
+    });
+    g.strokeStyle = `rgba(${INK},.15)`; g.lineWidth = 1; g.beginPath(); g.moveTo(cx, y + 8); g.lineTo(cx, y + size - 8); g.stroke();
+    g.restore();
+    return;
+  }
   const chan = [];                                // one profile per colour of light traced
   for (let i = 0; i < m.hits.length; i += 3) {
     const c = m.hits[i + 2], C = chan[c] || (chan[c] = { bins: new Float64Array(n + 1), tot: 0 }), r = Math.abs(m.hits[i]) * k;

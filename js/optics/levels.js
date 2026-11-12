@@ -268,13 +268,13 @@ export const LEVELS = [
     id: 'wide', nav: 'Wide', unit: 'mm', scale: 'Lens 32 mm across',
     title: 'A lens for landscapes',
     task: 'Bend the lens and slide the stop until the picture is sharp at its edge as well as its middle.',
-    brief: 'Light drawn in gold comes straight in. Light drawn in pale blue is the same wavelength, coming from 20° off to one side, and it has to land sharp on the same flat sensor. Drag the white knob to slide the stop.',
-    learned: 'Off the axis a simple lens smears a point into a comet shape (coma), and focuses it on a curved surface where the sensor is flat. A stop in front decides which part of the lens each direction of light goes through. With the lens bent into a meniscus, hollow side to the scene, and the stop at the right distance, those errors nearly cancel. William Wollaston found this in 1812, and his landscape lens went into simple cameras for well over a century. Only an up-and-down slice of each beam is traced here, so the error of the sideways slice (astigmatism) is not counted.',
-    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side (also 550 nm)'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop, f/11'], ['k-target', 'Sensor, at the best focus for the middle']],
+    brief: 'A stop is a plate with a hole in it, like the iris of the camera challenge: only the light that gets through the hole reaches the sensor. Light drawn in gold comes from straight ahead and makes the middle of the picture. Light drawn in pale blue is the same wavelength from 20° off to one side, and makes the edge. Sliding the stop lets the same amount of light in. What it changes is which part of the lens the light from the side goes through: watch where the pale blue rays cross the lens as you drag the white knob. The gold rays stay in the centre.',
+    learned: 'Off the axis a simple lens smears a point into a comet shape (coma), and focuses it on a curved surface where the sensor is flat. Each patch of the lens makes its own errors, because light meets the glass there at its own angle. The stop picks the patch: the further it sits from the lens, the further from the centre the light from the side crosses the glass, while light from straight ahead keeps to the centre. With the lens bent into a meniscus, hollow side to the scene, and the stop at the right distance, those errors nearly cancel. William Wollaston found this in 1812, and his landscape lens went into simple cameras for well over a century. Only an up-and-down slice of each beam is traced here, so the error of the sideways slice (astigmatism) is not counted.',
+    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side (also 550 nm)'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop: a plate with a 5.5 mm hole, which makes this an f/11 lens'], ['k-target', 'Sensor, at the best focus for the middle'], ['k-inset', 'Inset: where each light lands on the sensor, magnified. A slice up and down through each spot, between marks that show its goal.']],
     bounds: [-46, -24, 68, 30],
     params: [
       { id: 'q', label: 'Lens faces', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },
-      { id: 'xi', label: 'Stop position', min: -30, max: -6, step: 0.25, value: -6, show: (v) => f1(-v) + ' mm in front of the lens' },   // slider and stop move the same way
+      { id: 'xi', label: 'Stop position', min: -30, max: -6, step: 0.25, value: -6, show: (v) => f1(-v) + ' mm from the lens centre' },   // slider and stop move the same way
     ],
     build(p) {
       const n = BK7.n(GREEN), P = 1 / 60, H = 16, D = 5.45, FIELD = 20 * DEG;
@@ -288,6 +288,8 @@ export const LEVELS = [
       const xs = clamp(bestFocus({ surfaces: front, bounds: this.bounds }, probe.filter((r) => !r.c)) || 60, 30, 66);
       return { surfaces: [...front, seg(xs, -23, xs, 29, { act: 'target' })], ring: false, L, R1, R2, xs, f: L.focal(GREEN),
         draw: [...bundle(0, 7, 0, null, 0.92), ...bundle(FIELD, 7, 1, [150, 205, 255], 0.92)], probe,
+        off: trace({ surfaces: L.surfaces, bounds: this.bounds }, bundle(FIELD, 1, 1, null, 0)[0]).pts[3],   // where the middle ray from the side meets the lens
+        spot: { goal: 0.060, low: true, slices: [{ goal: 0.040, rgb: '255,190,90' }, { goal: 0.060, rgb: '150,205,255' }] },
         items: [{ t: 'axis' }, { t: 'glass', outline: L.outline }, { t: 'iris', x: xi, open: D / 2, h: 21 }, { t: 'sensor', x: xs, h: 26, y: 3 }],
         handles: [{ param: 'xi', cursor: 'ew', knobs: [[xi, -21]],
           hit: (wx, wy, k) => (Math.abs(wx - xi) * k <= 26 && Math.abs(wy) <= 21 + 12 / k ? Math.abs(wx - xi) : Infinity),
@@ -297,7 +299,7 @@ export const LEVELS = [
       const mid = m.groups[0] ? m.groups[0].spread * 1000 : Infinity, edge = m.groups[1] ? m.groups[1].spread * 1000 : Infinity;
       return { solved: mid <= 40 && edge <= 60,
         meters: [sharp('Sharp in the middle', mid, 40), sharp('Sharp at the edge', edge, 60)],
-        rows: [['Focal length', f1(b.f) + ' mm'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
+        rows: [['Light from the side crosses the lens', b.off !== undefined ? f1(Math.abs(b.off)) + ' mm off centre' : 'nowhere'], ['Focal length', f1(b.f) + ' mm'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
     },
   },
   // ───────────────────────────────────────────────────────────── tower

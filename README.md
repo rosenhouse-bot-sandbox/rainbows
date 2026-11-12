@@ -334,7 +334,8 @@ The physics:
 - In the Wide view challenge the second bundle arrives 20° off the axis, so its spot is not round.
   Only the slice of that bundle in the plane of the picture is traced, each ray weighted equally,
   and its blur is measured about its own middle. That catches coma and field curvature; the error
-  of the slice at right angles (astigmatism) and distortion are not counted. The stop is f/11. The spectacle
+  of the slice at right angles (astigmatism) and distortion are not counted. Its inset
+  therefore draws each spot as that slice, a strip between its goal marks, not as a round spot. The stop is f/11. The spectacle
   plastic is a two-term fit through CR-39's index and Abbe number. Air is taken as 1.
 - For the lens challenges the light comes from a point on the axis, so the spot on the target is
   round. Each traced ray stands for a ring of light, and is weighted by its height in the beam.
