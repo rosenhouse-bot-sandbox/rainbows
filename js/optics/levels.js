@@ -2,30 +2,55 @@
 // those, and a score read off the traced rays. Text here states what the model does; every number
 // shown while playing is computed from the trace.
 
-import { AIR, BK7, CR39, EYE, GREEN } from './glass.js';
-import { trace, beam, lens, seg, arc, mirror } from './trace.js';
+import { AIR, BK7, F2, SF10, CAF2, CR39, EYE, GREEN, WHITE, abbe } from './glass.js';
+import { trace, beam, lens, stack, paraxial, seg, arc, mirror } from './trace.js';
 
 const DEG = Math.PI / 180;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const f0 = (v) => v.toFixed(0), f1 = (v) => v.toFixed(1), f2 = (v) => v.toFixed(2);
 const signed = (v, d) => (v < 0 ? '−' : v > 0 ? '+' : '') + Math.abs(v).toFixed(d);
 const mm = (R) => (isFinite(R) && Math.abs(R) < 1e5 ? f0(Math.abs(R)) + ' mm' : 'flat');
+// A face of a lens in words: `out` is -1 for a front face, +1 for a back face.
+const side = (R, out) => (isFinite(R) && Math.abs(R) < 1e5 ? (Math.sign(R) === -out ? 'bulging ' : 'hollow ') + f0(Math.abs(R)) : 'flat');
 
 // Light that arrives at the target, as numbers. `ring` weights each ray by its distance from the
 // axis: on the axis of a round lens, a ray at height s stands for a ring of light of radius s.
+// Rays may carry a group number c (a colour, or a direction); each group is also tallied alone,
+// with its blur measured about the axis (`blur`) and about its own middle (`spread`).
 function tally(scene, rays, ring) {
   let all = 0, got = 0, u2 = 0, via = 0, viaGot = 0;
-  const hits = [];
+  const hits = [], groups = [];
   for (const r of rays) {
-    const w = ring ? Math.abs(r.s) : 1, o = trace(scene, r);
+    const w = ring ? Math.abs(r.s) : 1, o = trace(scene, r), c = r.c || 0;
+    const G = groups[c] || (groups[c] = { w: 0, u: 0, u2: 0 });
     all += w;
     const used = o.tags.has('part');
     if (used) via += w;
-    if (o.end === 'target') { got += w; u2 += w * o.u * o.u; hits.push(o.u, w); if (used) viaGot += w; }
+    if (o.end === 'target') { got += w; u2 += w * o.u * o.u; hits.push(o.u, w, c); if (used) viaGot += w; G.w += w; G.u += w * o.u; G.u2 += w * o.u * o.u; }
+  }
+  for (const G of groups) {
+    G.blur = G.w ? 2 * Math.sqrt(G.u2 / G.w) : Infinity;
+    G.spread = G.w ? 2 * Math.sqrt(Math.max(0, G.u2 / G.w - (G.u / G.w) ** 2)) : Infinity;
   }
   return { share: all ? got / all : 0, viaShare: via ? viaGot / via : 0, via: all ? via / all : 0,
-    blur: got ? 2 * Math.sqrt(u2 / got) : Infinity, hits };
+    blur: got ? 2 * Math.sqrt(u2 / got) : Infinity, hits, groups };
 }
+
+// White light: the same bundle in each of three colours.
+const white = (src, n) => WHITE.flatMap((col, c) => beam({ ...src, n, nm: col.nm }).map((r) => ({ ...r, c, rgb: col.rgb })));
+// Where the rays that leave a lens (a list of traces, with their weights) are tightest about the axis.
+function bestFocus(scene, rays) {
+  let sab = 0, sbb = 0;
+  for (const r of rays) {
+    const o = trace(scene, r), k = o.pts.length;
+    if (o.end !== 'out' || k < 6) continue;
+    const bb = (o.pts[k - 1] - o.pts[k - 3]) / (o.pts[k - 2] - o.pts[k - 4]), a = o.pts[k - 1] - bb * o.pts[k - 2], w = Math.abs(r.s);
+    sab += w * a * bb; sbb += w * bb * bb;
+  }
+  return sbb ? -sab / sbb : NaN;
+}
+const GLASSES = [CAF2, BK7, F2, SF10];
+const focusRows = (surfaces, from) => WHITE.map((col, i) => [['Blue', 'Green', 'Red'][i] + ' light focuses', f1(paraxial(surfaces, col.nm).at - from) + ' mm behind']);
 
 // Handles: how a drag on the picture changes a setting. `hit` says how near a point (in world
 // units, with px per unit) is, or Infinity; `start` remembers the grab; `move` returns the value.
@@ -36,7 +61,7 @@ const slideX = (param, x, h, pad, ky) => ({ param, cursor: 'ew', knobs: [[x, ky]
 export const LEVELS = [
   // ───────────────────────────────────────────────────────────── 1
   {
-    id: 'burn', nav: 'Burning glass', unit: 'mm', scale: 'Bench 120 mm long',
+    id: 'burn', nav: 'Match', unit: 'mm', scale: 'Bench 120 mm long',
     title: 'Light the match',
     brief: 'Sunlight arrives from the left as parallel rays. Slide the magnifying glass along its rail and change how strongly its faces curve until the light meets on the match head.',
     learned: 'A lens that bulges in the middle bends parallel rays to one meeting point, its focus. The distance from lens to focus is the focal length, and stronger curves make it shorter. Look at the outermost rays: they cross a little early. That is spherical aberration, and it comes back in the camera challenge. The Sun is traced here as a single far-off point; its real image here would be a disc more than half a millimetre across.',
@@ -66,7 +91,7 @@ export const LEVELS = [
   },
   // ───────────────────────────────────────────────────────────── 2
   {
-    id: 'specs', nav: 'Eyeglasses', unit: 'mm', scale: 'Eye 23.5 mm long',
+    id: 'specs', nav: 'Glasses', unit: 'mm', scale: 'Eye 23.5 mm long',
     title: 'Fit a pair of glasses',
     brief: 'This eye is a little too long, so light from a distant point meets in front of the retina and lands as a blur: nearsightedness. The chart shows what the eye makes of an eye chart across the room. Choose the power of the spectacle lens that puts the focus back on the retina.',
     learned: 'A lens that is thinner in the middle spreads light, which pushes the focus further back. Opticians measure power in dioptres, one over the focal length in metres, negative for a spreading lens. Look at the lens: the stronger it is, the thicker its edge. A letter on the 20/20 line is only 26 µm tall on the retina, so a blur of 16 µm leaves it soft. This one-surface model eye cannot do better, because a sphere is not the ideal shape; a real cornea flattens toward its edge.',
@@ -106,7 +131,7 @@ export const LEVELS = [
   },
   // ───────────────────────────────────────────────────────────── 3
   {
-    id: 'camera', nav: 'Camera lens', unit: 'mm', scale: 'Lens 26 mm across',
+    id: 'camera', nav: 'Camera', unit: 'mm', scale: 'Lens 26 mm across',
     title: 'A sharp, bright camera lens',
     brief: 'One 50 mm lens, a distant point of light, and a sensor that slides itself to the best focus. Wide open the picture is bright but soft. Closing the iris sharpens it and throws light away. Find a lens shape that is sharp without closing down past f/4.',
     learned: 'Rays through the edge of a spherical lens bend too much and cross early: spherical aberration. It grows steeply with the opening, so closing the iris cures it, at the cost of light. Shape matters as well. With the curved face toward the distant scene both faces share the bending, and the blur is about a quarter of what the same glass gives turned round. Real camera lenses stack several elements so the errors of one cancel those of the next. Only light along the axis is traced here; off-axis blurs and colour are for later challenges.',
@@ -156,9 +181,113 @@ export const LEVELS = [
         rows: [['Focal length', f1(b.f) + ' mm'], ['Light let through, against wide open', f0(100 * (p.D / 24) ** 2) + '%'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
     },
   },
-  // ───────────────────────────────────────────────────────────── 4
+  // ───────────────────────────────────────────────────────────── colour
   {
-    id: 'tower', nav: 'Solar tower', unit: 'm', scale: 'Tower 100 m tall',
+    id: 'colour', nav: 'Colour', unit: 'mm', scale: 'Lens 16 mm across',
+    title: 'Chase the colour fringe',
+    brief: 'White light is every colour at once, and glass slows blue more than red, so a lens brings blue to a focus nearer than red. Pick a glass, then set the curve for a lens of about 100 mm. The sensor slides itself to the best focus. Which glass lands the colours closest together?',
+    learned: 'Every glass bends blue more than red. The Abbe number says how little: fluorite, at 95, spreads colours least, which is why long camera lenses use it. Notice that a glass with a higher index needs gentler curves for the same focal length. No single glass brings the colours together, though. With one simple lens the colour blur is set by the width of the lens and the Abbe number, and nothing else you can change. The cure is the next challenge.',
+    key: [['k-ray', 'White light, traced in blue, green and red'], ['k-glass', 'Lens'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    bounds: [-30, -14, 122, 14],
+    params: [
+      { id: 'glass', label: 'Glass', options: ['Fluorite', 'Crown', 'Flint', 'Dense flint'], value: 3 },
+      { id: 'c', label: 'Curve of the faces', min: 5, max: 16, step: 0.25, value: 7, show: (v) => 'radius ' + f0(1000 / v) + ' mm' },
+    ],
+    build(p) {
+      const mat = GLASSES[p.glass], R = 1000 / p.c;
+      const L = lens({ x: 0, h: 8, R1: R, R2: -R, mat, tag: 'part' });
+      const src = { ox: -30, oy: 0 }, probe = white({ ...src, half: 7.9 }, 81);
+      const xs = clamp(bestFocus({ surfaces: L.surfaces, bounds: this.bounds }, probe) || 119, 20, 119);
+      return { surfaces: [...L.surfaces, seg(xs, -11, xs, 11, { act: 'target' })], ring: true, L, mat, xs,
+        f: paraxial(L.surfaces, WHITE[1].nm).f,
+        draw: white({ ...src, half: 7.4 }, 7), probe,
+        spot: { goal: 0.070, unit: 'µm', per: 1000 },
+        items: [{ t: 'axis' }, { t: 'glass', outline: L.outline }, { t: 'sensor', x: xs, h: 11 }],
+        handles: [] };
+    },
+    score(m, b) {
+      const um = m.blur * 1000, okF = b.f >= 90 && b.f <= 110;
+      return { solved: um <= 70 && okF,
+        meters: [{ label: 'Blur, all colours', text: f0(um) + ' µm', goal: '70 µm or less', frac: 70 / um },
+          { label: 'Focal length', text: f0(b.f) + ' mm', goal: '90 to 110 mm', frac: okF ? 1 : 1 - Math.min(0.9, Math.abs(b.f - 100) / 100) - 0.05 }],
+        rows: [['Index of this glass', b.mat.n(587.56).toFixed(3)], ['Its Abbe number', f0(abbe(b.mat))], ...focusRows(b.L.surfaces, b.L.v2)] };
+    },
+  },
+  // ───────────────────────────────────────────────────────────── doublet
+  {
+    id: 'doublet', nav: 'Doublet', unit: 'mm', scale: 'Lens 12 mm across',
+    title: 'Cancel the colour',
+    brief: 'A strong crown glass lens, with a second lens cemented to its back. Choose the glass of the second lens and the curve of its back face. Shaped right, the second lens undoes the colour spread of the first and still leaves a lens that focuses.',
+    learned: 'A lens that spreads light has colour error of the opposite sign to one that gathers it. Flint glass spreads colours nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s colour error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the colour would cancel the focusing too. This is the achromatic doublet, the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far.',
+    key: [['k-ray', 'White light, traced in blue, green and red'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
+    bounds: [-16, -11, 96, 11],
+    params: [
+      { id: 'glass', label: 'Glass of the second lens', options: ['Crown', 'Flint', 'Dense flint'], value: 0 },
+      { id: 'c', label: 'Its back face', min: -45, max: 30, step: 0.25, value: -44.75,
+        show: (v) => (Math.abs(v) < 0.126 ? 'flat' : 'radius ' + f0(1000 / Math.abs(v)) + ' mm, ' + (v < 0 ? 'bulging' : 'hollow')) },
+    ],
+    build(p) {
+      const mat = GLASSES[p.glass + 1], RC = 22.4, H = 6;
+      const K = stack({ x: 0, h: H, R: [RC, -RC, Math.abs(p.c) < 0.126 ? Infinity : 1000 / p.c], mats: [BK7, mat], tag: 'part' });
+      const src = { ox: -16, oy: 0 }, probe = white({ ...src, half: H * 0.98 }, 81);
+      const far = this.bounds[2] - 3, x = bestFocus({ surfaces: K.surfaces, bounds: this.bounds }, probe);
+      const xs = x > K.back + 4 && x < far ? x : far;                 // no focus on the bench: park the sensor at the end
+      return { surfaces: [...K.surfaces, seg(xs, -9, xs, 9, { act: 'target' })], ring: true, K, mat, xs,
+        f: paraxial(K.surfaces, WHITE[1].nm).f,
+        draw: white({ ...src, half: H * 0.93 }, 7), probe,
+        spot: { goal: 0.015, unit: 'µm', per: 1000 },
+        items: [{ t: 'axis' }, { t: 'glass', outline: K.outlines[0] }, { t: 'glass', outline: K.outlines[1], flint: p.glass > 0 }, { t: 'sensor', x: xs, h: 9 }],
+        handles: [] };
+    },
+    score(m, b) {
+      const um = m.blur * 1000;
+      return { solved: um <= 15,
+        meters: [{ label: 'Blur, all colours', text: isFinite(um) ? f0(um) + ' µm' : 'no focus', goal: '15 µm or less', frac: 15 / um }],
+        rows: [['Focal length of the pair', b.f > 0 && b.f < 1000 ? f0(b.f) + ' mm' : 'none'], ['Abbe number, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
+          ...(b.f > 0 && b.f < 1000 ? focusRows(b.K.surfaces, b.K.back) : [])] };
+    },
+  },
+  // ───────────────────────────────────────────────────────────── wide
+  {
+    id: 'wide', nav: 'Wide', unit: 'mm', scale: 'Lens 32 mm across',
+    title: 'A lens for landscapes',
+    brief: 'A camera must be sharp at the edge of the picture as well as the middle. Gold light comes straight in. Pale light comes from 20° off to one side, and has to land sharp on the same flat sensor. Bend the lens and slide the stop along the axis until both spots are small.',
+    learned: 'Off the axis a simple lens smears a point into a comet shape (coma), and focuses it on a curved surface where the sensor is flat. A stop in front decides which part of the lens each direction of light goes through. With the lens bent into a meniscus, hollow side to the scene, and the stop at the right distance, those errors nearly cancel. William Wollaston found this in 1812, and his landscape lens went into simple cameras for well over a century. Only an up-and-down slice of each beam is traced here, so the error of the sideways slice (astigmatism) is not counted.',
+    key: [['k-ray', 'Light from straight ahead (550 nm)'], ['k-ray2', 'Light from 20° off to one side'], ['k-glass', 'Crown glass lens, 60 mm'], ['k-stop', 'Stop, f/11'], ['k-target', 'Sensor, at the best focus for the middle']],
+    bounds: [-46, -24, 68, 30],
+    params: [
+      { id: 'q', label: 'Lens faces, front / back', min: -2.5, max: 1, step: 0.05, value: 0, show: (v, b) => side(b.R1, -1) + ' / ' + side(b.R2, 1) + ' mm' },
+      { id: 's', label: 'Stop position', min: 6, max: 30, step: 0.25, value: 6, show: (v) => f1(v) + ' mm in front' },
+    ],
+    build(p) {
+      const n = BK7.n(GREEN), P = 1 / 60, H = 16, D = 5.45, FIELD = 20 * DEG;
+      const c1 = P * (p.q + 1) / (2 * (n - 1)), c2 = P * (p.q - 1) / (2 * (n - 1));
+      const R1 = Math.abs(c1) > 1e-9 ? 1 / c1 : Infinity, R2 = Math.abs(c2) > 1e-9 ? 1 / c2 : Infinity;
+      const L = lens({ x: 0, h: H, R1, R2, mat: BK7, tag: 'part' });
+      const xi = -p.s, front = [...L.surfaces, seg(xi, D / 2, xi, 21, { act: 'absorb' }), seg(xi, -D / 2, xi, -21, { act: 'absorb' })];
+      // two bundles through the stop: straight ahead, and from 20° below the axis
+      const bundle = (angle, n, c, rgb, fill) => beam({ ox: xi - 70 * Math.cos(angle), oy: -70 * Math.sin(angle), angle, half: D / 2 * Math.cos(angle) * fill, n, nm: GREEN }).map((r) => ({ ...r, c, rgb }));
+      const probe = [...bundle(0, 81, 0, null, 0.999), ...bundle(FIELD, 81, 1, null, 0.999)];
+      const xs = clamp(bestFocus({ surfaces: front, bounds: this.bounds }, probe.filter((r) => !r.c)) || 60, 30, 66);
+      return { surfaces: [...front, seg(xs, -23, xs, 29, { act: 'target' })], ring: false, L, R1, R2, xs, f: L.focal(GREEN),
+        draw: [...bundle(0, 7, 0, null, 0.92), ...bundle(FIELD, 7, 1, [150, 205, 255], 0.92)], probe,
+        items: [{ t: 'axis' }, { t: 'glass', outline: L.outline }, { t: 'iris', x: xi, open: D / 2, h: 21 }, { t: 'sensor', x: xs, h: 26, y: 3 }],
+        handles: [{ param: 's', cursor: 'ew', knobs: [[xi, -21]],
+          hit: (wx, wy, k) => (Math.abs(wx - xi) * k <= 26 && Math.abs(wy) <= 21 + 12 / k ? Math.abs(wx - xi) : Infinity),
+          start: (wx, wy, v) => v + wx, move: (wx, wy, c) => c - wx }] };
+    },
+    score(m, b) {
+      const mid = m.groups[0] ? m.groups[0].spread * 1000 : Infinity, edge = m.groups[1] ? m.groups[1].spread * 1000 : Infinity;
+      const show = (v) => (isFinite(v) ? f0(v) + ' µm' : 'no light');
+      return { solved: mid <= 40 && edge <= 60,
+        meters: [{ label: 'Blur in the middle', text: show(mid), goal: '40 µm or less', frac: 40 / mid },
+          { label: 'Blur at the edge', text: show(edge), goal: '60 µm or less', frac: 60 / edge }],
+        rows: [['Focal length', f1(b.f) + ' mm'], ['Sensor sits', f1(b.xs - b.L.v2) + ' mm behind the lens']] };
+    },
+  },
+  // ───────────────────────────────────────────────────────────── tower
+  {
+    id: 'tower', nav: 'Tower', unit: 'm', scale: 'Tower 100 m tall',
     title: 'Aim the heliostats',
     brief: 'A solar power tower boils its working fluid with sunlight bounced off a field of flat mirrors. The Sun stands 40° above the horizon behind the field. Tilt each mirror so that its light lands on the boiler at the top of the tower.',
     learned: 'A mirror sends light off at the same angle it arrived at, so each mirror must face exactly halfway between the Sun and the boiler. That is why every mirror in the field needs its own tilt, and why, as the Sun crosses the sky, each one turns at half the Sun’s rate. Real plants steer thousands of mirrors this way all day. The Sun is traced here as a point; its half-degree width smears each beam by about a metre over these distances.',

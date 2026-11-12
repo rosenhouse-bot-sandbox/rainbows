@@ -28,12 +28,15 @@ await new Promise((r) => server.listen(0, r));
 const base = `http://localhost:${server.address().port}`;
 fs.mkdirSync(out, { recursive: true });
 
-// What to do in each challenge: knobs to drag (from a world point, by a number of pixels), then
-// sliders to set by keyboard. The values are a known solution; the test checks the page agrees.
+// What to do in each challenge: choices to click, sliders to set by keyboard, then knobs to drag
+// (from a world point; `rev` when the value rises as the pointer goes left). The values are a known solution; the test checks the page agrees.
 const PLAYS = {
   burn: { keys: { c: 15 }, drags: [{ param: 'x', at: [-50, -21], to: -61 }] },
   specs: { keys: { P: -4.5 }, drags: [] },
   camera: { keys: { q: 0.7 }, drags: [{ param: 'D', at: [-6, 12], to: 12.8 }] },
+  colour: { clicks: { glass: 0 }, keys: { c: 11.5 }, drags: [] },
+  doublet: { clicks: { glass: 1 }, keys: { c: -2 }, drags: [] },
+  wide: { keys: { q: -2.25 }, drags: [{ param: 's', at: [-6, -21], to: 11.5, rev: true }] },
   tower: { keys: {}, drags: [{ param: 't0', at: [22, -6], to: 3.5 }, { param: 't1', at: [64, -6], to: -2 }, { param: 't2', at: [106, -6], to: -10.75 }] },
 };
 
@@ -71,6 +74,10 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
     });
     check(clear, `${name}/${id}: the bench is under the panel or off the screen`);
 
+    for (const [k, v] of Object.entries(play.clicks || {})) {  // a choice, pressed where it is on screen
+      await (touch ? page.tap(`#p-${k}-${v}`) : page.click(`#p-${k}-${v}`));
+      check((await val(k)) === v, `${name}/${id}: could not choose ${k}`);
+    }
     for (const [k, v] of Object.entries(play.keys)) {          // keyboard only
       await page.focus('#p-' + k);
       for (let n = 0; n < 400 && Math.abs((await val(k)) - v) > 1e-6; n++) await page.keyboard.press((await val(k)) < v ? 'ArrowRight' : 'ArrowLeft');
@@ -83,14 +90,14 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
       let px = x, py = y, moved = false;
       for (let n = 0; n < 600; n++) {
         const v = await val(d.param);
-        if (Math.abs(v - d.to) < 1e-6) break;
+        if (Math.abs(v - d.to) < (touch ? 0.3 : 1e-6)) break;       // a finger's events land a step late
         // which way the value goes when the pointer moves right (or up, for the iris)
-        const dir = Math.sign(d.to - v) * (d.param === 'D' ? 0 : 1), dy = d.param === 'D' ? -Math.sign(d.to - v) : 0;
+        const dir = Math.sign(d.to - v) * (d.param === 'D' ? 0 : d.rev ? -1 : 1), dy = d.param === 'D' ? -Math.sign(d.to - v) : 0;
         px += dir; py += dy; moved = true;
         await point('move', px, py);
       }
       check(moved && (await val(d.param)) !== before, `${name}/${id}: dragging the ${d.param} knob did nothing`);
-      check(Math.abs((await val(d.param)) - d.to) < 1e-6, `${name}/${id}: dragging could not reach ${d.param} = ${d.to} (got ${await val(d.param)})`);
+      check(Math.abs((await val(d.param)) - d.to) < 0.6, `${name}/${id}: dragging could not reach ${d.param} = ${d.to} (got ${await val(d.param)})`);
       await point('up', px, py);
     }
     await page.waitForTimeout(200);

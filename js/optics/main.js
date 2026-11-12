@@ -5,6 +5,7 @@
 
 import { LEVELS, run } from './levels.js';
 import { drawChart, CHART_ASPECT } from './chart.js';
+import { WHITE } from './glass.js';
 
 const $ = (id) => document.getElementById(id);
 const cv = $('view'), g = cv.getContext('2d');
@@ -40,6 +41,18 @@ function go(i, quiet) {
 
   const box = $('controls'); box.replaceChildren(); inputs = {};
   for (const q of L.params) {
+    if (q.options) {                               // a choice: one button each
+      const id = 'p-' + q.id, wrap = el('div', 'ctl'), lab = el('span', 'lab', q.label), seg = el('div', 'seg');
+      lab.id = id + '-lab'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-labelledby', lab.id);
+      const btns = q.options.map((name, i) => {
+        const b = el('button', '', name); b.type = 'button'; b.id = id + '-' + i;
+        b.addEventListener('click', () => { S.p[q.id] = i; hintOff(); update(); commit(); });
+        seg.append(b); return b;
+      });
+      wrap.append(lab, seg); box.append(wrap);
+      inputs[q.id] = { btns, q };
+      continue;
+    }
     const id = 'p-' + q.id, wrap = el('div', 'ctl'), lab = el('div', 'lab'), label = el('label', '', q.label), val = el('b');
     label.htmlFor = id; val.setAttribute('aria-hidden', 'true'); lab.append(label, val);
     const inp = el('input'); inp.type = 'range'; inp.id = id; inp.min = q.min; inp.max = q.max; inp.step = q.step; inp.value = S.p[q.id];
@@ -60,7 +73,7 @@ function go(i, quiet) {
   S.lit = undefined; S.fx = null;            // arriving at a challenge is not lighting the match
   update();
   const hasKnob = S.out.b.handles.length > 0;
-  $('hint').textContent = L.hint || (hasKnob ? 'Drag the white knobs, or use the sliders' : 'Use the slider in the panel');
+  $('hint').textContent = L.hint || (hasKnob ? 'Drag the white knobs, or use the sliders' : 'Use the controls in the panel');
   if (hasKnob) { const li = el('li'); li.append(el('i', 'k-knob'), el('span', '', 'Knob: drag it')); key.prepend(li); }
   paintNav();
 }
@@ -90,7 +103,8 @@ function update() {
   S.lit = lit;
   const { score, b } = S.out;
   for (const k in inputs) {
-    const { inp, val, q } = inputs[k], v = S.p[k];
+    const { inp, val, q, btns } = inputs[k], v = S.p[k];
+    if (btns) { btns.forEach((b, i) => b.setAttribute('aria-pressed', String(i === v))); continue; }
     if (+inp.value !== v) inp.value = v;
     inp.style.setProperty('--v', ((v - q.min) / (q.max - q.min) * 100).toFixed(2) + '%');
     const text = q.show(v, b);
@@ -173,8 +187,8 @@ const ITEMS = {
     g.beginPath();
     for (let i = 0; i < o.outline.length; i += 2) g[i ? 'lineTo' : 'moveTo'](sx(o.outline[i]), sy(o.outline[i + 1]));
     g.closePath();
-    g.fillStyle = 'rgba(150,195,255,.2)'; g.fill();
-    g.strokeStyle = 'rgba(205,228,255,.85)'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
+    g.fillStyle = o.flint ? 'rgba(170,230,190,.24)' : 'rgba(150,195,255,.2)'; g.fill();
+    g.strokeStyle = o.flint ? 'rgba(200,245,215,.85)' : 'rgba(205,228,255,.85)'; g.lineWidth = 1.5; g.lineJoin = 'round'; g.stroke();
   },
   match(o, lit) {
     g.strokeStyle = '#b89a6a'; g.lineWidth = Math.max(2, V.k * 1.1); g.lineCap = 'round';
@@ -233,8 +247,9 @@ const ITEMS = {
   },
   iris(o) { g.strokeStyle = '#8792b8'; g.lineWidth = 4; g.lineCap = 'butt'; line(o.x, o.open, o.x, o.h); line(o.x, -o.open, o.x, -o.h); },
   sensor(o, lit) {
-    g.fillStyle = 'rgba(135,146,184,.35)'; g.fillRect(sx(o.x), sy(o.h + 1.5), V.k * 3.5, V.k * (2 * o.h + 3));
-    g.strokeStyle = lit ? '#6fe3a1' : '#e8553d'; g.lineWidth = 3; g.lineCap = 'butt'; line(o.x, -o.h, o.x, o.h);
+    const y = o.y || 0;
+    g.fillStyle = 'rgba(135,146,184,.35)'; g.fillRect(sx(o.x), sy(y + o.h + 1.5), V.k * 3.5, V.k * (2 * o.h + 3));
+    g.strokeStyle = lit ? '#6fe3a1' : '#e8553d'; g.lineWidth = 3; g.lineCap = 'butt'; line(o.x, y - o.h, o.x, y + o.h);
   },
   tower(o, lit, m) {
     // The boiler glows by how much of the mirrors' light is landing on it: dull red with none,
@@ -263,11 +278,13 @@ function draw() {
   g.lineCap = 'butt'; g.setLineDash([]);
   for (const o of b.items) if (o.t === 'axis' || o.t === 'ground' || o.t === 'rail' || o.t === 'post') ITEMS[o.t](o, lit, m);
   // the light, added up where rays overlap
-  g.globalCompositeOperation = 'lighter'; g.strokeStyle = LIGHT; g.lineWidth = 1.4; g.lineJoin = 'round';
-  for (const pass of ['absorbed', 'target']) {
-    g.globalAlpha = pass === 'target' ? 0.85 : 0.4;
+  g.globalCompositeOperation = 'lighter'; g.lineWidth = 1.4; g.lineJoin = 'round';
+  const tints = new Map();                       // rays of one colour are stroked together
+  paths.forEach((p, i) => { const rgb = b.draw[i].rgb, key = rgb ? `rgb(${rgb})` : LIGHT; if (!tints.has(key)) tints.set(key, []); tints.get(key).push(p); });
+  for (const [tint, list] of tints) for (const pass of ['absorbed', 'target']) {
+    g.strokeStyle = tint; g.globalAlpha = pass === 'target' ? 0.85 : 0.4;
     g.beginPath();
-    for (const p of paths) {
+    for (const p of list) {
       if ((p.end === 'target') !== (pass === 'target')) continue;
       for (let i = 0; i < p.pts.length; i += 2) g[i ? 'lineTo' : 'moveTo'](sx(p.pts[i]), sy(p.pts[i + 1]));
     }
@@ -303,18 +320,28 @@ function inset(spot, m, lit) {
   // Light per unit area against radius, in rings one pixel wide. Full brightness is what all the
   // light would give spread evenly over the goal circle; the square root compresses the rest so a
   // wide blur still shows.
-  const n = Math.ceil(size * 0.72), bins = new Float64Array(n + 1);
-  let tot = 0;
-  for (let i = 0; i < m.hits.length; i += 2) { tot += m.hits[i + 1]; const r = Math.abs(m.hits[i]) * k; if (r < n) bins[Math.floor(r)] += m.hits[i + 1]; }
-  for (let pass = 0; pass < 3; pass++) {            // the rays are a sample: smooth the gaps between them
-    let prev = bins[0];
-    for (let r = 0; r < n; r++) { const here = bins[r]; bins[r] = (prev + 2 * here + bins[r + 1]) / 4; prev = here; }
+  const n = Math.ceil(size * 0.72), rg = spot.goal / 2 * k;
+  const chan = [];                                // one profile per colour of light traced
+  for (let i = 0; i < m.hits.length; i += 3) {
+    const c = m.hits[i + 2], C = chan[c] || (chan[c] = { bins: new Float64Array(n + 1), tot: 0 }), r = Math.abs(m.hits[i]) * k;
+    C.tot += m.hits[i + 1]; if (r < n) C.bins[Math.floor(r)] += m.hits[i + 1];
   }
-  if (tot > 0) {
-    const rg = spot.goal / 2 * k, gr = g.createRadialGradient(cx, cy, 0, cx, cy, n);
+  for (const C of chan) for (let pass = 0; C && pass < 3; pass++) {            // the rays are a sample: smooth the gaps between them
+    let prev = C.bins[0];
+    for (let r = 0; r < n; r++) { const here = C.bins[r]; C.bins[r] = (prev + 2 * here + C.bins[r + 1]) / 4; prev = here; }
+  }
+  const level = (C, r) => (C && C.tot ? clamp(Math.sqrt(C.bins[r] / C.tot * rg * rg / (2 * r + 1)), 0, 1) : 0);
+  if (chan.length) {
+    const gr = g.createRadialGradient(cx, cy, 0, cx, cy, n);
     for (let r = 0; r < n; r++) {
-      const a = clamp(Math.sqrt(bins[r] / tot * rg * rg / (2 * r + 1)), 0, 1);
-      gr.addColorStop((r + 0.5) / n, `rgba(255,190,90,${a.toFixed(3)})`);
+      let col;
+      if (chan.length === 1) col = `rgba(255,190,90,${level(chan[0], r).toFixed(3)})`;
+      else {                                       // white light: add the colours up
+        let R = 0, G = 0, B = 0;
+        chan.forEach((C, c) => { const a = level(C, r), q = WHITE[c].rgb; R += a * q[0]; G += a * q[1]; B += a * q[2]; });
+        col = `rgb(${Math.min(255, R) | 0},${Math.min(255, G) | 0},${Math.min(255, B) | 0})`;
+      }
+      gr.addColorStop((r + 0.5) / n, col);
     }
     g.fillStyle = gr; g.fillRect(x, y, size, size);
   }

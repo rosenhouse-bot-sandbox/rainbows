@@ -146,3 +146,36 @@ export function lens({ x, h, R1, R2, mat, tmin = 1.2, tag }) {
   };
   return { surfaces, outline, t, edge: t - s1 + s2, v1, v2, focal, x, h };
 }
+
+// Lenses cemented face to face on the axis y = 0. `R` lists the faces from the left (one more than
+// there are elements), `mats` the glass of each element. The first face's vertex is at x. Each
+// element is as thin as it can be with `tmin` of glass left at its thinnest.
+export function stack({ x, h, R, mats, tmin = 1.2, tag }) {
+  const flat = (r) => !isFinite(r) || Math.abs(r) > 1e5;
+  const sag = (r) => flat(r) ? 0 : Math.sign(r) * (Math.abs(r) - Math.sqrt(r * r - h * h));
+  const air = { n: () => 1 }, v = [x], surfaces = [], outlines = [], N = 24;
+  for (let i = 0; i < mats.length; i++) v.push(v[i] + tmin + Math.max(0, sag(R[i]) - sag(R[i + 1])));
+  const fx = (vx, r, y) => flat(r) ? vx : vx + r - Math.sign(r) * Math.sqrt(r * r - y * y);
+  R.forEach((r, i) => {
+    const nL = i ? mats[i - 1] : air, nR = i < mats.length ? mats[i] : air;
+    surfaces.push(flat(r) ? seg(v[i], -h, v[i], h, { act: 'refract', nL, nR, tag })
+      : arc(v[i] + r, 0, Math.abs(r), -Math.sign(r), h, { act: 'refract', nL, nR, tag }));
+  });
+  for (let i = 0; i < mats.length; i++) {
+    const o = [];
+    for (let j = 0; j <= N; j++) { const y = -h + 2 * h * j / N; o.push(fx(v[i], R[i], y), y); }
+    for (let j = N; j >= 0; j--) { const y = -h + 2 * h * j / N; o.push(fx(v[i + 1], R[i + 1], y), y); }
+    outlines.push(o);
+  }
+  const e0 = v[0] + sag(R[0]), e1 = v[mats.length] + sag(R[mats.length]);
+  surfaces.push(seg(e0, h, e1, h, { act: 'absorb' }), seg(e0, -h, e1, -h, { act: 'absorb' }));
+  return { surfaces, outlines, v, back: v[mats.length], h };
+}
+
+// Where a ray very near the axis, arriving parallel to it, ends up: the paraxial focus of whatever
+// refracting surfaces are given. Returns the effective focal length and where the focus is.
+export function paraxial(surfaces, nm, x0 = -1e3) {
+  const y0 = 1e-3, o = trace({ surfaces: surfaces.filter((s) => s.act === 'refract'), bounds: [-1e6, -1e6, 1e6, 1e6] }, { x: x0, y: y0, dx: 1, dy: 0, nm });
+  const k = o.pts.length, sl = (o.pts[k - 1] - o.pts[k - 3]) / (o.pts[k - 2] - o.pts[k - 4]);
+  return { f: -y0 / sl, at: o.pts[k - 4] - o.pts[k - 3] / sl };
+}

@@ -40,7 +40,7 @@ function shrunk(m, f) {
 const scratch = document.createElement('canvas');
 
 // Draw the chart into the box (x, y, w, h: CSS pixels) of context g. `hits` is the tally's list of
-// (distance from the centre of the spot in mm, weight) pairs for the rays that reached the retina.
+// (distance from the centre of the spot in mm, weight, group) triples for the rays that reached the retina.
 export function drawChart(g, x, y, w, h, dpr, hits, umPerArcmin) {
   const W = Math.round(w * dpr), H = Math.round(h * dpr);
   const upp = 5 * 10 * umPerArcmin * 2.3 / W;                        // µm of retina per pixel
@@ -48,7 +48,7 @@ export function drawChart(g, x, y, w, h, dpr, hits, umPerArcmin) {
   // the spot as rings of equal light
   const rays = [];
   let tot = 0;
-  for (let i = 0; i < hits.length; i += 2) { rays.push([Math.abs(hits[i]) * 1000 / upp, hits[i + 1]]); tot += hits[i + 1]; }
+  for (let i = 0; i < hits.length; i += 3) { rays.push([Math.abs(hits[i]) * 1000 / upp, hits[i + 1]]); tot += hits[i + 1]; }
   rays.sort((p, q) => p[0] - q[0]);
   const RINGS = 12, rings = [];
   let acc = 0, sum = 0, cut = tot / RINGS, r2 = 0;
