@@ -268,9 +268,11 @@ every push to `main`. In the repository settings, set Pages → Source to
 ## Optics workshop
 
 A game at `optics/`: build things that bend light on a bench where every ray is really traced.
-Each challenge has a brief, one to three things to change (sliders, and a row of buttons where the
-choice is a glass), and a goal measured from the trace.
-Meet the goal and let go, and the panel says what you just built and why it works.
+Each challenge has a one-line task, one to three things to change (sliders, and a row of buttons
+where the choice is a glass), and a goal measured from the trace. While the goal is met a Submit
+button shows at the top of the screen. Pressing it wins the challenge and opens a note, in a
+dialog, about what you just built and why it works; a solved challenge keeps a button that opens
+the note again.
 
 | Challenge | You change | It teaches |
 | --- | --- | --- |
@@ -289,6 +291,9 @@ Meet the goal and let go, and the panel says what you just built and why it work
   beside it) shrinks, "Brightness" as more light gets through. A value that has to land in a band,
   such as a focal length, is a marker on a scale with the band marked, not a bar. A slider moves the
   same way as the thing it moves in the picture.
+- On a phone the bench is given only the height its shape needs and the panel takes the rest, so
+  that every control is on screen when a challenge opens (the test checks this at 390 × 844 and at
+  390 × 700). The magnified spot, or the eye chart, sits in a column beside the bench.
 - Nothing moves unless you move it, with one exception: when the match lights it flares, with
   sparks, for four seconds and then the flame holds still. With reduced motion switched on it is
   simply alight. The flame is a drawing, not a model of combustion.

@@ -1,6 +1,8 @@
 // Plays every challenge of the Optics workshop through a real browser, once with a mouse at a
 // desktop size and once with a finger at a phone size, and fails if a challenge cannot be won, if
-// a knob does not follow the pointer, or if the page logs an error.
+// a knob does not follow the pointer, if a control is off the screen when a challenge opens, if
+// Submit shows at the wrong time, or if the page logs an error. A last pass opens every challenge
+// on a short phone screen and checks the controls again.
 //
 //   node tests/optics/run.mjs            # needs Node 22 and Playwright, installed outside the repository
 //
@@ -40,6 +42,12 @@ const PLAYS = {
   tower: { keys: {}, drags: [{ param: 't0', at: [22, -6], to: 3.5 }, { param: 't1', at: [64, -6], to: -2 }, { param: 't2', at: [106, -6], to: -10.75 }] },
 };
 
+// When a challenge opens, every control must be on the screen and inside the visible part of the panel.
+const landing = (page) => page.evaluate(() => {
+  const p = document.getElementById('panel').getBoundingClientRect();
+  return [...document.querySelectorAll('#controls input, #controls button, .meter')].every((e) => { const r = e.getBoundingClientRect(); return r.top >= p.top - 1 && r.bottom <= Math.min(innerHeight, p.bottom) + 1; });
+});
+
 const fails = [];
 const check = (ok, msg) => { if (!ok) { fails.push(msg); console.log('  FAIL ' + msg); } };
 
@@ -66,6 +74,8 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
     await page.waitForTimeout(150);
     await page.screenshot({ path: path.join(out, `${name}-${id}-start.png`) });
     check(!(await page.evaluate(() => window.__optics.S.out.score.solved)), `${name}/${id}: already solved at the start`);
+    check(await page.evaluate(() => document.getElementById('submit').hidden), `${name}/${id}: Submit shows before the goal is met`);
+    check(await landing(page), `${name}/${id}: a control is cut off or hidden when the challenge opens`);
     // the bench must sit clear of the panel and inside the screen
     const clear = await page.evaluate(() => {
       const o = window.__optics, [x0, y0, x1, y1] = o.LEVELS[o.S.i].bounds, a = o.toScreen(x0, y1), b = o.toScreen(x1, y0), p = document.getElementById('panel').getBoundingClientRect();
@@ -101,19 +111,39 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
       await point('up', px, py);
     }
     await page.waitForTimeout(200);
-    const won = await page.evaluate(() => ({ solved: window.__optics.S.out.score.solved, shown: !document.getElementById('won').hidden, said: document.getElementById('status').textContent.length > 0,
-      meters: [...document.querySelectorAll('.meter')].map((m) => m.textContent) }));
-    console.log('  ' + won.meters.join(' | ') + '  ' + JSON.stringify(await page.evaluate(() => window.__optics.S.p)));
-    check(won.solved, `${name}/${id}: the known solution does not solve it`);
-    check(won.shown && won.said, `${name}/${id}: solving it was not shown or announced`);
+    const meters = await page.evaluate(() => [...document.querySelectorAll('.meter')].map((m) => m.textContent));
+    console.log('  ' + meters.join(' | '));
+    check(await page.evaluate(() => window.__optics.S.out.score.solved), `${name}/${id}: the known solution does not solve it`);
+    check(!(await page.evaluate(() => document.getElementById('won').open || window.__optics.solved.has(window.__optics.LEVELS[window.__optics.S.i].id))), `${name}/${id}: counted as solved before Submit was pressed`);
+    const sub = page.locator('#submit');
+    check(await sub.isVisible(), `${name}/${id}: Submit did not appear when the goal was met`);
+    await page.screenshot({ path: path.join(out, `${name}-${id}-goal.png`) });
+    await (touch ? sub.tap() : sub.click());
+    await page.waitForTimeout(150);
+    const said = await page.evaluate(() => ({ open: document.getElementById('won').open, text: document.getElementById('learned').textContent.length, marked: document.querySelector('#levels [aria-current]').classList.contains('done') }));
+    check(said.open && said.text > 80 && said.marked, `${name}/${id}: Submit did not open the note or mark the challenge solved`);
     await page.screenshot({ path: path.join(out, `${name}-${id}-solved.png`) });
+    await page.keyboard.press('Escape');
+    check(!(await page.evaluate(() => document.getElementById('won').open)), `${name}/${id}: the note did not close`);
     // the page must not scroll sideways, and every control must be big enough for the input
     const layout = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth > innerWidth + 1 || document.getElementById('panel').scrollWidth > document.getElementById('panel').clientWidth + 1,
-      small: [...document.querySelectorAll('button, input, a.back')].filter((e) => { const r = e.getBoundingClientRect(); return r.height < (matchMedia('(pointer:coarse)').matches ? 44 : 24) - 0.5; }).map((e) => e.id || e.textContent.trim()) }));
+      small: [...document.querySelectorAll('button, input, a.back')].filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.height < (matchMedia('(pointer:coarse)').matches ? 44 : 24) - 0.5; }).map((e) => e.id || e.textContent.trim()) }));
     check(!layout.wide, `${name}/${id}: something overflows sideways`);
     check(!layout.small.length, `${name}/${id}: controls too small: ${layout.small.join(', ')}`);
   }
   check(!errors.length, `${name}: console: ${errors.join(' ; ')}`);
+  await ctx.close();
+}
+{ // a phone with the browser's bars showing
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 700 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  const page = await ctx.newPage();
+  for (const id of Object.keys(PLAYS)) {
+    await page.goto(`${base}/optics/#l=${id}`); await page.reload();
+    await page.waitForFunction(() => window.__optics && window.__optics.S.out);
+    await page.waitForTimeout(150);
+    check(await landing(page), `short phone/${id}: a control is cut off or hidden when the challenge opens`);
+    await page.screenshot({ path: path.join(out, `short-${id}-start.png`) });
+  }
   await ctx.close();
 }
 await browser.close(); server.close();

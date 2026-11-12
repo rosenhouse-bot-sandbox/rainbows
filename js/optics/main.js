@@ -34,9 +34,9 @@ function go(i, quiet) {
   S.p = settings[S.i];
   $('eyebrow').textContent = `Challenge ${S.i + 1} of ${LEVELS.length}`;
   $('capTitle').textContent = L.title;
+  $('capTask').textContent = L.task;
   $('capBody').textContent = L.brief;
   $('scaleText').textContent = L.scale;
-  $('learned').textContent = L.learned;
   $('status').textContent = '';
 
   const box = $('controls'); box.replaceChildren(); inputs = {};
@@ -46,7 +46,7 @@ function go(i, quiet) {
       lab.id = id + '-lab'; seg.setAttribute('role', 'group'); seg.setAttribute('aria-labelledby', lab.id);
       const btns = q.options.map((name, i) => {
         const b = el('button', '', name); b.type = 'button'; b.id = id + '-' + i;
-        b.addEventListener('click', () => { S.p[q.id] = i; hintOff(); update(); commit(); });
+        b.addEventListener('click', () => { S.p[q.id] = i; update(); });
         seg.append(b); return b;
       });
       wrap.append(lab, seg); box.append(wrap);
@@ -56,8 +56,7 @@ function go(i, quiet) {
     const id = 'p-' + q.id, wrap = el('div', 'ctl'), lab = el('div', 'lab'), label = el('label', '', q.label), val = el('b');
     label.htmlFor = id; val.setAttribute('aria-hidden', 'true'); lab.append(label, val);
     const inp = el('input'); inp.type = 'range'; inp.id = id; inp.min = q.min; inp.max = q.max; inp.step = q.step; inp.value = S.p[q.id];
-    inp.addEventListener('input', () => { S.p[q.id] = +inp.value; hintOff(); update(); });
-    inp.addEventListener('change', commit);
+    inp.addEventListener('input', () => { S.p[q.id] = +inp.value; update(); });
     wrap.append(lab, inp); box.append(wrap);
     inputs[q.id] = { inp, val, q };
   }
@@ -66,17 +65,29 @@ function go(i, quiet) {
   for (const [cls, text] of rows) { const li = el('li'); li.append(el('i', cls), el('span', '', text)); key.append(li); }
   $('meters').replaceChildren(); meterEls = [];
 
-  $('hint').classList.remove('gone');
-  S.hinted = false;
   if (!quiet) { try { history.replaceState(null, '', '#l=' + L.id); } catch { /* sandboxed frame */ } }
   $('panel').scrollTop = 0;
   S.lit = undefined; S.fx = null;            // arriving at a challenge is not lighting the match
   update();
-  const hasKnob = S.out.b.handles.length > 0;
-  $('hint').textContent = L.hint || (hasKnob ? 'Drag the white knobs, or use the sliders' : 'Use the controls in the panel');
-  if (hasKnob) { const li = el('li'); li.append(el('i', 'k-knob'), el('span', '', 'Knob: drag it')); key.prepend(li); }
+  if (S.out.b.handles.length) { const li = el('li'); li.append(el('i', 'k-knob'), el('span', '', 'Knob: drag it')); key.prepend(li); }
   paintNav();
+  layout();
 }
+
+// On a phone the bench gets the height its shape needs at full width and the sheet takes the rest,
+// but never less than it takes to show every control without scrolling (while the bench can spare it).
+function layout() {
+  const root = document.documentElement;
+  if (WIDE.matches) { root.style.removeProperty('--sheet'); return; }
+  const L = LEVELS[S.i], w = window.innerWidth, h = window.innerHeight, [bx0, by0, bx1, by1] = L.bounds;
+  // the eye chart, or the magnified spot, takes a column on the left; the bench gets the rest of the width
+  const top = TOP, free = w - 20 - (L.aside ? 104 : S.out.b.spot ? INSET + 8 : 0);
+  const want = Math.max(free / (bx1 - bx0) * (by1 - by0), L.aside ? 96 * CHART_ASPECT : S.out.b.spot ? INSET : 0);
+  const panel = $('panel'), need = $('controls').getBoundingClientRect().bottom - panel.getBoundingClientRect().top + panel.scrollTop + 14;
+  const sheet = clamp(Math.max(h - top - want - 12, need), h * 0.3, h - top - Math.min(want, 120) - 12);
+  root.style.setProperty('--sheet', Math.round(sheet) + 'px');
+}
+const WIDE = window.matchMedia('(min-width:900px)'), TOP = 62, INSET = 92;
 
 function paintNav() {
   navBtns.forEach((b, i) => {
@@ -86,7 +97,7 @@ function paintNav() {
     if (i === S.i) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
   });
   const done = solved.has(LEVELS[S.i].id);
-  $('won').hidden = !done;
+  $('again').hidden = !done;
   $('prev').setAttribute('aria-disabled', String(S.i === 0));
   const last = S.i === LEVELS.length - 1;
   $('next').setAttribute('aria-disabled', String(last));
@@ -100,7 +111,9 @@ function update() {
   const lit = S.out.score.solved;
   if (lit && S.lit === false && !REDUCE.matches) S.fx = { t0: performance.now() };
   if (!lit) S.fx = null;
+  if (lit !== S.lit && S.lit !== undefined) $('status').textContent = lit ? 'Goal met. Submit your design.' : '';
   S.lit = lit;
+  $('submit').hidden = !lit;                  // the button is there only while the goal is met
   const { score, b } = S.out;
   for (const k in inputs) {
     const { inp, val, q, btns } = inputs[k], v = S.p[k];
@@ -140,16 +153,23 @@ function update() {
   invalidate();
 }
 
-// A challenge is won when the goal is met at the moment the player lets go, not in passing.
-function commit() {
-  const L = LEVELS[S.i];
-  if (!S.out.score.solved || solved.has(L.id)) return;
-  solved.add(L.id); save(); paintNav();
-  $('status').textContent = `Solved: ${L.title}. ${L.learned}`;
-  // on a phone the news is below the fold of the sheet: bring its heading up, and no further
-  $('won').firstElementChild.scrollIntoView({ block: 'nearest', behavior: REDUCE.matches ? 'auto' : 'smooth' });
-  invalidate();
+// Meeting the goal only offers the Submit button. Pressing it is what wins the challenge, and
+// opens the note about what was built.
+const won = $('won');
+function note() {
+  const L = LEVELS[S.i], last = S.i === LEVELS.length - 1;
+  $('wonTitle').textContent = L.title;
+  $('learned').textContent = L.learned;
+  $('wonNext').hidden = last;
+  if (!won.open) won.showModal();
 }
+$('submit').addEventListener('click', () => {
+  if (!S.out.score.solved) return;
+  solved.add(LEVELS[S.i].id); save(); paintNav(); note();
+});
+$('again').addEventListener('click', note);
+$('wonStay').addEventListener('click', () => won.close());
+$('wonNext').addEventListener('click', () => { won.close(); if (S.i < LEVELS.length - 1) go(S.i + 1); });
 
 $('prev').addEventListener('click', () => { if (S.i > 0) go(S.i - 1); });
 $('next').addEventListener('click', () => { if (S.i < LEVELS.length - 1) go(S.i + 1); });
@@ -158,21 +178,20 @@ $('reset').addEventListener('click', () => {
   update();
 });
 const REDUCE = window.matchMedia('(prefers-reduced-motion:reduce)');
-const hintOff = () => { if (!S.hinted) { S.hinted = true; $('hint').classList.add('gone'); } };
 
 // ── view: world units to screen ────────────────────────────────────────────────────────────────
 const V = { k: 1, ox: 0, oy: 0, dpr: 1, w: 0, h: 0, box: [0, 0, 0, 0] };
 function fit() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2), w = cv.clientWidth, h = cv.clientHeight;
   if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
-  const pr = $('panel').getBoundingClientRect(), wide = window.matchMedia('(min-width:900px)').matches;
+  const pr = $('panel').getBoundingClientRect(), wide = WIDE.matches;
   // the part of the screen the panel leaves free
-  const x0 = wide ? pr.right + 20 : 10, x1 = w - (wide ? 20 : 10), y0 = wide ? 64 : 84, y1 = wide ? h - 48 : pr.top - 10;
+  const x0 = wide ? pr.right + 20 : 10, x1 = w - (wide ? 20 : 10), y0 = wide ? 64 : TOP, y1 = wide ? h - 48 : pr.top - 12;
   let x0s = x0, x1s = x1, aside = null;
   if (LEVELS[S.i].aside) {                  // a column kept clear of the bench, for the eye chart
     const cw = wide ? Math.min(190, (x1 - x0) * 0.22) : 96, ch = cw * CHART_ASPECT, cy = (y0 + y1) / 2 - ch / 2;
     if (wide) { aside = [x1 - cw, cy, cw, ch]; x1s = x1 - cw - 16; } else { aside = [x0, cy, cw, ch]; x0s = x0 + cw + 8; }
-  }
+  } else if (S.out.b.spot && !wide) x0s = x0 + INSET + 8;      // on a phone the magnified spot sits beside the bench
   const [bx0, by0, bx1, by1] = LEVELS[S.i].bounds;
   const k = Math.max(0.01, Math.min((x1s - x0s) / (bx1 - bx0), (y1 - y0) / (by1 - by0)));
   Object.assign(V, { k, dpr, w, h, box: [x0, y0, x1, y1], aside,
@@ -323,7 +342,7 @@ function draw() {
 // The spot the light makes on the target, magnified. On the axis of a round lens the spot is
 // round: a ray that lands u from the centre stands for a ring of that radius.
 function inset(spot, m, lit) {
-  const wide = V.w >= 900, size = wide ? 132 : 92, x = wide ? V.box[2] - size : V.box[0], y = V.box[1];
+  const wide = WIDE.matches, size = wide ? 132 : INSET, x = wide ? V.box[2] - size : V.box[0], y = wide ? V.box[1] : (V.box[1] + V.box[3] - size) / 2;
   const half = spot.goal * 1.6, k = size / 2 / half, cx = x + size / 2, cy = y + size / 2;
   g.save();
   g.beginPath(); g.roundRect(x, y, size, size, 10); g.fillStyle = 'rgba(7,11,24,.8)'; g.fill();
@@ -382,7 +401,7 @@ cv.addEventListener('pointerdown', (e) => {
   e.preventDefault();
   S.held = { h, id: e.pointerId, c: h.start(X, Y, S.p[h.param], V.k) };
   cv.setPointerCapture(e.pointerId);
-  cv.classList.add('held'); hintOff(); invalidate();
+  cv.classList.add('held'); invalidate();
 });
 cv.addEventListener('pointermove', (e) => {
   if (!S.held) {
@@ -397,14 +416,14 @@ cv.addEventListener('pointermove', (e) => {
 });
 const drop = (e) => {
   if (!S.held || e.pointerId !== S.held.id) return;
-  S.held = null; cv.classList.remove('held'); commit(); invalidate();
+  S.held = null; cv.classList.remove('held'); invalidate();
 };
 cv.addEventListener('pointerup', drop);
 cv.addEventListener('pointercancel', drop);
 cv.addEventListener('lostpointercapture', drop);
 
 // ── start ──────────────────────────────────────────────────────────────────────────────────────
-new ResizeObserver(invalidate).observe(cv);
+new ResizeObserver(() => { layout(); invalidate(); }).observe(cv);
 new ResizeObserver(invalidate).observe($('panel'));
 const fromHash = () => { const id = /(?:^|[#&])l=([a-z]+)/.exec(location.hash); return id ? Math.max(0, LEVELS.findIndex((l) => l.id === id[1])) : 0; };
 window.addEventListener('hashchange', () => { const i = fromHash(); if (i !== S.i) go(i, true); });
@@ -412,4 +431,4 @@ go(fromHash(), true);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(invalidate);
 
 // For tests: the state, and where things are on screen.
-window.__optics = { S, LEVELS, solved, toScreen: (x, y) => [sx(x), sy(y)], update, commit };
+window.__optics = { S, LEVELS, solved, toScreen: (x, y) => [sx(x), sy(y)], update };

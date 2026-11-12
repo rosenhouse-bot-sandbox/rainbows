@@ -20,7 +20,7 @@
 <link rel="stylesheet" href="../css/optics.css">
 </head>
 <body>
-<canvas id="view" role="img" aria-label="Side view of the bench. The panel describes it and holds every control." aria-describedby="capBody"></canvas>
+<canvas id="view" role="img" aria-label="Side view of the bench. The panel describes it and holds every control." aria-describedby="capTask"></canvas>
 
 <a class="back" href="../" aria-label="Back to all experiences">
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14.5 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -29,7 +29,7 @@
   <div class="scalebar" aria-hidden="true"><b id="scaleText"></b></div>
   <button type="button" class="chip" id="reset">Start over</button>
 </div>
-<p class="hint" id="hint"></p>
+<button type="button" class="submit" id="submit" hidden>Submit your design</button>
 
 <main class="panel" id="panel">
   <header class="title">
@@ -42,7 +42,7 @@
   <div class="cap" id="cap">
     <div class="eyebrow" id="eyebrow"></div>
     <h2 id="capTitle"></h2>
-    <p id="capBody"></p>
+    <p id="capTask"></p>
   </div>
 
   <div class="meters" id="meters"></div>
@@ -52,18 +52,26 @@
     <button type="button" id="prev" class="btn">‹ Previous</button>
     <button type="button" id="next" class="btn">Next ›</button>
   </div>
-
-  <div class="won" id="won" hidden>
-    <h3>Solved. What you just built</h3>
-    <p id="learned"></p>
-  </div>
   <p class="visually-hidden" id="status" role="status"></p>
+
+  <p class="more" id="capBody"></p>
+  <button type="button" class="btn quiet" id="again" hidden>Solved. Read the note again</button>
 
   <div class="readout">
     <dl id="rows"></dl>
     <ul class="scenekey" id="key" aria-label="In the picture"></ul>
   </div>
 </main>
+
+<dialog id="won" aria-labelledby="wonTitle" closedby="any">
+  <p class="eyebrow">Solved</p>
+  <h2 id="wonTitle"></h2>
+  <p id="learned"></p>
+  <div class="step">
+    <button type="button" id="wonStay" class="btn">Keep tinkering</button>
+    <button type="button" id="wonNext" class="btn primary" autofocus>Next challenge ›</button>
+  </div>
+</dialog>
 
 <script type="module" src="../js/optics/main.js"></script>
 </body>
