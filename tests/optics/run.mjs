@@ -35,7 +35,7 @@ const PLAYS = {
   specs: { keys: { P: -4.5 }, drags: [] },
   camera: { keys: { q: 0.7 }, drags: [{ param: 'D', at: [-6, 12], to: 12.8 }] },
   colour: { clicks: { glass: 0 }, keys: { c: 11.5 }, drags: [] },
-  doublet: { clicks: { glass: 1 }, keys: { c: -2 }, drags: [] },
+  doublet: { clicks: { glass: 1 }, keys: { c1: 45.5, c: -2 }, drags: [] },
   wide: { keys: { q: -2.25 }, drags: [{ param: 's', at: [-6, -21], to: 11.5, rev: true }] },
   tower: { keys: {}, drags: [{ param: 't0', at: [22, -6], to: 3.5 }, { param: 't1', at: [64, -6], to: -2 }, { param: 't2', at: [106, -6], to: -10.75 }] },
 };

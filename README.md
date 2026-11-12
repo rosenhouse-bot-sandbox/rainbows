@@ -272,7 +272,7 @@ Meet the goal and let go, and the panel says what you just built and why it work
 | Eyeglasses | The power of a spectacle lens in front of a nearsighted eye | Spreading lenses, dioptres |
 | Camera lens | The shape of a 50 mm lens and its iris | Spherical aberration, and sharpness against brightness |
 | Colour | The glass of a 100 mm lens, and its curve | Dispersion (wavelengths focusing apart), the Abbe number, index against curvature |
-| Doublet | The glass and back face of a lens cemented behind a crown lens | The achromatic doublet: why it takes two glasses |
+| Doublet | The curve of a crown lens, and the glass and back face of a lens cemented behind it, for a 50 mm lens with a 6 µm spot | The achromatic doublet: why it takes two glasses, and why the pair matters |
 | Wide view | The bending of a lens and where its stop sits | Coma and field curvature off the axis (Wollaston's landscape lens) |
 | Solar tower | The tilt of three heliostat mirrors | The law of reflection |
 

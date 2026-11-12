@@ -216,18 +216,19 @@ export const LEVELS = [
   // ───────────────────────────────────────────────────────────── doublet
   {
     id: 'doublet', nav: 'Doublet', unit: 'mm', scale: 'Lens 12 mm across',
-    title: 'Cancel the colour fringes',
-    brief: 'A strong crown glass lens, with a second lens cemented to its back. Choose the glass of the second lens and the curve of its back face. Shaped right, the second lens brings the wavelengths that the first one separated back together, and still leaves a lens that focuses.',
-    learned: 'A lens that spreads light separates the wavelengths the opposite way to one that gathers it. Flint glass separates them nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s chromatic error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the chromatic error would cancel the focusing too. This is the achromatic doublet (the name means without colour), the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far.',
+    title: 'An achromatic doublet',
+    brief: 'Design a 50 mm lens that brings all the wavelengths to one sharp point. It is two lenses cemented together: a crown glass lens in front, and a second lens behind it. Set the curve of the front lens, choose the glass of the second, and shape its back face. Shaped right, the second lens brings the wavelengths that the first one separated back together.',
+    learned: 'A lens that spreads light separates the wavelengths the opposite way to one that gathers it. Flint glass separates them nearly twice as strongly as crown for the same bending, so a weak spreading lens of flint cancels all of the crown lens’s chromatic error and only a bit more than half of its power. Made of crown as well, it cannot: cancelling the chromatic error would cancel the focusing too. This is the achromatic doublet (the name means without colour), the front lens of telescopes and binoculars since the 1750s. It trims spherical aberration as well, which is why the spot shrank so far. Dense flint cancels the chromatic error too, but with these shapes it leaves more spherical aberration behind, so the choice of glass pair decides how sharp the lens can be.',
     key: [['k-ray', 'White light, traced at 486, 546 and 656 nm, each drawn in the colour we see it as'], ['k-glass', 'Crown lens in front, your lens cemented behind'], ['k-target', 'Sensor'], ['k-inset', 'Inset: the spot on the sensor, magnified. The ring is the goal.']],
     bounds: [-16, -11, 96, 11],
     params: [
+      { id: 'c1', label: 'Curve of the front lens', min: 24, max: 60, step: 0.5, value: 30, show: (v) => 'radius ' + f1(1000 / v) + ' mm' },
       { id: 'glass', label: 'Glass of the second lens', options: ['Crown', 'Flint', 'Dense flint'], value: 0 },
-      { id: 'c', label: 'Its back face', min: -45, max: 30, step: 0.25, value: -44.75,
+      { id: 'c', label: 'Its back face', min: -45, max: 30, step: 0.25, value: -30,
         show: (v) => (Math.abs(v) < 0.126 ? 'flat' : 'radius ' + f0(1000 / Math.abs(v)) + ' mm, ' + (v < 0 ? 'bulging' : 'hollow')) },
     ],
     build(p) {
-      const mat = GLASSES[p.glass + 1], RC = 22.4, H = 6;
+      const mat = GLASSES[p.glass + 1], RC = 1000 / p.c1, H = 6;
       const K = stack({ x: 0, h: H, R: [RC, -RC, Math.abs(p.c) < 0.126 ? Infinity : 1000 / p.c], mats: [BK7, mat], tag: 'part' });
       const src = { ox: -16, oy: 0 }, probe = white({ ...src, half: H * 0.98 }, 81);
       const far = this.bounds[2] - 3, x = bestFocus({ surfaces: K.surfaces, bounds: this.bounds }, probe);
@@ -235,15 +236,16 @@ export const LEVELS = [
       return { surfaces: [...K.surfaces, seg(xs, -9, xs, 9, { act: 'target' })], ring: true, K, mat, xs,
         f: paraxial(K.surfaces, WHITE[1].nm).f,
         draw: white({ ...src, half: H * 0.93 }, 7), probe,
-        spot: { goal: 0.015, unit: 'µm', per: 1000 },
+        spot: { goal: 0.006, unit: 'µm', per: 1000 },
         items: [{ t: 'axis' }, { t: 'glass', outline: K.outlines[0] }, { t: 'glass', outline: K.outlines[1], flint: p.glass > 0 }, { t: 'sensor', x: xs, h: 9 }],
         handles: [] };
     },
     score(m, b) {
-      const um = m.blur * 1000;
-      return { solved: um <= 15,
-        meters: [{ label: 'Blur, all wavelengths', text: isFinite(um) ? f0(um) + ' µm' : 'no focus', goal: '15 µm or less', frac: 15 / um }],
-        rows: [['Focal length of the pair', b.f > 0 && b.f < 1000 ? f0(b.f) + ' mm' : 'none'], ['Abbe numbers, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
+      const um = m.blur * 1000, okF = b.f >= 48 && b.f <= 52;
+      return { solved: um <= 6 && okF,
+        meters: [{ label: 'Blur, all wavelengths', text: isFinite(um) ? (um < 10 ? f1(um) : f0(um)) + ' µm' : 'no focus', goal: '6 µm or less', frac: 6 / um },
+          { label: 'Focal length', text: b.f > 0 && b.f < 1000 ? f1(b.f) + ' mm' : 'none', goal: '48 to 52 mm', frac: okF ? 1 : b.f > 0 && b.f < 1000 ? 0.95 - Math.min(0.9, Math.abs(b.f - 50) / 50) : 0 }],
+        rows: [['Abbe numbers, front and back', f0(abbe(BK7)) + ' and ' + f0(abbe(b.mat))],
           ...(b.f > 0 && b.f < 1000 ? focusRows(b.K.surfaces, b.K.back) : [])] };
     },
   },
