@@ -22,14 +22,19 @@ const save = () => { try { localStorage.setItem('optics.solved', JSON.stringify(
 const navBtns = LEVELS.map((l, i) => {
   const b = el('button'); b.type = 'button';
   b.append(el('i'), el('span', '', l.nav), el('span', 'visually-hidden', ''));
-  b.addEventListener('click', () => go(i));
+  b.addEventListener('click', () => { if (unlocked(i)) go(i); });
   $('levels').append(b);
   return b;
 });
 let inputs = {}, meterEls = [];
 
+// A challenge opens only when every one before it has been solved.
+const unlocked = (i) => LEVELS.slice(0, i).every((l) => solved.has(l.id));
+
 function go(i, quiet) {
-  S.i = clamp(i, 0, LEVELS.length - 1);
+  i = clamp(i, 0, LEVELS.length - 1);
+  while (!unlocked(i)) i--;
+  S.i = i;
   const L = LEVELS[S.i];
   S.p = settings[S.i];
   $('eyebrow').textContent = `Challenge ${S.i + 1} of ${LEVELS.length}`;
@@ -93,14 +98,16 @@ function paintNav() {
   navBtns.forEach((b, i) => {
     const done = solved.has(LEVELS[i].id);
     b.classList.toggle('done', done);
-    b.lastChild.textContent = done ? ' (solved)' : '';
+    const shut = !unlocked(i);
+    b.classList.toggle('locked', shut); b.setAttribute('aria-disabled', String(shut));
+    b.lastChild.textContent = done ? ' (solved)' : shut ? ' (locked: solve the ones before it)' : '';
     if (i === S.i) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
   });
   const done = solved.has(LEVELS[S.i].id);
   $('again').hidden = !done;
   $('prev').setAttribute('aria-disabled', String(S.i === 0));
   const last = S.i === LEVELS.length - 1;
-  $('next').setAttribute('aria-disabled', String(last));
+  $('next').setAttribute('aria-disabled', String(last || !done));   // no going on until this one is solved
   $('next').classList.toggle('primary', done && !last);
 }
 
@@ -114,6 +121,7 @@ function update() {
   if (lit !== S.lit && S.lit !== undefined) $('status').textContent = lit ? 'Goal met. Submit your design.' : '';
   S.lit = lit;
   $('submit').hidden = !lit;                  // the button is there only while the goal is met
+  $('panel').classList.toggle('ready', lit);  // room at the foot of the sheet, so the button covers nothing
   const { score, b } = S.out;
   for (const k in inputs) {
     const { inp, val, q, btns } = inputs[k], v = S.p[k];
@@ -172,7 +180,7 @@ $('wonStay').addEventListener('click', () => won.close());
 $('wonNext').addEventListener('click', () => { won.close(); if (S.i < LEVELS.length - 1) go(S.i + 1); });
 
 $('prev').addEventListener('click', () => { if (S.i > 0) go(S.i - 1); });
-$('next').addEventListener('click', () => { if (S.i < LEVELS.length - 1) go(S.i + 1); });
+$('next').addEventListener('click', () => { if (S.i < LEVELS.length - 1 && solved.has(LEVELS[S.i].id)) go(S.i + 1); });
 $('reset').addEventListener('click', () => {
   for (const q of LEVELS[S.i].params) S.p[q.id] = q.value;
   update();
@@ -426,7 +434,7 @@ cv.addEventListener('lostpointercapture', drop);
 new ResizeObserver(() => { layout(); invalidate(); }).observe(cv);
 new ResizeObserver(invalidate).observe($('panel'));
 const fromHash = () => { const id = /(?:^|[#&])l=([a-z]+)/.exec(location.hash); return id ? Math.max(0, LEVELS.findIndex((l) => l.id === id[1])) : 0; };
-window.addEventListener('hashchange', () => { const i = fromHash(); if (i !== S.i) go(i, true); });
+window.addEventListener('hashchange', () => { const i = fromHash(); if (i !== S.i) go(i); });
 go(fromHash(), true);
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(invalidate);
 

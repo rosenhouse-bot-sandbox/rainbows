@@ -54,7 +54,6 @@ const check = (ok, msg) => { if (!ok) { fails.push(msg); console.log('  FAIL ' +
 const browser = await chromium.launch();
 for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 }, false], ['phone', { width: 390, height: 844 }, true]]) {
   const ctx = await browser.newContext({ viewport, hasTouch: touch, isMobile: touch, deviceScaleFactor: 1 });
-  await ctx.addInitScript(() => { try { localStorage.clear(); } catch { /* none */ } });
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(m.text()); });
@@ -68,11 +67,21 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
 
   for (const [id, play] of Object.entries(PLAYS)) {
     console.log(`${name}: ${id}`);
+    // The challenges are played in order: each one is locked until those before it are solved.
     await page.goto(`${base}/optics/#l=${id}`);
     await page.reload();
     await page.waitForFunction(() => window.__optics && window.__optics.S.out);
     await page.waitForTimeout(150);
     await page.screenshot({ path: path.join(out, `${name}-${id}-start.png`) });
+    check((await page.evaluate(() => window.__optics.LEVELS[window.__optics.S.i].id)) === id, `${name}/${id}: did not open although every challenge before it is solved`);
+    const ahead = await page.evaluate(() => {
+      const o = window.__optics, i = o.S.i, btns = [...document.querySelectorAll('#levels button')];
+      if (i === o.LEVELS.length - 1) return true;
+      btns[i + 1].click(); document.getElementById('next').click(); location.hash = 'l=' + o.LEVELS[i + 1].id;
+      return new Promise((r) => setTimeout(() => r(o.S.i === i && btns[i + 1].getAttribute('aria-disabled') === 'true' && document.getElementById('next').getAttribute('aria-disabled') === 'true'), 60));
+    });
+    check(ahead, `${name}/${id}: the next challenge can be reached before this one is solved`);
+    await page.evaluate((h) => { history.replaceState(null, '', '#l=' + h); }, id);
     check(!(await page.evaluate(() => window.__optics.S.out.score.solved)), `${name}/${id}: already solved at the start`);
     check(await page.evaluate(() => document.getElementById('submit').hidden), `${name}/${id}: Submit shows before the goal is met`);
     check(await landing(page), `${name}/${id}: a control is cut off or hidden when the challenge opens`);
@@ -117,6 +126,7 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
     check(!(await page.evaluate(() => document.getElementById('won').open || window.__optics.solved.has(window.__optics.LEVELS[window.__optics.S.i].id))), `${name}/${id}: counted as solved before Submit was pressed`);
     const sub = page.locator('#submit');
     check(await sub.isVisible(), `${name}/${id}: Submit did not appear when the goal was met`);
+    check(await page.evaluate(() => { const r = document.getElementById('submit').getBoundingClientRect(); return r.bottom <= innerHeight && r.bottom > innerHeight - 90; }), `${name}/${id}: Submit is not at the bottom of the screen`);
     await page.screenshot({ path: path.join(out, `${name}-${id}-goal.png`) });
     await (touch ? sub.tap() : sub.click());
     await page.waitForTimeout(150);
@@ -136,6 +146,7 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
 }
 { // a phone with the browser's bars showing
   const ctx = await browser.newContext({ viewport: { width: 390, height: 700 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 });
+  await ctx.addInitScript((ids) => { try { localStorage.setItem('optics.solved', JSON.stringify(ids)); } catch { /* none */ } }, Object.keys(PLAYS));
   const page = await ctx.newPage();
   for (const id of Object.keys(PLAYS)) {
     await page.goto(`${base}/optics/#l=${id}`); await page.reload();

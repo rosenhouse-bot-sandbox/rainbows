@@ -273,8 +273,9 @@ every push to `main`. In the repository settings, set Pages → Source to
 
 A game at `optics/`: build things that bend light on a bench where every ray is really traced.
 Each challenge has a one-line task, one to three things to change (sliders, and a row of buttons
-where the choice is a glass), and a goal measured from the trace. While the goal is met a Submit
-button shows at the top of the screen. Pressing it wins the challenge and opens a note, in a
+where the choice is a glass), and a goal measured from the trace. The challenges are taken in order: each is
+locked until the ones before it are solved. While the goal is met a Submit
+button shows at the bottom of the screen. Pressing it wins the challenge and opens a note, in a
 dialog, about what you just built and why it works; a solved challenge keeps a button that opens
 the note again.
 
