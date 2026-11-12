@@ -71,6 +71,12 @@ The physics, all in `js/v2/optics.js`:
   toggle, the energy split is folded away under "Where the wave's energy is", and the few percent
   of light that reflects is left out, which the panel says. Each molecule drawn stands for over a
   hundred layers of real ones.
+- The last scale is the Surface scale's own patch of the drop seen from the same camera, closer:
+  the flight between the two never turns, the drop's skin and blue water are drawn by the same
+  shader code in both, and the water stays on the side it was on. The light drawn is polarised with
+  its electric field across the plane of the bend, so from that direction it swings mostly toward
+  and away from you; drag to look along the surface and see it from the side. Whichever crossing
+  you came from, the last scale shows light going from air into water.
 - In the last scale the wave's energy is split into electric field, magnetic field, stretched
   molecules and moving electrons. Energy held in matter does not travel, which gives the energy
   velocity; nearer the ultraviolet resonance more is held, so violet is slower than red.

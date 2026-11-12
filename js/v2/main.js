@@ -68,7 +68,7 @@ let offXg = null, offYg = 0;       // where the optical centre is heading: it gl
 function viewFor(i, time) {
   const st = STAGES[i], c = cams[i];
   const aspectFix = clamp(1.15 * cssH / (cssW * (1 - offX)), 1, 3);   // pull back when the free area is narrow
-  const sway = RM.matches || paused ? 0 : Math.sin(time * 0.23 + i) * (c.sway ?? 0.035);
+  const sway = RM.matches || paused ? 0 : Math.sin(time * 0.23 + (i === ATOMS ? SURFACE : i)) * (c.sway ?? 0.035);      // (Molecules drifts in step with Surface: one camera)
   const fov = c.fov * DEG;
   let v;
   if (c.type === 'look') {
@@ -134,6 +134,12 @@ function go(to) {
   ready(to);
   // going deeper, set the next scene to match the thing being entered
   if (to === ATOMS && S.stage === SURFACE && S.cross === 'enter') S.tilt = Math.min(75, S.theta);
+  // The Surface and Molecules scales are one place seen from one direction: the camera keeps the way
+  // it is facing from the one to the other, so the flight between them is straight in or out, with no turn.
+  if ((to === ATOMS && S.stage === SURFACE) || (to === SURFACE && S.stage === ATOMS)) {
+    const a = cams[S.stage], b = cams[to], l = STAGES[to].cam.lim;
+    b.yaw = b.gy = clamp(a.gy, l.yaw[0], l.yaw[1]); b.pitch = b.gp = clamp(a.gp, l.pitch[0], l.pitch[1]);
+  }
   // a bigger change of scale takes longer
   const hiS = Math.min(S.stage, to), M = STAGES[hiS].embed(S), span = Math.abs(Math.log(cams[hiS + 1].dist * M.s / cams[hiS].dist));
   const dir = to > S.stage ? 1 : -1, dur = RM.matches ? 0.7 : (far || hopping ? 0.55 : 1) * clamp(DIVE + 0.3 * span, DIVE, 8.5);

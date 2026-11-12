@@ -73,8 +73,9 @@ function compare(s, img, a, b, playing, span = 60) {
   }
   const moved = Object.keys(A.layout).filter(key => !B.layout[key] || rectDelta(A.layout[key], B.layout[key]) > T.layout), extra = Object.keys(B.layout).filter(key => !A.layout[key]);
   if (moved.length || extra.length) { out.push(`layout differs: ${[...moved, ...extra].slice(0, 5).map(key => `${key} ${A.layout[key] && B.layout[key] ? rectDelta(A.layout[key], B.layout[key]).toFixed(0) + ' px' : ''}`).join(', ')}`); sev = Math.max(sev, 2); }
-  const lab = L => L.labels.map(l => `${l.t}@${Math.round(l.x / 4)},${Math.round(l.y / 4)}`).sort().join('|');
-  if (!playing && lab(A) !== lab(B)) { out.push('the labels differ'); sev = Math.max(sev, 1.5); }
+  /* the same words within 4 px of where they were (rounding each place to a grid would call 681.9 and 682.0 different) */
+  const lab = L => L.labels.map(l => l.t).sort().join('|'), labMoved = A.labels.some(l => !B.labels.some(m => m.t === l.t && Math.abs(m.x - l.x) < 4 && Math.abs(m.y - l.y) < 4));
+  if (!playing && (lab(A) !== lab(B) || labMoved)) { out.push('the labels differ'); sev = Math.max(sev, 1.5); }
   const pa = A.gl.points, pb = B.gl.points;
   if (Math.abs(pa - pb) > 0.05 * Math.max(pa, pb) + 2) { out.push(`${pb} particles on screen, and ${pa} before`); sev = Math.max(sev, 2); }
   const hd = histDist(coarse(VA.hist), coarse(VB.hist));

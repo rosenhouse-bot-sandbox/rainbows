@@ -7,10 +7,13 @@
 import { V, DEG, rng, sstep } from '../gl.js';
 import * as O from '../optics.js';
 import { backdrop, colourName } from './common.js';
+import surface, { SKIN_GLSL, skinWidth } from './surface.js';
 
 const NL = 37, DX = 0.25, X1 = 0.3, AMP = 1.3, SI = 8.2, ST = 9.6, W = 2.3, YF = -3.0, XB = 9.4, ZB = 5.6, YM = 2.0;
 const lamD = l => 3.2 * l / 550;                 // drawn vacuum wavelength, scene units
-let mols = [];
+let mols = [], skinProg = null;
+// Where this scene sits in the Surface scale's: a point p here is IN.o + IN.s (p.x IN.X + p.y IN.Y + p.z IN.Z) there.
+const IN = surface.embed();
 // The wave's phase is added up frame by frame, so a change of colour changes how fast it advances from
 // here on and never where it already is: the wave does not jump or race while the slider moves.
 let phase = 0, lastT = null;
@@ -34,8 +37,15 @@ export default {
   id: 'atoms', name: 'Molecules', scale: '1 nm', scaleNote: 'not to scale: see the note', modes: false, focus: false,
   controls: ['tilt', 'lambda', 'bfield'], lambdaMin: 250, bloom: 0.55, exposure: 1.0,
   overlay: true,      // light on a dark ground: laid over the scale above during the flight in
-  cam: { type: 'orbit', target: [2.5, -0.4, -0.4], yaw: 0.62, pitch: 0.36, dist: 33, fov: 34,
-    lim: { yaw: [-0.3, 1.35], pitch: [0.04, 1.05], dist: [15, 48] } },
+  // The camera is the Surface scale's, moved closer: set in the drop's world with the same limits, so
+  // it stays upright there and the water stays on the side it was on. (main.js hands the direction
+  // of view from one scale to the other, so the flight between them never turns the camera.)
+  cam: { type: 'orbit', target: [1.5, 0, -0.4], yaw: surface.cam.yaw, pitch: surface.cam.pitch, dist: 33, fov: 34,
+    lim: { yaw: surface.cam.lim.yaw, pitch: surface.cam.lim.pitch, dist: [15, 48] } },
+  camFrame(S) {
+    const turn = surface.camFrame(S);
+    return v => { const a = turn(v); return [V.dot(a, IN.X), V.dot(a, IN.Y), V.dot(a, IN.Z)]; };
+  },
 
   // One caption for the whole scale. It sits above the sliders, so it must not change length while one is dragged.
   caption() {
@@ -81,8 +91,8 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
     const c = setup(S), at = (d, k, up = 0, b = null, kb = 0) => { const p = V.mul(d, k); if (b) { p[0] += b[0] * kb; p[2] += b[2] * kb; } p[1] += up; return p; };
     const mid = (a, b) => V.norm(V.add(a, b));
     const L = [
-      { p: [-4.5, 4.3, 2.0], text: 'Air', cls: 'big' }, { p: [3.0, 4.3, -5.6], text: 'Water', cls: 'big' },
-      { p: at(c.di, -5.6, AMP + 0.75), text: 'Electric field E', cls: 'key', color: css(O.wlRGB(c.l)) },
+      { p: [-5.5, 0, -3.0], text: 'Air', cls: 'big' }, { p: [5.5, 0, 4.5], text: 'Water', cls: 'big' },
+      { p: at(c.di, -7.2, 0, c.bi, 2.6), text: 'Electric field E', cls: 'key', color: css(O.wlRGB(c.l)) },
       { p: at(mid(c.di, [1, 0, 0]), -2.7, YF), text: (c.th / DEG).toFixed(1) + '°', cls: 'num' },
       { p: at(mid(c.dt, [1, 0, 0]), 2.9, YF), text: (c.thT / DEG).toFixed(1) + '°', cls: 'num' },
     ];
@@ -92,7 +102,13 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
 
   // Not a cloud of molecules but two tidy rows, one above the wave and one below it and in its own plane,
   // so each electron cloud can be seen swinging in step with the stretch of wave beside it.
-  init() {
+  init(R) {
+    // the drop's skin and the water behind it, exactly as the Surface scale draws them
+    const f = a => a.map(x => x.toFixed(1)).join(',');
+    skinProg = R.rayProgram(`uniform float uOwn, uSkin;
+${SKIN_GLSL}
+const mat3 IN = mat3(${f(IN.X)}, ${f(IN.Y)}, ${f(IN.Z)});
+void main(){ o = vec4(dropSkin(IN*uEye*${IN.s.toFixed(6)}, IN*rayDir(), uSkin)*uOwn*uFade, 0.0); }`);
     const r = rng(7);
     for (let j = 0; j < NL; j++) for (const y of [-YM, YM])
       mols.push({ x: X1 + j * DX + (r() - 0.5) * 0.04, y: y + (r() - 0.5) * 0.08, u: 0 });
@@ -102,7 +118,14 @@ ${bar('Water', [[e.electric, C.el], [e.stretch, C.st], [e.motion, C.mo], [e.magn
     if (lastT !== null) phase = (phase + 2 * Math.PI / lamD(S.lambda) * 2.1 * Math.max(0, T - lastT)) % (2 * Math.PI);
     lastT = T;
     const c = setup(S), col = O.wlRGB(c.l), e = O.energySplit(c.l), lam = lamD(c.l);
-    backdrop(R, T, [0.012, 0.016, 0.04], [0.003, 0.004, 0.012], [0.02, 0.05, 0.12], [1, 0, 0]);
+    backdrop(R, T, [0.010, 0.016, 0.036], [0.003, 0.005, 0.012]);
+    // The water is blue, as it is at the Surface scale, and on the same side. Flying in from there
+    // this takes over from that scene's water as that scene gives way, so it is never drawn twice.
+    const gl = R.gl;
+    gl.useProgram(skinProg.p); R.setRayUniforms(skinProg, T);
+    gl.uniform1f(skinProg.u.uOwn, R.zoom?.lo ? R.zoom.cover : 1);
+    gl.uniform1f(skinProg.u.uSkin, skinWidth(V.mul(R.view.eye, IN.s)));
+    R.fullscreen(skinProg, 'add');
 
     // the surface (the plane x = 0) and the floor of the water behind it
     // (this wire frame is the scale's own; flying in from the Surface scale it comes up last, so the
