@@ -136,12 +136,21 @@ let farRays = null;
 // gain dims the lines and glint dims the glow that stands in for the drop itself;
 // xf places a point of this scene in the caller's world, where one drop radius is `unit` long.
 export function drawFar(R, S, h, toEye, gain = 1, glint = gain, xf = p => p, unit = 1) {
-  farRays ??= SPEC.flatMap(sp => {
+  // The cone is hollow, and is drawn that way: a dozen of its rays as ribs, the circle they end on in
+  // each colour (red outermost, at the true angles, so the colours lie close together), and its axis,
+  // the line from the drop straight back toward the Sun. Many more ribs than this fill in to a white fan.
+  farRays ??= SPEC.map(sp => {
     const tr = O.traceDrop(O.bowB(sp.n), sp.n, 1), out = tr.outs.find(o => o.order === 1), p = tr.hits[out.at];
-    return Array.from({ length: 30 }, (_, a) => { const phi = (a + 0.5) / 30 * 2 * Math.PI; return { col: sp.part, p: rot(p, phi), q: rot([p[0] + out.dir[0] * FAR, p[1] + out.dir[1] * FAR], phi) }; });
+    return { col: sp.part, p, q: [p[0] + out.dir[0] * FAR, p[1] + out.dir[1] * FAR] };
   });
   const f = S.focus, aC = (f === 'eye' ? 0.12 : f === 'sun' ? 1 : 0.6) * h.fade * gain, aE = (f === 'sun' ? 0.15 : 1) * h.fade * gain;
-  for (const r of farRays) R.seg(xf(r.p), xf(r.q), r.col, 0.7 * aC, 1.2, 0);
+  const TAU = 2 * Math.PI, RIBS = 12, RIM = 48;
+  for (const r of farRays) {
+    for (let a = 0; a < RIBS; a++) { const phi = (a + 0.5) / RIBS * TAU; R.seg(xf(rot(r.p, phi)), xf(rot(r.q, phi)), r.col, 0.4 * aC, 1.2, 0.2 * aC); }
+    let prev = xf(rot(r.q, 0));
+    for (let a = 1; a <= RIM; a++) { const pt = xf(rot(r.q, a / RIM * TAU)); R.seg(prev, pt, r.col, 0.4 * aC, 1.4); prev = pt; }
+  }
+  R.seg(xf([0, 0, 0]), xf([farRays[3].q[0], 0, 0]), [1, 0.86, 0.55], 0.3 * aC, 1.2, 0.12 * aC);
   const o = xf([0, 0, 0]);
   R.seg(o, toEye, h.col, (0.25 + 0.75 * h.level) * aE, 2.4);
   // The glow stands in for a drop too small to see. From close by it would fill the view (a marked drop

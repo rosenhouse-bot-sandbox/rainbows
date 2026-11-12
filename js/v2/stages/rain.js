@@ -75,7 +75,7 @@ export default {
     if (S.focus === 'eye') return { title: 'Only some drops are aimed at you',
       body: 'The coloured lines leave your eye 42° away from the line to your head\'s shadow. A drop sends you colour only while it sits on one of them, near or far. Falling through, it flashes red, then orange, yellow, green, blue and violet, and then goes pale. A fresh drop takes its place at once, so the bow holds still while the rain pours through it.' };
     if (S.focus === 'sun') return { title: 'Every drop does the same thing',
-      body: 'The Sun is behind you, and its light, drawn in gold, passes over your shoulder into the rain. Each drop takes in parallel sunlight and throws a hollow cone of colour back toward the Sun, red on the outside. All the cones point the same way. Whether you see a drop as coloured depends only on whether its cone happens to pass through your eye.' };
+      body: 'The Sun is behind you, and its gold light passes over your shoulder into the rain. Each drop throws a hollow cone of colour back toward the Sun, red outside. The pale cones on the marked drops show it, each opening 42° out from the line back to the Sun. All the cones point the same way. You see a drop as coloured only if its cone passes through your eye.' };
     return { title: 'Sun behind, rain ahead',
       body: 'The gold arrows are sunlight. The falling streaks are raindrops, each coloured by what it sends to the standing figure. Near drops and far rain light up along the same cone, 42° from the line through your head to its shadow: the bow is a direction, not a place. Move in to watch single drops fall through it.' };
   },
