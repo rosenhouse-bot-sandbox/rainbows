@@ -9,11 +9,16 @@ import { SUN, sunRay, bowTexture, drawFigure, wavefrontSheets, colourName } from
 import { EYE, sunDir, sunColour, drawEnv, initEnv } from './sky.js';
 import { drawFar } from './drop.js';
 
-const BOX0 = [-8, 0, -13], BOXS = [16, 9, 10.5], NDROPS = 30000;
+// Two lots of water with dry air between: spray from a sprinkler a few steps away, and a shower well
+// beyond it. Both light up where they cross the one cone from your eye. (`size` is a drop's drawn radius.)
+const WATER = [
+  { box0: [-4.2, 0, -4.6], boxs: [8.4, 4.6, 2.0], n: 5000, size: 0.012, gain: 1, seed: 5 },
+  { box0: [-24, 0, -24], boxs: [48, 15, 8], n: 36000, size: 0.035, gain: 0.7, seed: 9 },
+];
 const B1 = O.bowAngle(O.nWater(550)), B2 = O.bowAngle(O.nWater(550), 2);
 const DROP = 0.01, FALL = 1.1 / 16;      // a marked drop's drawn radius, and how fast it falls, in metres (per second)
-const HEROES = [[-2.6, -7.5, 0.0], [0.4, -6.2, 0.37], [2.9, -8.4, 0.71], [-0.9, -9.6, 0.55]];
-let drops = null, vao = null;
+const HEROES = [[-1.3, -3.2, 0.0], [1.1, -3.9, 0.37], [8, -19, 0.71], [-5, -21.5, 0.55]];
+let drops = null;
 // How the scene is dressed depends only on where the camera is. `here` is 0 from far above (arriving
 // from orbit) and 1 once it is down in the field; `close` is 0 from the wide view behind your shoulder
 // and 1 in among the drops, where the sky is turned down so that single drops show against it.
@@ -24,12 +29,12 @@ const angleAt = (p, s) => { const d = V.norm(V.sub(p, EYE)); return Math.acos(cl
 function heroes(S, T) {
   const s = sunDir(S), tab = bowTexture().tab, out = [];
   for (const [x, z, ph] of HEROES) {
-    let lo = 0.2, hi = 12;
+    let lo = 0.2, hi = 40;
     const target = 41.6 * DEG;
     for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (angleAt([x, m, z], s) < target) lo = m; else hi = m; }
     // a drop whose crossing of the bow is leaving the rain (too high, or into the ground) fades out
     // as the Sun moves, and is not there one moment and gone the next
-    const edge = sstep(0.6, 1.4, lo) * (1 - sstep(7.2, 8.2, lo));
+    const top = z < -10 ? 13.5 : 4.1, edge = sstep(0.6, 1.4, lo) * (1 - sstep(top - 1, top, lo));
     if (edge <= 0) continue;
     const u = (T / 16 + ph) % 1, y = lo + 0.55 - FALL * 16 * u;
     const P = [x, y, z], th = angleAt(P, s), c = O.sampleBow(tab, th / DEG), m = Math.max(c[0], c[1], c[2], 1e-4);
@@ -51,7 +56,7 @@ export default {
   hintSmall: 'Drag to look around · pinch to move in',
   // One camera for the whole scale: from behind your shoulder with the bow across the sky, in to the drops.
   cam: { type: 'orbit', target: [0, 3.7, -6], yaw: 0.1, pitch: -0.18, dist: 20, fov: 58, sway: 0.02, minY: 0.9, widen: true,
-    lim: { yaw: [-1.2, 1.2], pitch: [-0.22, 0.6], dist: [8.5, 26] } },
+    lim: { yaw: [-1.2, 1.2], pitch: [-0.22, 0.6], dist: [8.5, 70] } },
   extent: 3500,        // how much of this scene matters, in metres: the rain and the bow in it
   // the next scale is one of the marked drops: pick the one with the most of its fall left, and stay with it
   portal: S => {
@@ -92,7 +97,7 @@ ${rows}${blank}<dt>Drops shown falling</dt><dd>about 15× slower than real</dd><
     const gl = R.gl; bowTexture(R); initEnv(R);
     drops = R.compile(`#version 300 es
 layout(location=0) in vec2 corner; layout(location=1) in vec4 D;
-uniform mat4 uVP; uniform vec2 uRes, uLutRange; uniform float uPx, uP11, uTime, uFade, uGain;
+uniform mat4 uVP; uniform vec2 uRes, uLutRange; uniform float uPx, uP11, uTime, uFade, uGain, uSize;
 uniform vec3 uSun, uEyeP, uSunCol, uBox0, uBoxS; uniform sampler2D uLUT;
 out vec3 vC; out vec2 vUV; out float vTail;
 void main(){
@@ -103,7 +108,7 @@ void main(){
   vC = (vec3(0.014,0.026,0.048) + bow*uSunCol*uGain)*uFade*edge;
   vec4 c = uVP*vec4(p,1.0);
   if(c.w < 0.05){ gl_Position = vec4(2.0,2.0,2.0,1.0); return; }
-  float truePx = 0.02*uP11*uRes.y*0.5/c.w, px = max(truePx, 1.0*uPx);
+  float truePx = uSize*uP11*uRes.y*0.5/c.w, px = max(truePx, 1.0*uPx);
   vC *= min(1.0, truePx*truePx/(px*px)*6.0);      // seen from far off, a drop keeps its share of light, not a whole pixel
   // A drop falling past right in front of the camera would cover much of the view for a frame or two, a
   // flash of colour from nowhere. Like anything that close to a lens it is out of focus: it thins as it spreads.
@@ -119,13 +124,15 @@ void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vU
   float streak = exp(-x*x*3.5)*(vUV.y < -0.62 ? exp(-h*h*3.5) : pow(1.0-(vUV.y+0.62)/1.62, 1.6))*1.25;
   float f = mix(exp(-dot(vUV,vUV)*3.5), streak, vTail);
   if(f < 0.01) discard; o = vec4(vC*f, 0.0); }`);
-    const rnd = rng(5), data = new Float32Array(NDROPS * 4);
-    for (let i = 0; i < NDROPS; i++) { data[i * 4] = BOX0[0] + rnd() * BOXS[0]; data[i * 4 + 1] = rnd() * BOXS[1]; data[i * 4 + 2] = BOX0[2] + rnd() * BOXS[2]; data[i * 4 + 3] = rnd(); }
-    vao = gl.createVertexArray(); gl.bindVertexArray(vao);
     const q = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, q); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-    const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(1, 1);
+    for (const w of WATER) {
+      const rnd = rng(w.seed), data = new Float32Array(w.n * 4);
+      for (let i = 0; i < w.n; i++) { data[i * 4] = w.box0[0] + rnd() * w.boxs[0]; data[i * 4 + 1] = rnd() * w.boxs[1]; data[i * 4 + 2] = w.box0[2] + rnd() * w.boxs[2]; data[i * 4 + 3] = rnd(); }
+      w.vao = gl.createVertexArray(); gl.bindVertexArray(w.vao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, q); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+      const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 0, 0); gl.vertexAttribDivisor(1, 1);
+    }
     gl.bindVertexArray(null);
   },
 
@@ -141,11 +148,14 @@ void main(){ float y = vUV.y*0.5+0.5, w = mix(1.0, 0.3, y), x = vUV.x/w, h = (vU
     const u = drops.u, v = R.view;
     gl.uniformMatrix4fv(u.uVP, false, v.vp); gl.uniform2f(u.uRes, R.W, R.H); gl.uniform2f(u.uLutRange, bt.tab.deg0, bt.tab.deg1);
     gl.uniform1f(u.uPx, R.px); gl.uniform1f(u.uP11, v.p11); gl.uniform1f(u.uTime, T); gl.uniform1f(u.uFade, R.fade * here);
-    gl.uniform1f(u.uGain, f === 'sun' ? 1.2 : 3.2);
-    gl.uniform3fv(u.uSun, s); gl.uniform3fv(u.uEyeP, EYE); gl.uniform3fv(u.uSunCol, sc); gl.uniform3fv(u.uBox0, BOX0); gl.uniform3fv(u.uBoxS, BOXS);
+    gl.uniform3fv(u.uSun, s); gl.uniform3fv(u.uEyeP, EYE); gl.uniform3fv(u.uSunCol, sc);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bt.tex); gl.uniform1i(u.uLUT, 0);
     gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
-    gl.bindVertexArray(vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, NDROPS);
+    for (const w of WATER) {
+      gl.uniform1f(u.uGain, (f === 'sun' ? 1.2 : 3.2) * w.gain); gl.uniform1f(u.uSize, w.size);
+      gl.uniform3fv(u.uBox0, w.box0); gl.uniform3fv(u.uBoxS, w.boxs);
+      gl.bindVertexArray(w.vao); gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, w.n);
+    }
 
     // sunlight, over your shoulder and down into the rain
     const aS = (f === 'eye' ? 0.1 : f === 'sun' ? 1 : 0.55) * here;
