@@ -3,7 +3,7 @@
 import { program, instancedVAO, rng, sstep, lerp } from './glx.js';
 import { compute, surf, outline, D, CLEFT, TABW, BAREA, PH, ARRIVE } from './profile.js';
 import * as SH from './shaders.js';
-import { irmBeam } from './irm.js';
+import { irmBeam, irmOptics, hue } from './irm.js';
 import { optics, buildBench, beamPath, GAP, GLASS_TOP, GLASS_BOT, LENS_Y, MM, UM, F_OBJ, N_GLASS, CELL, SPOT, spot, domeY } from './vitro.js';
 
 const PI = Math.PI, TAU = 2 * PI;
@@ -524,6 +524,7 @@ export class Scene {
       this.labels = [...here,
         { id: 'phl', q: anchors.phl, max: 1500 },
         { id: 'field', q: [fx * 46, GLASS_TOP + (opt.tir ? Math.min(opt.depth, 150) : 60), fz * 46], max: 3000 },
+        ...(st.irm ? [{ id: 'fringe', q: [fx * 118, GLASS_TOP + this.irmAt(st.lambda).bright, fz * 118], max: 3000 }] : []),
         { id: 'membrane', q: [fx * 84, D, fz * 84] }, { id: 'gap', q: [fx * 66, -GAP / 2, fz * 66] },
         { id: 'glass', q: [fx * 100, GLASS_TOP, fz * 100], max: 3e4, free: true }, ...cellSide,
         { id: 'neigh', q: anchors.neigh, min: 700, max: 4e4, free: true }, far('spot', [9000, GLASS_TOP, 6500], 6e3, 3e5),
@@ -536,6 +537,7 @@ export class Scene {
         phl: unq > 0.5 ? 'pHluorin, fluorescing' : 'pHluorin, quenched at pH 5.5',
         field: opt.tir ? `Evanescent field, 1/e at ${Math.round(opt.depth)} nm` : 'Refracted beam, no evanescent field',
       };
+      if (st.irm) { const io = this.irmAt(st.lambda); this.labelText.fringe = `Reflection: brightest at ${Math.round(io.bright)} nm, darkest at ${Math.round(io.dark)} nm`; }
     }
     this.gapBottom = vitro ? -GAP + 1.4 : -CLEFT + D + 1.4;
     this.vitro = vitro; this.belief = st.belief || null;
@@ -543,6 +545,9 @@ export class Scene {
     this.focusY = Math.max(-3, Math.min(13, 0.3 * (top - S.approach) - 2)) + 0.45 * S.approach;   // follow the vesicle part of the way up while it arrives
     this.kept = kept;
   }
+
+  // The reflection camera's optics for a wavelength (the level lines do not depend on its focus).
+  irmAt(lambda) { return this._io && this._io.lambda === lambda ? this._io : (this._io = irmOptics(lambda)); }
 
   // The cutaway is a close-up device; it closes as the camera pulls back to cell scale.
   cutNow(st) { return st.cut * (1 - sstep(3.4, 3.9, Math.log10(st.dist))); }
@@ -670,6 +675,8 @@ export class Scene {
       const u = common(P.field), H = Math.min(1.1e7, 40 * cam.dist + 2000);
       gl.uniform4f(u.uWave, opt.kx, opt.ky, opt.kyMed, opt.delta);
       gl.uniform4f(u.uWave2, opt.r, 0, 1, 1 + 1.1 * sstep(3.2, 4.1, lg));
+      const io = st.irm ? this.irmAt(st.lambda) : null, col = io ? hue(io.lambda) : [0, 0, 0];
+      gl.uniform4f(u.uIrm, io ? io.kz : 0, io ? io.psi0 : 0, io ? 1 : 0, GAP); gl.uniform3f(u.uIrmCol, col[0], col[1] + 0.12, col[2] + 0.12);
       gl.uniform3f(u.uO, -H, GLASS_TOP, -H); gl.uniform3f(u.uA, 2 * H, 0, 0); gl.uniform3f(u.uB, 0, 0, 2 * H);
       gl.bindVertexArray(this.emptyVAO); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
       // The same field in cross-section, painted on the two faces of the cutaway.

@@ -152,6 +152,9 @@ through the same objective:
   vesicle comes down through part of a fringe. The inference view still starts from a docked vesicle.
 - The wavelength is longer than the laser's to stay clear of the pHluorin band, not because long
   wavelengths resolve more: within the slider's range, shorter light gives a sharper, stronger spot.
+- On the cutaway faces, beside the lines that mark each multiple of the evanescent depth, level
+  lines in the reflection colour mark the heights where a small piece of membrane looks brightest
+  (solid) and darkest (dotted) to the reflection camera, `λ/4n` apart.
 - **One objective, two colours.** No lens focuses every colour at the same depth. The objective
   is modelled as an apochromat that is exact at 436, 546 and 656 nm and off by up to 100 nm in
   between (a cubic through the three lines; illustrative, not a maker's data), so at 630 nm it

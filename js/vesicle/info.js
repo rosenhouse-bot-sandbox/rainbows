@@ -18,6 +18,7 @@ const I = {
   mito: ['Mitochondrion', 'Supplies the ATP that the terminal spends on refilling vesicles, pumping ions and pulling SNARE complexes apart for reuse.', 'Mitochondrion'],
   phl: ['pHluorin', 'A pH-sensitive green fluorescent protein fused to the inner end of synaptobrevin. It is dark in the acidic vesicle and about twenty times brighter at the pH outside the cell.', 'Synapto-pHluorin'],
   field: ['Evanescent field', 'Light that leaks a short way past a totally reflecting surface. Its intensity falls off exponentially with height, so only molecules within about 100 nm of the glass are excited.', 'Evanescent_field'],
+  fringe: ['Reflection levels', 'Heights above the glass where a small piece of membrane looks brightest (solid line) or darkest (dotted line) to the reflection camera. The pattern repeats every half wavelength, so a vesicle changes from one to the other as it comes down.', 'Interference_reflection_microscopy'],
   membrane: ['Cell membrane', 'The part of the cell membrane that lies flat against the coverslip. Fusion events here happen inside the evanescent field.', 'Cell_membrane'],
   gap: ['Medium', 'A thin film of culture medium between the cell and the glass. Adherent cells sit tens of nanometres above the surface.', 'Growth_medium'],
   glass: ['Coverslip glass', 'Refractive index 1.52, higher than the cell at about 1.36. That step in index is what makes total internal reflection possible.', 'Cover_slip'],

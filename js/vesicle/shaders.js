@@ -381,6 +381,8 @@ export const fieldFS = HEAD + SKY + `
 in vec3 vW; in vec2 vC;
 uniform vec4 uWave;      // kx, ky in glass, ky in the cell (0 when evanescent), phase shift on reflection
 uniform vec4 uWave2;     // reflection amplitude, slice (1) or glass top (0), strength, footprint brightness
+uniform vec4 uIrm;       // reflection camera: phase per nm of height, phase at the cell membrane, on (1) or off, membrane height above the glass
+uniform vec3 uIrmCol;
 out vec4 o;
 void main(){
   float ph = uWave.x * vW.x - uTime * 2.4, dist = length(vW - uCamPos);
@@ -413,6 +415,15 @@ void main(){
   // Ruler: a line at each multiple of the penetration depth.
   float tick = 0.0;
   if(y > 0.0 && uTIR.y > 0.0){ float m = y * uTIR.y; float px = fwidth(m); tick = (1.0 - smoothstep(px, 2.5 * px, abs(fract(m + 0.5) - 0.5))) * step(m, 4.5) * step(0.5, m); }
+  // Level lines for the reflection camera: solid where a small piece of membrane would look
+  // brightest, dotted where it would look darkest, for the first cycle and a half above the cell membrane.
+  float lev = 0.0;
+  if(uIrm.z > 0.5 && y > uIrm.w + 3.0){
+    float m = (uIrm.y + uIrm.x * (y - uIrm.w)) / 6.2831853, px = fwidth(m), n = uIrm.x * (y - uIrm.w) / 6.2831853;
+    float br = 1.0 - smoothstep(px, 2.5 * px, abs(fract(m + 0.5) - 0.5));
+    float dk = (1.0 - smoothstep(px, 2.5 * px, abs(fract(m) - 0.5))) * step(0.5, fract(length(vW.xz) / max(4.0, dist * 0.018)));
+    lev = (br + 0.8 * dk) * step(n, 1.55);
+  }
   float edge = (1.0 - smoothstep(0.55, 1.0, vC.x)) * smoothstep(0.0, 0.1, vC.y) * (1.0 - smoothstep(0.8, 1.0, vC.y));
   float k = edge * uWave2.z;
   if(y < 0.0){
@@ -421,7 +432,7 @@ void main(){
     o = vec4(vec3(0.20, 0.27, 0.33) * a + EXC * (mean * 0.30 + 0.16 * e) * k * lightGain(11.0), a);
   } else {
     float surf = 1.0 - smoothstep(0.0, 2.0 * fwidth(y), y);
-    o = vec4((EXC * mean * (0.95 + 0.45 * e) * lightGain(11.0) + vec3(0.75, 0.92, 1.0) * (tick * 0.55 + surf * 0.8)) * k, 0.0);
+    o = vec4((EXC * mean * (0.95 + 0.45 * e) * lightGain(11.0) + vec3(0.75, 0.92, 1.0) * (tick * 0.55 + surf * 0.8) + uIrmCol * lev * 0.5) * k, 0.0);
   }
 }`;
 

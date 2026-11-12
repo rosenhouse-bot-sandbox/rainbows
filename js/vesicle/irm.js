@@ -85,8 +85,13 @@ export function irmOptics(lambda, focus = 0) {
   const h = pupil(lambda, dz), h0 = pupil(lambda, 0), f = pupil(LAMBDA_EM, dzF), f0 = pupil(LAMBDA_EM, 0);
   // Fluorescence adds as intensity: its blur keeps its light but spreads, by the drop in its peak (the Strehl ratio).
   const strehl = (f.re[0] * f.re[0] + f.im[0] * f.im[0]) / (f0.re[0] * f0.re[0]);
+  // Height markers. To this camera a small piece of membrane at height z above the glass (inside
+  // the cell) changes the brightness in proportion to cos(psi0 + kz (z - GAP)): brightest where
+  // that phase is a whole number of turns, darkest half a turn away, repeating every lambda / 2n.
+  const kz = 2 * k0 * N_CELL, wr = Math.cos(ph) * re + Math.sin(ph) * im, wi = Math.sin(ph) * re - Math.cos(ph) * im, psi0 = Math.atan2(wr, -wi);
+  const first = (target) => GAP + ((((target - psi0) % (2 * PI)) + 2 * PI) % (2 * PI)) / kz;
   let half = 0; while (half < PSF_N - 1 && h0.re[half] > h0.re[0] / 2) half++;
-  return { lambda, focus, k0, re, im, I: re * re + im * im, glass: rGM * rGM, fringe: lambda / (2 * N_CELL), apart, dz, dzF,
+  return { lambda, focus, k0, kz, psi0, bright: first(0), dark: first(PI), re, im, I: re * re + im * im, glass: rGM * rGM, fringe: lambda / (2 * N_CELL), apart, dz, dzF,
     h, peak: h0.re[0], fwhm: 2 * half * PSF_DR, strehl, blurF: 1 / Math.sqrt(strehl),
     // Contrast at radius r (nm) from the centre of a spot with complex strength c (see moment).
     spot: (c, r) => c[0] * at(h.re, r) - c[1] * at(h.im, r) };
