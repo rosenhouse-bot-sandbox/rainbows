@@ -28,7 +28,7 @@ export const N_MEDIUM = 1.335, N_LIPID = 1.48, MEM = 4;     // medium and vesicl
 export const IRM = { lambda: 630, min: 560, max: 720 };     // nm; above 560 it stays clear of the pHluorin emission band
 export const WELL = 2e4;                                    // photoelectrons per pixel per millisecond from the reference wave
 export const SHOW_MS = 10;                                  // exposure of one displayed frame
-export const SPAN_DIFF = 0.015;                             // the same, when the first frame has been subtracted
+export const SPAN_DIFF = 0.015;                             // the same, when a baseline frame has been subtracted
 export const SPAN = 0.035;                                  // the display's full grey range is -SPAN .. +SPAN of the background
 const PI = Math.PI;
 
@@ -158,14 +158,14 @@ export class IrmCamera {
     }
     return f;
   }
-  // Keep the picture of the event's first frame, to subtract from later ones. It was one exposure
+  // Keep a baseline picture (the field before our vesicle arrived), to subtract from later ones. It was one exposure
   // like any other, so it carries its own shot noise, which then sits in every subtracted picture.
   reference(o, spots) {
     const n = CAM.px * CAM.px;
     if (!this.ref) { this.ref = new Float32Array(n); this.refNoise = new Float32Array(n); const r = rng(58); for (let i = 0; i < n; i++) this.refNoise[i] = r.gauss(); }
     this.field(o, spots, this.ref); this.drawn = false;
   }
-  // subtract: show the change since the first frame (see reference) in place of the picture itself.
+  // subtract: show the change since the baseline frame (see reference) in place of the picture itself.
   render(o, spots, reshuffle, subtract) {
     if (!reshuffle && this.drawn) return;                              // like the other camera: one new picture per exposure
     this.drawn = true;

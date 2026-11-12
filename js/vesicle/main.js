@@ -220,7 +220,7 @@ function applyIrm() {
   $('obsCap').textContent = on ? 'TIRF' : 'Recorded'; $('expectCap').textContent = on ? 'Expected' : 'Model expects';
   $('pipNote').textContent = on
     ? `Left: fluorescence. Right: ${st.lambda} nm light reflected by the glass, mixed with the far weaker light scattered back by the membranes above it. ` + (st.sub
-      ? `The first frame of the event has been subtracted, so mid-grey means no change since then, and black and white are ${+(SPAN_DIFF * 100).toFixed(1)}% of the background darker and brighter. Vesicles that stay docked cancel out; one that merges leaves a bright spot where its dark one used to be.`
+      ? `A frame taken before our vesicle arrived has been subtracted, so mid-grey means no change since then, and black and white are ${+(SPAN_DIFF * 100).toFixed(1)}% of the background darker and brighter. Vesicles that were already docked cancel out. Ours shows alone, and fades to nothing as it merges into the flat membrane.`
       : `Mid-grey is the bare background; black and white are ${+(SPAN * 100).toFixed(1)}% below and above it. Every vesicle near the glass shows, lit tags or not. A real cell would add a static mottle of its own, left out here.`)
     : `Top: the whole lit field, with every vesicle near the glass blurred to ${Math.round(CAM.fwhm)} nm by diffraction. Below: the boxed centre, magnified on our vesicle. Each square is one ${CAM.nm} nm camera pixel, and the grain is shot noise: light arrives as whole photons, a random number in each pixel each frame.`;
 }
@@ -428,16 +428,15 @@ function drawIrm(reshuffle) {
     for (const nb of scene.neigh) if (nb.off !== null && inField(nb.x, nb.z)) { moment(irmO, clamp(st.p + nb.off, 0, 1), nb.rad - 2, m); irmSpots.push([nb.x, nb.z, m[0], m[1]]); }
   }
   const ck = st.diam + '|' + st.lambda + '|' + st.focus + '|' + st.sub;
-  // The first frame of the event: everything as it stood at progress 0.
+  // The baseline frame: the field as it stood before our vesicle arrived, with every other vesicle where it starts.
   if (st.sub && irmRefKey !== ck) {
     irmRefKey = ck;
     const first = irmStill.slice();
-    moment(irmO, 0, R, m); first.push([0, 0, m[0], m[1]]);
     for (const nb of scene.neigh) if (nb.off !== null && inField(nb.x, nb.z)) { moment(irmO, clamp(nb.off, 0, 1), nb.rad - 2, m); first.push([nb.x, nb.z, m[0], m[1]]); }
     irmCam.reference(irmO, first);
   }
   irmCam.render(irmO, irmSpots, reshuffle, st.sub);
-  if (ck !== irmCurveKey) { irmCurveKey = ck; irmCurve = contrastCurve(irmO, R); if (st.sub) irmCurve = irmCurve.map((v) => v - irmCurve[0]); }
+  if (ck !== irmCurveKey) { irmCurveKey = ck; irmCurve = contrastCurve(irmO, R); }
   irmCam.drawTrace(irmCurve, st.p, 'rgba(234,240,255,.95)');
 }
 $('irmBar').style.width = (1000 / (CAM.px * CAM.nm) * 100) + '%'; $('irmZoomBar').style.width = (500 / (CAM.zoom * CAM.nm) * 100) + '%';

@@ -143,9 +143,10 @@ through the same objective:
 - A docked 42 nm vesicle comes out a little under 1% darker than the background at 630 nm, fading
   as it flattens; larger vesicles turn bright partway through the collapse. The camera panel shows
   a second column (field, magnified centre, contrast trace) in grey, ±3.5% of the background. Six other docked vesicles sit within 300 nm of ours and
-  blur into one spot about 2% dark, which stays after ours has merged. **Subtract the first
-  frame** shows the change since the start of the event instead (±1.5%, with the first frame's
-  own shot noise carried along): docked vesicles cancel and a merged one leaves a bright spot.
+  blur into one spot about 2% dark, which stays after ours has merged. **Subtract a frame from
+  before the vesicle arrived** shows the change since that baseline instead (±1.5%, with the
+  baseline's own shot noise carried along): vesicles already docked cancel, ours shows alone and
+  fades to nothing as it merges. How the vesicle got there is not modelled; the event starts docked.
 - The wavelength is longer than the laser's to stay clear of the pHluorin band, not because long
   wavelengths resolve more: within the slider's range, shorter light gives a sharper, stronger spot.
 - **One objective, two colours.** No lens focuses every colour at the same depth. The objective
