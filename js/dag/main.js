@@ -5,7 +5,7 @@
 import { SAMPLES, parseTopology } from './graphs.js';
 import { layered } from './layered.js';
 import { gridSearch } from './search.js';
-import { measure } from './common.js';
+import { measure, midLabels, labelsCovered } from './common.js';
 import { runReal, cancelD2, realLayout } from './real.js';
 
 const $ = (id) => document.getElementById(id);
@@ -13,6 +13,7 @@ const canvas = $('view'), ctx = canvas.getContext('2d');
 const still = matchMedia('(prefers-reduced-motion: reduce)');
 const NODE_H = 26;
 const GROUP = ['#7aa2ff', '#5fd4c4', '#f2c94c', '#c792ea', '#8bd46e', '#ff9ecb', '#e8a15a', '#6ec6ff', '#b9c27a'];
+const LABEL_FONT = '10px "Source Sans 3", "Segoe UI", Roboto, sans-serif';
 const PLAIN = '#9fb4ff', EDGE = '#aab6d6', TURNED = '#ff5d73', INK = '#eaf0ff';
 
 // What can be set. Each is read from the address after # and written back to it.
@@ -31,8 +32,9 @@ const CONTROLS = [
   { id: 'gap', stage: { layered: 4, search: 2 }, label: 'Space between nodes', min: 8, max: 60, only: () => !(P.eng === 'real' && P.m === 'search') },
   { id: 'lgap', m: 'layered', stage: 4, label: 'Space between layers', min: 20, max: 100 },
   { id: 'dir', stage: { layered: 2, search: 2 }, label: 'Direction', options: [['down', 'Down'], ['right', 'Right']] },
+  { id: 'lab', stage: { layered: 5, search: 3 }, label: 'Edge labels', options: [['off', 'Off'], ['on', 'Source to target']] },
 ];
-const P = { g: 'topology', m: 'layered', eng: 'own', grp: 'box', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
+const P = { g: 'topology', m: 'layered', eng: 'own', grp: 'box', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down', lab: 'off' };
 const STAGE_NAME = { input: 'Input', cycles: 'Turn', layers: 'Layers', order: 'Sort', place: 'Align', route: 'Route', boxes: 'Group', search: 'Search', real: 'Result' };
 const NOTE = {
   layered: 'The five steps of ELK Layered, written again for this page. This is not ELK’s own code.',
@@ -79,6 +81,11 @@ function compute(glide) {
   lastAspect = Math.round(a.w / a.h * 8) / 8;
   const longest = Math.max(...graph.labels.map((s) => s.length));
   const o = { ...P, sweeps: P.sw, nodeW: Math.max(44, longest * 8 + 22), nodeH: NODE_H, aspect: Math.min(3, Math.max(0.4, lastAspect)) };
+  if (P.lab === 'on') {   // each edge's label, with the room its text takes
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.font = LABEL_FONT;
+    o.labels = graph.edges.map(([s, t]) => { const text = graph.labels[s] + ' to ' + graph.labels[t]; return { text, w: Math.ceil(ctx.measureText(text).width) + 6, h: 14 }; });
+    ctx.restore();
+  }
   const same = layout && layout.graph === graph && shown;
   if (P.eng === 'real') {
     // Ask the engine, and keep showing what is on screen until it answers (or the input, if nothing is).
@@ -91,6 +98,9 @@ function compute(glide) {
 }
 function use(next, o, glide) {
   layout = next; layout.o = o; layout.graph = graph; layout.stats = [];
+  // This page's own layouts do not place labels: each goes at the middle of its finished edge.
+  for (const s of layout.snaps) if (!s.labels) s.labels = [];
+  if (o.labels && !layout.real) { const end = layout.snaps[layout.snaps.length - 1]; end.labels = midLabels(end.edges, o.labels); }
   const last = layout.snaps.length - 1;
   if (toEnd) { stage = last; toEnd = false; }
   if (stage > last) { stage = last; q = last; }
@@ -119,7 +129,7 @@ async function ask(o) {
     $('status').textContent = $('methodNote').textContent = 'The real engine could not be loaded or failed on this graph. Showing the step-by-step version.';
   }
 }
-const stats = (i) => layout.stats[i] || (layout.stats[i] = measure(layout.snaps[i].edges));
+const stats = (i) => layout.stats[i] || (layout.stats[i] = { ...measure(layout.snaps[i].edges), covered: labelsCovered(layout.snaps[i].labels, layout.snaps[i].pos, layout.o) });
 
 function setGraph(id, keepStage) {
   P.g = id; $('graph').value = id; hot = -1;
@@ -162,12 +172,12 @@ function caption(id) {
     case 'order': { const a = stats(2).crossings, b = stats(3).crossings; return 'Each layer is sorted so that a node sits near the nodes it joins in the next layer. Crossings ' + (a === b ? 'stay at ' + a : 'go from ' + a + ' to ' + b) + '.'; }
     case 'place': if (layout.grouped) return 'Nodes slide along their layer, and boxes along theirs, keeping their order, until joined ones line up.';
       return 'Nodes slide along their layer, keeping their order, until joined nodes line up and edges run straight.';
-    case 'route': return P.m === 'layered'
+    case 'route': return (P.lab === 'on' ? 'Each label is put at the middle of its edge; this page’s code does not move it clear of anything. ' : '') + (P.m === 'layered'
       ? (layout.grouped ? 'Edges inside a box are drawn through their dots. Edges between boxes are routed last, at right angles around the nodes.' : 'Each edge is drawn through its dots.') + (f.reversed ? ' Turned arrows point their true way again, still in red.' : '')
-      : 'Each edge takes the cheapest path of horizontal and vertical runs. A path pays for its length, its bends and any box it cuts through, and may not pass through a node.';
-    case 'real': return P.m === 'layered'
+      : 'Each edge takes the cheapest path of horizontal and vertical runs. A path pays for its length, its bends and any box it cuts through, and may not pass through a node.');
+    case 'real': return (P.lab === 'on' ? 'The engine chose where each label goes. ' : '') + (P.m === 'layered'
       ? 'What ELK itself gives for this graph and these settings.' + (g.groups.length && P.grp === 'box' ? ' Its boxes are laid out together with their contents, in one pass.' : '')
-      : 'What TALA itself gives: the lowest penalty of ' + n(P.tries, 'seed', 'seeds') + '.';
+      : 'What TALA itself gives: the lowest penalty of ' + n(P.tries, 'seed', 'seeds') + '.');
     case 'boxes': return g.groups.length
       ? 'The file puts each node in a group. Each group gets a box, and boxes and nodes sit on grids in file order.'
       : 'The nodes sit on a grid in file order, with spare cells to move into.';
@@ -196,7 +206,8 @@ function panel() {
   $('graphFacts').textContent = graph.n + ' nodes · ' + graph.edges.length + ' edges' + (graph.groups.length ? ' · ' + graph.groups.length + ' groups' : '');
   const st = stats(stage), f = layout.facts;
   meter(0, 'Crossings', st.crossings);
-  meter(1, 'Edge length', Math.round(st.length / layout.o.nodeW));
+  if (P.lab === 'on') meter(1, 'Labels covered', layout.snaps[stage].labels.length ? st.covered : '…');
+  else meter(1, 'Edge length', Math.round(st.length / layout.o.nodeW));
   if (layout.real) meter(2, 'Seconds', working || stage === 0 ? '…' : tookS.toFixed(1));
   else if (P.m === 'layered') meter(2, 'Turned edges', stage >= 1 ? f.reversed : 0, stage >= 1 && f.reversed > 0);
   else meter(2, 'Score', stage >= 2 ? f.tries[f.best] : f.firstScore);
@@ -383,6 +394,20 @@ function draw() {
   // an edge from a node to itself
   ctx.lineWidth = 1.2 / s;
   for (const v of graph.loops) { ctx.globalAlpha = hot < 0 || hot === v ? 0.62 : 0.16; ctx.strokeStyle = EDGE; ctx.beginPath(); ctx.arc(pos[v][0] + o.nodeW / 2, pos[v][1] - o.nodeH / 2, 8, -Math.PI, Math.PI / 2); ctx.stroke(); }
+
+  // edge labels: a plate where the label sits, and its text when that is large enough to read
+  const plates = (snap, alpha) => {
+    if (!snap.labels.length || alpha <= 0.01) return;
+    const read = 10 * s >= 5.5;
+    ctx.font = LABEL_FONT; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    snap.labels.forEach((l) => {
+      const [u, v] = graph.edges[l.e] || [], lit = hot >= 0 && (u === hot || v === hot), dim = hot >= 0 && !lit;
+      ctx.globalAlpha = alpha * (dim ? 0.25 : 0.92); ctx.fillStyle = '#131b33'; rounded(l.x - l.w / 2, l.y - l.h / 2, l.w, l.h, 3); ctx.fill();
+      ctx.globalAlpha = alpha * (dim ? 0.2 : 0.7); ctx.strokeStyle = lit ? INK : EDGE; ctx.lineWidth = 0.7 / s; ctx.stroke();
+      if (read) { ctx.globalAlpha = alpha * (dim ? 0.3 : 1); ctx.fillStyle = INK; ctx.fillText(l.text, l.x, l.y + 0.5); }
+    });
+  };
+  if (A.labels === B.labels) plates(A, fade); else { plates(A, fade * (1 - f)); plates(B, fade * f); }
 
   // nodes
   const near = hot >= 0 ? new Set([hot]) : null;

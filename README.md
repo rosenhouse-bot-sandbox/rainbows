@@ -490,6 +490,16 @@ out of the layout, and the self edge is drawn as a small loop on its node. `pars
 `js/dag/graphs.js` reads only that file's shape, not YAML in general. The other samples are small
 graphs that each show one thing: a shortcut edge, a fan, cycles, a tangle, a tree, three groups.
 
+**Edge labels.** The "Edge labels" switch gives every edge the label "source to target". The real
+engines place labels as part of the layout: ELK is told each label's size and makes room for it
+beside its edge; TALA (through D2, at font size 10) picks a position along each route, and the page
+turns that position into coordinates the way D2's `lib/label` does. The page's own step-by-step
+layouts do not place labels: each is put at the middle of its finished edge and left there. The
+panel counts "Labels covered", the labels that lie over a node or over another label
+(`labelsCovered` in `js/dag/common.js`). On the 55-node file that is 0 for both real engines and
+24 and 38 for the page's own two layouts. A label's text is drawn only when it is large enough on
+screen to read; its plate is always drawn.
+
 Hovering or tapping a node, or the arrow keys with the drawing focused, picks out the node and its
 edges. The address after `#` holds the graph, the method, the step and every setting.
 

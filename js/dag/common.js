@@ -83,3 +83,34 @@ export function straightCrossings(edges, x, y) {
   }
   return c;
 }
+
+// ---- edge labels ----
+// A label is { x, y, w, h, text }, with (x, y) its centre.
+
+// The point a fraction f of the way along a line of straight pieces, and which piece it is on.
+export function pointAlong(pts, f) {
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+  let left = total * f;
+  for (let i = 1; i < pts.length; i++) {
+    const len = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (left <= len || i === pts.length - 1) { const t = len ? left / len : 0; return { p: [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t, pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t], i: i - 1 }; }
+    left -= len;
+  }
+  return { p: pts[0].slice(), i: 0 };
+}
+
+// What this page's own layouts do: each label at the middle of its edge, and nothing more.
+export function midLabels(edges, sizes) {
+  return edges.map((e, k) => { const { p } = pointAlong(flatten(e), 0.5); return { x: p[0], y: p[1], w: sizes[k].w, h: sizes[k].h, text: sizes[k].text, e: k }; });
+}
+
+// How many labels lie over a node or over another label.
+export function labelsCovered(labels, pos, o) {
+  const hit = new Uint8Array(labels.length), over = (a, bx, by, bw, bh) => Math.abs(a.x - bx) < (a.w + bw) / 2 - 0.5 && Math.abs(a.y - by) < (a.h + bh) / 2 - 0.5;
+  labels.forEach((a, i) => {
+    for (const p of pos) if (over(a, p[0], p[1], o.nodeW, o.nodeH)) { hit[i] = 1; break; }
+    for (let j = i + 1; j < labels.length; j++) if (over(a, labels[j].x, labels[j].y, labels[j].w, labels[j].h)) { hit[i] = 1; hit[j] = 1; }
+  });
+  return hit.reduce((n, v) => n + v, 0);
+}
