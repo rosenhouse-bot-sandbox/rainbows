@@ -200,6 +200,7 @@ function panel() {
   [...nav.children].forEach((b, i) => { b.classList.toggle('done', i < stage); if (i === stage) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
   for (const b of $('method').children) b.setAttribute('aria-pressed', String(b.dataset.v === P.m));
   $('methodNote').textContent = working ? 'Working: ' + Math.round((performance.now() - workT) / 1000) + ' s. ' + (working === 'search' ? 'On a graph this size TALA can take 10 s or more for each seed.' : '') : P.eng === 'real' ? REAL_NOTE[P.m] : NOTE[P.m];
+  $('links-layered').hidden = P.m !== 'layered'; $('links-search').hidden = P.m !== 'search';
   $('eyebrow').textContent = 'Step ' + (stage + 1) + ' of ' + ids.length;
   $('capTitle').textContent = STAGE_NAME[ids[stage]];
   $('capText').textContent = caption(ids[stage]);

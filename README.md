@@ -500,6 +500,14 @@ panel counts "Labels covered", the labels that lie over a node or over another l
 24 and 38 for the page's own two layouts. A label's text is drawn only when it is large enough on
 screen to read; its plate is always drawn.
 
+Under each method the panel links to its background and source:
+[layered graph drawing](https://en.wikipedia.org/wiki/Layered_graph_drawing),
+the [ELK Layered reference](https://eclipse.dev/elk/reference/algorithms/org-eclipse-elk-layered.html),
+[ELK](https://github.com/eclipse-elk/elk) and [elkjs](https://github.com/kieler/elkjs);
+[TALA in the D2 docs](https://d2lang.com/tour/tala), the
+[announcement that it is open source](https://d2lang.com/blog/tala-is-open-source/) and
+[its source](https://github.com/d2lang/d2/tree/master/d2layouts/d2talalayout).
+
 Hovering or tapping a node, or the arrow keys with the drawing focused, picks out the node and its
 edges. The address after `#` holds the graph, the method, the step and every setting.
 
