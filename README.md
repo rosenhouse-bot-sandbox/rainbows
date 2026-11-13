@@ -319,6 +319,7 @@ every push to `main`. In the repository settings, set Pages → Source to
 - `vesicle/index.html`, `css/vesicle.css`, `js/vesicle/*.js`: the vesicle fusion experience
   (`profile.js` geometry, `scene.js` molecules and drawing, `vitro.js` microscope, `shaders.js` GLSL,
   `main.js` controls).
+- `maple/index.html`, `css/maple.css`, `js/maple/*.js`: Japanese maple (see its section below).
 - `drafts/`: review boards from each design round.
 - `tests/vesicle/placement.mjs`: steps Vesicle fusion through every frame without a GPU and fails if a
   protein is on the wrong side of a membrane or pushed into one.
@@ -515,3 +516,72 @@ Code: `layered.js` and `search.js` are the two layouts, `route.js` the right-ang
 seeded random number, `graphs.js` the samples, `main.js` the page. `css/dag.css` is the stylesheet.
 `node tests/dag/run.mjs` checks the layouts' rules without a browser; `node tests/dag/page.mjs`
 presses every control in a real one.
+
+## Japanese maple
+
+A page at `maple/`: one leaf of a Japanese maple (*Acer palmatum*) from the day its bud opens to the
+day it falls, at every scale from the park down to its pigment molecules. Two sliders drive it.
+
+- **Zoom** is continuous, with five named stops: Park (the view is about 9 m tall), Tree (4.5 m),
+  Leaf (13 cm), Cells (125 µm) and Molecules (7 nm). It is one camera closing on one point: the
+  followed leaf hangs at the end of a low twig on the left of the tree, the Cells scale looks at a
+  point on its middle lobe, and the Molecules scale looks into one cell there. The scale bar at the
+  top right is measured from the camera. The mouse wheel zooms too.
+- **Season** runs from 25 March to 20 December, with a Play button. Summer, when little changes,
+  takes less of the slider than autumn. The date is shown, and the day length for it at 35° N
+  (sunrise to sunset by geometry, without the bending of light by the air).
+- At Cells and Molecules, **Zoom into** chooses between a chloroplast and the vacuole of the same
+  cell, because the pigments live in different places: chlorophyll and carotenoids in the
+  chloroplast's membranes, anthocyanin dissolved in the vacuole's water.
+
+What the page shows, and where each part comes from (`js/maple/model.js` unless noted):
+
+- **Each leaf has its own timetable.** It stops renewing chlorophyll on a day between late October
+  and mid November, earlier the more sun it gets; it makes anthocyanin in proportion to the sun it
+  gets (a leaf needs light and sugar to make it); it falls 22 to 38 days later. So the crown turns
+  from the outside in, red outside and yellow or orange within. The followed leaf is in full sun and
+  is the last to fall.
+- **Four curves per leaf**: chlorophyll (built up over about six weeks in spring, gone within 23
+  days in autumn), carotenoids (55% remain at leaf fall), anthocyanin, and how far the separation
+  layer has cut through the foot of the stalk. The panel's bars show them for the followed leaf.
+- **Colour is computed, not painted.** Each pigment has an absorption band (a few Gaussians placed
+  on the bands measured in leaves: chlorophyll near 440 and 675 nm, carotenoids 425 to 480 nm,
+  cyanidin 3-glucoside near 530 nm). The light that comes back from a leaf is `exp(−absorbance)`
+  at each wavelength, and its colour on screen is that spectrum weighted by the CIE 1931 colour
+  matching functions (the fit of Wyman, Sloan and Shirley, 2013), under light equal at every
+  wavelength. The panel's small chart shows the same numbers: the share of each wavelength that
+  comes back, over what each pigment absorbs. The colour's name in its caption is taken from the
+  computed hue.
+- **Cells** are seen from above, through the leaf's clear outer layer: chloroplasts round the wall
+  of each cell, the vacuole in the middle. In autumn the stacks of membrane inside each chloroplast
+  (dark dots) go, the chloroplasts shrink and turn yellow, and the vacuole turns crimson.
+- **Molecules** are skeleton diagrams to scale (a carbon to carbon bond is 0.14 nm): chlorophyll
+  *a* (the ring, its magnesium atom, the 20-carbon tail), β-carotene and cyanidin 3-glucoside.
+  As chlorophyll is broken down, each molecule in turn loses its magnesium, then its tail, then
+  fades to grey as its ring is opened (the order the enzymes work in).
+- **The foot of the stalk**, a diagram in the panel at the Leaf scale once the cut has begun: cork
+  forms on the twig side, the separation layer comes apart from the outside in, the vein breaks last.
+
+Simplified or exaggerated, and said so on the page:
+
+- Dates are typical for Kyoto; pigment amounts are smooth curves with the right order and rough
+  durations, shown as shares of the leaf's own summer amount (anthocyanin: of its peak), not
+  measurements. Absorption bands are illustrative fits.
+- The tree has about 3,600 leaves; a real one this size carries several times more. The picture is
+  flat: a leaf's depth in the crown only makes it darker.
+- A fall takes seconds; it is spread over two and a half days of the slider so that it can be seen.
+  Fallen leaves keep their colour (real ones brown within days).
+- Cells are circles in one layer, with only chloroplasts and vacuole drawn.
+- Molecules are flat, without hydrogen atoms; the proteins and lipids that hold chlorophyll and
+  carotenoids in the membrane are left out, and so is water. One molecule has no colour: each is
+  drawn in the colour its pigment has in bulk. Anthocyanin is drawn far more crowded than it is: a
+  real view 10 nm across would usually hold no molecule at all.
+
+It is a 2D canvas with no dependencies. Nothing moves unless the year is playing or a zoom is in
+flight; with reduced motion the year does not start by itself and zooms are immediate.
+
+Code: `model.js` the calendar, pigments and colour; `tree.js` the tree, each leaf's timetable and
+the leaf outline; `scene.js` park to leaf surface; `micro.js` cells and molecules; `figs.js` the two
+panel pictures; `main.js` the camera and controls. `css/maple.css` is the stylesheet.
+`node tests/maple/model.mjs` checks the model without a browser; `node tests/maple/page.mjs` presses
+every control in a real one and steps both sliders end to end looking for jumps.

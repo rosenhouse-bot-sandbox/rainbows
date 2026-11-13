@@ -12,8 +12,8 @@ experience is and where its code lives.
   it needs Node and a Playwright installed outside the repository.)
 - Run it with `python3 -m http.server 8000` from the repository root. ES modules do not load from
   `file://`.
-- Each experience is self-contained: `v2/` (Rainbows), `vesicle/`, `optics/` (Optics workshop)
-  and `dag/` (Graph layout) have their own page, stylesheet (`css/`) and modules (`js/`). Do not change one while working on
+- Each experience is self-contained: `v2/` (Rainbows), `vesicle/`, `optics/` (Optics workshop),
+  `dag/` (Graph layout) and `maple/` (Japanese maple) have their own page, stylesheet (`css/`) and modules (`js/`). Do not change one while working on
   another.
 - Physics claims must be true. Numbers shown on screen come from the model in code
   (`js/v2/optics.js` for v2), not from text typed into a caption. Where a picture simplifies or
@@ -85,6 +85,12 @@ Before pushing:
   and a phone size and fails on a console error or a panel wider than the screen. A new sample graph
   goes in `SAMPLES` in `js/dag/graphs.js` and is picked up by both. The page must keep saying which
   pictures come from its own step-by-step code and which from the real ELK and TALA.
+- For Japanese maple, run `node tests/maple/model.mjs` (no browser needed) after changing the
+  calendar, a pigment curve, an absorption band or the tree: it fails if an event happens out of
+  order or a leaf's computed colour gets the wrong name. Then `node tests/maple/page.mjs` (about a
+  quarter of an hour): it presses every control at a desktop and a phone size, steps both sliders end
+  to end comparing each picture with the one before, and fails on a jump, a control that moved, or a
+  console error. Leaf colours must stay computed from the pigment amounts; do not type them in.
 - A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
   `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone
