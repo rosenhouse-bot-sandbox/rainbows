@@ -414,8 +414,25 @@ seen.
 ## Graph layout
 
 A page at `dag/` that draws a directed graph two ways, one step at a time. A directed graph is a
-set of nodes joined by arrows (edges). Neither method is the real library: the page says so beside
-the switch.
+set of nodes joined by arrows (edges).
+
+Each method has an **Engine** switch. "Step by step" is code written for this page, so that every
+step can be shown; it is not the real library, and the page says so. "Real ELK" and "Real TALA"
+load the real engines and show what they give for the same graph:
+
+- ELK is [elkjs](https://github.com/kieler/elkjs) 0.12.1 (ELK compiled to JavaScript, 1.6 MB).
+  Groups become nested nodes with `hierarchyHandling: INCLUDE_CHILDREN`. The settings map onto
+  ELK's own options (`js/dag/real.js`); "Sorting passes" sets `elk.layered.thoroughness`, which is
+  related but not the same thing.
+- TALA is inside D2's WebAssembly build, [@d2lang/d2](https://www.npmjs.com/package/@d2lang/d2)
+  0.1.34 (11 MB). The graph is written out as D2 text with each group as a container. Seed and
+  Tries become `tala-seeds`. It runs in a worker; on the 55-node file it takes about 7 s for each
+  seed.
+
+Both come from jsDelivr, pinned to those versions, and only when the switch is pressed. This is the
+site's one outside dependency, and the page's Content-Security-Policy allows that host, WebAssembly
+and a blob worker for it. The engines give only a finished layout, so in that mode there are two
+steps, the input and the result. The nodes and edges are still drawn by this page.
 
 **Layered** follows the five phases of ELK Layered (the Sugiyama method), written again here in
 `js/dag/layered.js`. It is not ELK's code, and where a phase is simpler than ELK's it is listed below.

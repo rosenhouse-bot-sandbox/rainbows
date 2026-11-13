@@ -6,6 +6,7 @@ import { SAMPLES, parseTopology } from './graphs.js';
 import { layered } from './layered.js';
 import { gridSearch } from './search.js';
 import { measure } from './common.js';
+import { runReal, cancelD2, realLayout } from './real.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('view'), ctx = canvas.getContext('2d');
@@ -16,6 +17,7 @@ const PLAIN = '#9fb4ff', EDGE = '#aab6d6', TURNED = '#ff5d73', INK = '#eaf0ff';
 
 // What can be set. Each is read from the address after # and written back to it.
 const CONTROLS = [
+  { id: 'eng', stage: 0, label: 'Engine', options: [['own', 'Step by step'], ['real', '']] },
   { id: 'cyc', m: 'layered', stage: 1, label: 'Edges to turn', options: [['greedy', 'Greedy'], ['dfs', 'Depth first'], ['file', 'File order']] },
   { id: 'grp', m: 'layered', stage: 2, label: 'Groups', options: [['box', 'Boxes'], ['colour', 'Colour only']], only: () => graph && graph.groups.length > 0 },
   { id: 'lay', m: 'layered', stage: 2, label: 'Layer for each node', options: [['longest', 'Longest path'], ['tight', 'Short edges'], ['width', 'Width limit']] },
@@ -23,20 +25,26 @@ const CONTROLS = [
   { id: 'sw', m: 'layered', stage: 3, label: 'Sorting passes', min: 0, max: 10 },
   { id: 'seed', m: 'search', stage: 2, label: 'Seed', min: 1, max: 40 },
   { id: 'tries', m: 'search', stage: 2, label: 'Tries', min: 1, max: 12 },
-  { id: 'flow', m: 'search', stage: 2, label: () => 'Point edges ' + P.dir, min: 0, max: 10 },
-  { id: 'cross', m: 'search', stage: 2, label: 'Avoid crossings', min: 0, max: 10 },
+  { id: 'flow', m: 'search', own: true, stage: 2, label: () => 'Point edges ' + P.dir, min: 0, max: 10 },
+  { id: 'cross', m: 'search', own: true, stage: 2, label: 'Avoid crossings', min: 0, max: 10 },
   { id: 'rt', m: 'layered', stage: 5, label: 'Edge shape', options: [['ortho', 'Right angles'], ['poly', 'Straight'], ['curve', 'Curved']] },
-  { id: 'gap', stage: { layered: 4, search: 2 }, label: 'Space between nodes', min: 8, max: 60 },
+  { id: 'gap', stage: { layered: 4, search: 2 }, label: 'Space between nodes', min: 8, max: 60, only: () => !(P.eng === 'real' && P.m === 'search') },
   { id: 'lgap', m: 'layered', stage: 4, label: 'Space between layers', min: 20, max: 100 },
   { id: 'dir', stage: { layered: 2, search: 2 }, label: 'Direction', options: [['down', 'Down'], ['right', 'Right']] },
 ];
-const P = { g: 'topology', m: 'layered', grp: 'box', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
-const STAGE_NAME = { input: 'Input', cycles: 'Turn', layers: 'Layers', order: 'Sort', place: 'Align', route: 'Route', boxes: 'Group', search: 'Search' };
+const P = { g: 'topology', m: 'layered', eng: 'own', grp: 'box', cyc: 'greedy', lay: 'longest', wmax: 4, sw: 6, seed: 1, tries: 3, flow: 3, cross: 5, rt: 'ortho', gap: 22, lgap: 44, dir: 'down' };
+const STAGE_NAME = { input: 'Input', cycles: 'Turn', layers: 'Layers', order: 'Sort', place: 'Align', route: 'Route', boxes: 'Group', search: 'Search', real: 'Result' };
 const NOTE = {
   layered: 'The five steps of ELK Layered, written again for this page. This is not ELK’s own code.',
   search: 'Not TALA’s code. Real TALA first finds trees, hubs, clusters and layered parts, then places and routes. This simpler search keeps its outline: boxes, seeded tries, the best score, right-angle edges.',
 };
 
+const REAL_NAME = { layered: 'Real ELK', search: 'Real TALA · 11 MB' };
+const REAL_NOTE = {
+  layered: 'This is the real ELK: elkjs 0.12.1, loaded from jsDelivr. It gives the finished layout only, not the steps.',
+  search: 'This is the real TALA, inside D2’s WebAssembly build (@d2lang/d2 0.1.34), loaded from jsDelivr. It gives the finished layout only.',
+};
+let toEnd = false, job = 0, working = '', workT = 0, workTimer = 0, tookS = 0, wait = 0;
 let graph = null, layout = null, stage = 0, q = 0, mix = 1, from = null, shown = null;
 let playing = false, dwell = 0, hot = -1, dirty = false, raf = 0, lastT = 0, view = { s: 1, tx: 0, ty: 0 }, lastAspect = 0;
 const graphs = new Map();
@@ -72,23 +80,55 @@ function compute(glide) {
   const longest = Math.max(...graph.labels.map((s) => s.length));
   const o = { ...P, sweeps: P.sw, nodeW: Math.max(44, longest * 8 + 22), nodeH: NODE_H, aspect: Math.min(3, Math.max(0.4, lastAspect)) };
   const same = layout && layout.graph === graph && shown;
-  layout = P.m === 'layered' ? layered(graph, o) : gridSearch(graph, o);
-  layout.o = o; layout.graph = graph; layout.stats = [];
+  if (P.eng === 'real') {
+    // Ask the engine, and keep showing what is on screen until it answers (or the input, if nothing is).
+    if (!same || !layout.real) { const pos = realLayout(graph, o, { pos: [], edges: [], boxes: [] }, true); use(pos, o, same && glide); stage = q = 0; }
+    clearTimeout(wait); wait = setTimeout(() => ask(o), working ? 0 : 200);
+    panel(); kick(); return;
+  }
+  stopReal();
+  use(P.m === 'layered' ? layered(graph, o) : gridSearch(graph, o), o, same && glide);
+}
+function use(next, o, glide) {
+  layout = next; layout.o = o; layout.graph = graph; layout.stats = [];
   const last = layout.snaps.length - 1;
+  if (toEnd) { stage = last; toEnd = false; }
   if (stage > last) { stage = last; q = last; }
-  if (same && glide && !still.matches) { from = shown; mix = 0; } else mix = 1;
+  if (glide && shown && !still.matches) { from = shown; mix = 0; } else mix = 1;
   panel(); kick();
+}
+// ---- the real engines ----
+function stopReal() { job++; clearTimeout(wait); if (working === 'search') cancelD2(); working = ''; clearInterval(workTimer); }
+async function ask(o) {
+  const id = ++job, g = graph;
+  if (working === 'search') cancelD2();   // a TALA run can take many seconds; do not wait for one nobody wants
+  working = P.m; workT = performance.now();
+  clearInterval(workTimer); workTimer = setInterval(panel, 500);
+  panel();
+  try {
+    const next = await runReal(g, o);
+    if (id !== job) return;
+    working = ''; clearInterval(workTimer); tookS = (performance.now() - workT) / 1000;
+    use(next, o, true); stage = 1; if (still.matches || !shown) q = 1;
+    panel(); kick();
+    $('status').textContent = 'The layout is ready.';
+  } catch (e) {
+    if (id !== job) return;
+    working = ''; clearInterval(workTimer);
+    P.eng = 'own'; stage = 99; compute(false); q = stage; panel();
+    $('status').textContent = $('methodNote').textContent = 'The real engine could not be loaded or failed on this graph. Showing the step-by-step version.';
+  }
 }
 const stats = (i) => layout.stats[i] || (layout.stats[i] = measure(layout.snaps[i].edges));
 
 function setGraph(id, keepStage) {
   P.g = id; $('graph').value = id; hot = -1;
-  const use = (g) => { if (P.g !== id) return; graph = g; shown = null; compute(false); if (!keepStage) go(layout.snaps.length - 1, true); panel(); };
+  const take = (g) => { if (P.g !== id) return; graph = g; shown = null; compute(false); if (!keepStage && P.eng === 'own') go(layout.snaps.length - 1, true); panel(); };
   const s = SAMPLES.find((x) => x.id === id);
-  if (s.graph) return use(s.graph);
-  if (graphs.has(id)) return use(graphs.get(id));
+  if (s.graph) return take(s.graph);
+  if (graphs.has(id)) return take(graphs.get(id));
   fetch(s.url).then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.text(); })
-    .then((t) => { graphs.set(id, parseTopology(t)); use(graphs.get(id)); })
+    .then((t) => { graphs.set(id, parseTopology(t)); take(graphs.get(id)); })
     .catch(() => { $('status').textContent = 'The file could not be loaded. Showing another graph.'; setGraph('diamond'); });
 }
 
@@ -125,6 +165,9 @@ function caption(id) {
     case 'route': return P.m === 'layered'
       ? (layout.grouped ? 'Edges inside a box are drawn through their dots. Edges between boxes are routed last, at right angles around the nodes.' : 'Each edge is drawn through its dots.') + (f.reversed ? ' Turned arrows point their true way again, still in red.' : '')
       : 'Each edge takes the cheapest path of horizontal and vertical runs. A path pays for its length, its bends and any box it cuts through, and may not pass through a node.';
+    case 'real': return P.m === 'layered'
+      ? 'What ELK itself gives for this graph and these settings.' + (g.groups.length && P.grp === 'box' ? ' Its boxes are laid out together with their contents, in one pass.' : '')
+      : 'What TALA itself gives: the lowest penalty of ' + n(P.tries, 'seed', 'seeds') + '.';
     case 'boxes': return g.groups.length
       ? 'The file puts each node in a group. Each group gets a box, and boxes and nodes sit on grids in file order.'
       : 'The nodes sit on a grid in file order, with spare cells to move into.';
@@ -135,8 +178,8 @@ function caption(id) {
 function panel() {
   if (!layout) return;
   const ids = layout.stages, nav = $('stages');
-  if (nav.dataset.m !== P.m) {
-    nav.dataset.m = P.m; nav.textContent = '';
+  if (nav.dataset.m !== ids.join()) {
+    nav.dataset.m = ids.join(); nav.textContent = '';
     ids.forEach((id, i) => {
       const b = document.createElement('button'); b.type = 'button';
       b.append(document.createElement('i'), document.createTextNode(STAGE_NAME[id]));
@@ -146,7 +189,7 @@ function panel() {
   }
   [...nav.children].forEach((b, i) => { b.classList.toggle('done', i < stage); if (i === stage) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
   for (const b of $('method').children) b.setAttribute('aria-pressed', String(b.dataset.v === P.m));
-  $('methodNote').textContent = NOTE[P.m];
+  $('methodNote').textContent = working ? 'Working: ' + Math.round((performance.now() - workT) / 1000) + ' s. ' + (working === 'search' ? 'On a graph this size TALA can take 10 s or more for each seed.' : '') : P.eng === 'real' ? REAL_NOTE[P.m] : NOTE[P.m];
   $('eyebrow').textContent = 'Step ' + (stage + 1) + ' of ' + ids.length;
   $('capTitle').textContent = STAGE_NAME[ids[stage]];
   $('capText').textContent = caption(ids[stage]);
@@ -154,11 +197,13 @@ function panel() {
   const st = stats(stage), f = layout.facts;
   meter(0, 'Crossings', st.crossings);
   meter(1, 'Edge length', Math.round(st.length / layout.o.nodeW));
-  if (P.m === 'layered') meter(2, 'Turned edges', stage >= 1 ? f.reversed : 0, stage >= 1 && f.reversed > 0);
+  if (layout.real) meter(2, 'Seconds', working || stage === 0 ? '…' : tookS.toFixed(1));
+  else if (P.m === 'layered') meter(2, 'Turned edges', stage >= 1 ? f.reversed : 0, stage >= 1 && f.reversed > 0);
   else meter(2, 'Score', stage >= 2 ? f.tries[f.best] : f.firstScore);
   for (const c of CONTROLS) {
     const row = $('ctl-' + c.id);
-    row.hidden = !!(c.m && c.m !== P.m) || !!(c.only && !c.only());
+    row.hidden = !!(c.m && c.m !== P.m) || !!(c.only && !c.only()) || !!(c.own && P.eng === 'real');
+    if (c.id === 'eng') row.querySelector('[data-v=real]').textContent = REAL_NAME[P.m];
     row.querySelector('.name').textContent = typeof c.label === 'function' ? c.label() : c.label;
     if (c.options) for (const b of row.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === P[c.id]));
     else { const inp = row.querySelector('input'); inp.value = P[c.id]; inp.style.setProperty('--v', (P[c.id] - c.min) / (c.max - c.min) * 100 + '%'); row.querySelector('b').textContent = P[c.id]; }
@@ -213,7 +258,7 @@ function buildControls() {
   sel.addEventListener('change', () => { setPlaying(false); setGraph(sel.value); });
   for (const b of $('method').children) b.addEventListener('click', () => {
     if (P.m === b.dataset.v) return;
-    setPlaying(false); P.m = b.dataset.v; stage = 99; compute(true); q = stage; panel();
+    setPlaying(false); P.m = b.dataset.v; P.eng = 'own'; stage = 99; compute(true); q = stage; panel();
   });
   const box = $('controls');
   for (const c of CONTROLS) {
@@ -222,7 +267,8 @@ function buildControls() {
     const changed = () => {
       const s = typeof c.stage === 'object' ? c.stage[P.m] : c.stage;
       setPlaying(false);
-      if (stage < s) go(s);   // show the step this setting acts on
+      if (c.id === 'eng') toEnd = true;
+      else if (P.eng === 'own' && stage < s) go(s);   // show the step this setting acts on
       dirty = true; panel(); kick();
     };
     if (c.options) {
@@ -237,7 +283,7 @@ function buildControls() {
       inp.addEventListener('input', () => { P[c.id] = Number(inp.value); changed(); });
       row.append(lab, inp);
     }
-    box.append(row);
+    if (c.id === 'eng') { lab.classList.add('visually-hidden'); $('methodNote').before(row); } else box.append(row);
   }
   $('prev').addEventListener('click', () => { setPlaying(false); go(stage - 1); });
   $('next').addEventListener('click', () => { setPlaying(false); go(stage + 1); });

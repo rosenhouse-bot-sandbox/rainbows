@@ -5,7 +5,9 @@ experience is and where its code lives.
 
 ## Ground rules
 
-- Static site, no build step, no dependencies. Plain HTML, CSS and ES modules, served as-is from
+- Static site, no build step, no dependencies. (One exception, which Gabe chose: Graph layout loads
+  the real ELK and the real TALA from jsDelivr, pinned to a version, only when the visitor asks for
+  them. Nothing else may load code from another host.) Plain HTML, CSS and ES modules, served as-is from
   GitHub Pages (`.github/workflows/pages.yml` publishes `main`). (`tests/` is not part of the site:
   it needs Node and a Playwright installed outside the repository.)
 - Run it with `python3 -m http.server 8000` from the repository root. ES modules do not load from
@@ -81,8 +83,8 @@ Before pushing:
   with both methods over a spread of settings and fails if nodes overlap, an edge misses its node, a
   cycle is left, or two runs differ. Then `node tests/dag/page.mjs` presses every control at a desktop
   and a phone size and fails on a console error or a panel wider than the screen. A new sample graph
-  goes in `SAMPLES` in `js/dag/graphs.js` and is picked up by both. The page must keep saying that it
-  runs neither ELK's nor TALA's code.
+  goes in `SAMPLES` in `js/dag/graphs.js` and is picked up by both. The page must keep saying which
+  pictures come from its own step-by-step code and which from the real ELK and TALA.
 - A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
   `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone
