@@ -46,7 +46,7 @@ const REAL_NOTE = {
   layered: 'This is the real ELK: elkjs 0.12.1, loaded from jsDelivr. It gives the finished layout only, not the steps.',
   search: 'This is the real TALA, inside D2’s WebAssembly build (@d2lang/d2 0.1.34), loaded from jsDelivr. It gives the finished layout only.',
 };
-let toEnd = false, job = 0, working = '', workT = 0, workTimer = 0, tookS = 0, wait = 0;
+let failed = '', perSeed = 0, toEnd = false, job = 0, working = '', workT = 0, workTimer = 0, tookS = 0, wait = 0;
 let graph = null, layout = null, stage = 0, q = 0, mix = 1, from = null, shown = null;
 let playing = false, dwell = 0, hot = -1, dirty = false, raf = 0, lastT = 0, view = { s: 1, tx: 0, ty: 0 }, lastAspect = 0;
 const graphs = new Map();
@@ -111,6 +111,7 @@ function use(next, o, glide) {
 function stopReal() { job++; clearTimeout(wait); if (working === 'search') cancelD2(); working = ''; clearInterval(workTimer); }
 async function ask(o) {
   const id = ++job, g = graph;
+  failed = '';
   if (working === 'search') cancelD2();   // a TALA run can take many seconds; do not wait for one nobody wants
   working = P.m; workT = performance.now();
   clearInterval(workTimer); workTimer = setInterval(panel, 500);
@@ -119,6 +120,7 @@ async function ask(o) {
     const next = await runReal(g, o);
     if (id !== job) return;
     working = ''; clearInterval(workTimer); tookS = (performance.now() - workT) / 1000;
+    if (P.m === 'search') perSeed = tookS / o.tries * 55 / Math.max(1, g.n);   // seconds for each seed, scaled to a 55-node graph, for the next estimate
     use(next, o, true); stage = 1; if (still.matches || !shown) q = 1;
     panel(); kick();
     $('status').textContent = 'The layout is ready.';
@@ -126,13 +128,15 @@ async function ask(o) {
     if (id !== job) return;
     working = ''; clearInterval(workTimer);
     P.eng = 'own'; stage = 99; compute(false); q = stage; panel();
-    $('status').textContent = $('methodNote').textContent = 'The real engine could not be loaded or failed on this graph. Showing the step-by-step version.';
+    // say why, and keep saying it until the engine is asked for again
+    failed = 'The real ' + (o.m === 'layered' ? 'ELK' : 'TALA') + ' did not run: ' + String((e && e.message) || e).slice(0, 160) + '. Showing the step-by-step version.';
+    $('status').textContent = failed; panel();
   }
 }
 const stats = (i) => layout.stats[i] || (layout.stats[i] = { ...measure(layout.snaps[i].edges), covered: labelsCovered(layout.snaps[i].labels, layout.snaps[i].pos, layout.o) });
 
 function setGraph(id, keepStage) {
-  P.g = id; $('graph').value = id; hot = -1;
+  P.g = id; $('graph').value = id; hot = -1; failed = '';
   const take = (g) => { if (P.g !== id) return; graph = g; shown = null; compute(false); if (!keepStage && P.eng === 'own') go(layout.snaps.length - 1, true); panel(); };
   const s = SAMPLES.find((x) => x.id === id);
   if (s.graph) return take(s.graph);
@@ -199,11 +203,19 @@ function panel() {
   }
   [...nav.children].forEach((b, i) => { b.classList.toggle('done', i < stage); if (i === stage) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current'); });
   for (const b of $('method').children) b.setAttribute('aria-pressed', String(b.dataset.v === P.m));
-  $('methodNote').textContent = working ? 'Working: ' + Math.round((performance.now() - workT) / 1000) + ' s. ' + (working === 'search' ? 'On a graph this size TALA can take 10 s or more for each seed.' : '') : P.eng === 'real' ? REAL_NOTE[P.m] : NOTE[P.m];
+  $('methodNote').textContent = failed && P.eng === 'own' ? failed : P.eng === 'real' ? REAL_NOTE[P.m] : NOTE[P.m];
   $('links-layered').hidden = P.m !== 'layered'; $('links-search').hidden = P.m !== 'search';
   $('eyebrow').textContent = 'Step ' + (stage + 1) + ' of ' + ids.length;
-  $('capTitle').textContent = STAGE_NAME[ids[stage]];
-  $('capText').textContent = caption(ids[stage]);
+  if (working) {   // the engine is running: say so where the step's name goes, with the time so far and what to expect
+    const sec = Math.round((performance.now() - workT) / 1000), est = Math.round((perSeed || 8) * P.tries * graph.n / 55);
+    $('capTitle').textContent = 'Working… ' + sec + ' s';
+    $('capText').textContent = working === 'search'
+      ? 'TALA is laying out the graph with ' + P.tries + (P.tries === 1 ? ' seed' : ' seeds') + '. Expect about ' + Math.max(1, est) + ' s' + (perSeed ? ' on this device' : ', more on a slow device') + (sec < 3 ? '; the first run also downloads 11 MB.' : '.') + ' Fewer tries is faster.'
+      : 'ELK is laying out the graph.';
+  } else {
+    $('capTitle').textContent = STAGE_NAME[ids[stage]];
+    $('capText').textContent = caption(ids[stage]);
+  }
   $('graphFacts').textContent = graph.n + ' nodes · ' + graph.edges.length + ' edges' + (graph.groups.length ? ' · ' + graph.groups.length + ' groups' : '');
   const st = stats(stage), f = layout.facts;
   meter(0, 'Crossings', st.crossings);
@@ -270,7 +282,7 @@ function buildControls() {
   sel.addEventListener('change', () => { setPlaying(false); setGraph(sel.value); });
   for (const b of $('method').children) b.addEventListener('click', () => {
     if (P.m === b.dataset.v) return;
-    setPlaying(false); P.m = b.dataset.v; P.eng = 'own'; stage = 99; compute(true); q = stage; panel();
+    setPlaying(false); failed = ''; P.m = b.dataset.v; P.eng = 'own'; stage = 99; compute(true); q = stage; panel();
   });
   const box = $('controls');
   for (const c of CONTROLS) {

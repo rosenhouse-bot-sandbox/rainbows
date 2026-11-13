@@ -38,7 +38,7 @@ body{background:radial-gradient(1200px 800px at 70% 30%,#0b1226 0%,var(--bg) 70%
 
 .cap{display:grid;gap:3px;align-content:start}
 .eyebrow{font-family:var(--mono);font-size:0.6562rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
-.cap h2{font-family:var(--display);font-weight:600;font-size:1.1875rem;letter-spacing:-.015em;line-height:1.15;margin:0}
+.cap h2{font-variant-numeric:tabular-nums;font-family:var(--display);font-weight:600;font-size:1.1875rem;letter-spacing:-.015em;line-height:1.15;margin:0}
 /* The caption keeps room for its longest text, so the controls below do not move from step to step. */
 .cap p{margin:0;font-size:0.8438rem;line-height:1.42;color:var(--ink2);max-width:62ch;text-wrap:pretty;min-height:4.26em}
 .note{margin:0;font-size:0.7812rem;line-height:1.4;color:var(--ink3);text-wrap:pretty;min-height:4.2em}
