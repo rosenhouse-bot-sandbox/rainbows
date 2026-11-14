@@ -12,12 +12,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="modulepreload" href="../js/maple/model.js?v=1ce981fb">
-<link rel="modulepreload" href="../js/maple/tree.js?v=1ce981fb">
-<link rel="modulepreload" href="../js/maple/scene.js?v=1ce981fb">
-<link rel="modulepreload" href="../js/maple/micro.js?v=1ce981fb">
-<link rel="modulepreload" href="../js/maple/figs.js?v=1ce981fb">
-<link rel="stylesheet" href="../css/maple.css?v=1ce981fb">
+<link rel="modulepreload" href="../js/maple/model.js?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/tree.js?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/gl.js?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/shaders.js?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/molecules.js?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/world.js?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/figs.js?v=a6cc9af8">
+<link rel="stylesheet" href="../css/maple.css?v=a6cc9af8">
 </head>
 <body>
 <canvas id="view" role="img" aria-label="Picture of the maple at the chosen zoom and date" aria-describedby="capTitle capBody"></canvas>
@@ -28,7 +30,7 @@
 <div class="scalebar" aria-hidden="true"><i id="scaleBar"></i><b id="scaleText"></b></div>
 
 <div class="oops" id="oops" role="alert" hidden>
-  <p>The picture could not be drawn. Loading the page again usually fixes it.</p>
+  <p id="oopsText">The picture could not be drawn. Loading the page again usually fixes it.</p>
   <button type="button" id="reload">Load again</button>
 </div>
 
@@ -41,6 +43,7 @@
   <div class="zoom">
     <div class="lab"><label for="zoom">Zoom</label><b id="zoomV" aria-hidden="true"></b></div>
     <input id="zoom" type="range" min="0" max="4" step="0.002" value="0">
+    <div class="ticks zt" id="zticks" aria-hidden="true"></div>
     <nav class="stops" id="stops" aria-label="Zoom to a scale"></nav>
   </div>
 
@@ -70,6 +73,16 @@
     </div>
   </div>
 
+  <label class="check" id="lightCtl" hidden><input type="checkbox" id="light"> <span>Light arriving</span></label>
+
+  <figure class="fig" id="figChain" hidden>
+    <div class="lab"><label for="chain">Try it: double bonds in a row</label><b id="chainV" aria-hidden="true"></b></div>
+    <input id="chain" type="range" min="3" max="11" step="2" value="11">
+    <canvas id="figChainCv" width="336" height="96" role="img" aria-labelledby="chainCap"></canvas>
+    <div class="nmaxis" aria-hidden="true"><span>250 nm</span><span>ultraviolet | light we see</span><span>700 nm</span></div>
+    <figcaption id="chainCap" aria-live="polite"></figcaption>
+  </figure>
+
   <section class="bars" aria-labelledby="barsH">
     <h3 id="barsH">In the leaf we follow</h3>
     <div class="bar"><span>Chlorophyll</span><div><i id="bChl" class="b-chl"></i></div><b id="vChl"></b></div>
@@ -96,6 +109,6 @@
   <p class="fine" id="note"></p>
 </main>
 
-<script type="module" src="../js/maple/main.js?v=1ce981fb"></script>
+<script type="module" src="../js/maple/main.js?v=a6cc9af8"></script>
 </body>
 </html>

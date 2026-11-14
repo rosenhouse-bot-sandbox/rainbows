@@ -522,15 +522,17 @@ A page at `maple/`: one leaf of a Japanese maple (*Acer palmatum*) from the day 
 day it falls, at every scale from the whole tree down to its pigment molecules. Two sliders drive it.
 
 - **Zoom** is continuous, with five named stops: Tree (the view is about 5.5 m tall),
-  Leaf (13 cm), Tissue (0.16 mm), Cells (54 µm) and Molecules (7 nm). It is one camera closing on
-  one point: the followed leaf hangs at the end of a low twig on the left of the tree, the Tissue
-  scale is the leaf cut through at a point on its middle lobe and seen from the cut edge, the Cells
-  scale is one tall cell of that cut, and the Molecules scale looks into that cell. Between Leaf and
-  Tissue the leaf is cut and turned as one solid, with nothing faded in or out: once the leaf fills
-  the screen it is cut along a level line through that point, the near piece slides away, and the
-  piece left (2.5 mm of it) tips back about the cut until its cut face is seen square on. The zoom
-  slows over this part of the slider. The scale bar at the
-  top right is measured from the camera. The mouse wheel zooms too.
+  Leaf (16 cm), Tissue (0.16 mm), Cells (56 µm) and Molecules (4 nm). The whole page is one 3D
+  model, drawn with WebGL, and the zoom is one camera closing on one point of it. Nothing is ever
+  faded in or swapped for another picture: the tree, the leaf, its cells and their molecules are all
+  there at once, each at its true size, and come into view only by getting bigger. The followed leaf
+  hangs at the end of a low twig. A window 0.8 mm wide is cut through it on its middle lobe, and the
+  camera goes in through the window and looks at the cut wall: the leaf's layers of cells, then one
+  tall cell, then the face of one stack of membrane inside one of its chloroplasts (or the water
+  of its vacuole). A white ring marks the point each scale zooms into (the leaf on the tree, the
+  window on the leaf, the cell in the wall, the spot in the cell), and the Zoom slider has a tick
+  and a name at each stop. The scale bar at the top right is measured at the point looked at. The
+  mouse wheel zooms too.
 - **Season** runs from 25 March to 20 December, with a Play button. The date and the zoom never
   move together: while the zoom is moving the year waits, then goes on. Summer, when little changes,
   takes less of the slider than autumn. The date is shown, and the day length for it at 35° N
@@ -564,13 +566,28 @@ What the page shows, and where each part comes from (`js/maple/model.js` unless 
   shown in the panel and the loose cells a fifth of it, so the leaf reddens from its upper side;
   cells within 75 µm of the vein run up to 7.5 days behind the rest, so green lasts longest there.
   Both numbers are illustrative.
-- **Cells**: one tall cell from the side, chloroplasts along its walls and the vacuole down its
-  middle. In autumn the stacks of membrane inside each chloroplast (dark dots) go, the
-  chloroplasts shrink and turn yellow, and the vacuole turns crimson.
-- **Molecules** are skeleton diagrams to scale (a carbon to carbon bond is 0.14 nm): chlorophyll
-  *a* (the ring, its magnesium atom, the 20-carbon tail), β-carotene and cyanidin 3-glucoside.
-  As chlorophyll is broken down, each molecule in turn loses its magnesium, then its tail, then
-  fades to grey as its ring is opened (the order the enzymes work in).
+- **Cells**: tall cells seen from the side, chloroplasts along their walls and the vacuole down
+  the middle of each. In autumn the stacks of membrane inside each chloroplast go and drops of fat
+  take their place (in the followed cell they are drawn one by one), the chloroplasts shrink and
+  turn yellow, and the vacuole turns crimson.
+- **Molecules** are built atom by atom to scale (a carbon to carbon bond is 0.14 nm): chlorophyll
+  *a* (the ring, its magnesium atom, the 20-carbon tail) and β-carotene standing on the membrane,
+  whose bumps are the heads of its fat molecules; cyanidin 3-glucoside in the vacuole. The bonds
+  that glow are the row or ring of alternating double and single bonds whose shared electrons
+  take in visible light. With **Light arriving** switched on, dots of light of single wavelengths
+  (each drawn in the colour we see that wavelength as) fall on the molecules; whether a molecule
+  takes one in is decided by its pigment's absorption band at that wavelength, the same band the
+  leaf colour is computed from, and a molecule that takes one in flashes. So chlorophyll swallows
+  the dots we see as blue and red and lets green pass, which is why it is green. As a pigment's
+  share falls, its molecules go one at a time.
+- **Try it: double bonds in a row** (panel, at Molecules) shows why. It steps through five real
+  carotenoids that the plant makes one from the next: phytoene (3 double bonds in a row, absorbs
+  most strongly near 286 nm), phytofluene (5, 348 nm), ζ-carotene (7, 400 nm), neurosporene (9,
+  440 nm) and lycopene (11, 472 nm). The longer the row, the longer the wavelength taken in; the
+  first two absorb only ultraviolet and have no colour. The swatch is computed with the same
+  colour code as the leaves, from white light passed through the pigment. The peak wavelengths
+  are measured values (in solution, to a few nanometres); the three-peaked shape of each band is
+  the leaf's carotenoid band moved to that peak.
 - **The foot of the stalk**, a diagram in the panel at the Leaf scale once the cut has begun: cork
   forms on the twig side, the separation layer comes apart from the outside in, the vein breaks last.
 
@@ -579,22 +596,35 @@ Simplified or exaggerated, and said so on the page:
 - Dates are typical for Kyoto; pigment amounts are smooth curves with the right order and rough
   durations, shown as shares of the leaf's own summer amount (anthocyanin: of its peak), not
   measurements. Absorption bands are illustrative fits.
-- The tree has about 3,600 leaves; a real one this size carries several times more. The picture is
-  flat: a leaf's depth in the crown only makes it darker.
+- The tree has about 7,600 leaves; a real one this size carries several times more. Leaves near
+  the followed leaf's face and behind it are left out so that it can be seen and seen through.
 - A fall takes seconds; it is spread over two and a half days of the slider so that it can be seen.
   Fallen leaves keep their colour (real ones brown within days).
-- The cut leaf is a diagram: cells have regular shapes, and only their walls, chloroplasts and
-  vacuoles are drawn.
-- Molecules are flat, without hydrogen atoms; the proteins and lipids that hold chlorophyll and
-  carotenoids in the membrane are left out, and so is water. One molecule has no colour: each is
-  drawn in the colour its pigment has in bulk. Anthocyanin is drawn far more crowded than it is: a
-  real view 10 nm across would usually hold no molecule at all.
+- The window in the leaf is the picture's own device. The cells are a model: regular shapes,
+  whole at the cut where real ones would be sliced open, and only their walls, chloroplasts and
+  vacuoles are drawn. Only the followed cell's chloroplasts have their membrane stacks drawn; the
+  rest carry dark dots in their place.
+- Molecules are flat, without hydrogen atoms; the proteins that hold chlorophyll and carotenoids in
+  the membrane are left out, and so is water. Only the 63 molecules nearest the middle are built
+  atom by atom; those further off are flat outlines. One molecule has no colour: each is drawn in
+  the colour its pigment has in bulk, and in the vacuole the atoms are drawn pale and dark red so
+  that they show against the red water. Anthocyanin is drawn far more crowded than it is: a real
+  view 10 nm across would usually hold no molecule at all. The dots of light move far slower than
+  light, and one dot stands for a little light of one wavelength. When chlorophyll is broken down
+  the caption gives the enzymes' order (magnesium out, tail off, ring opened); the picture only
+  takes each molecule away in its turn.
 
-It is a 2D canvas with no dependencies. Nothing moves unless the year is playing or a zoom is in
-flight; with reduced motion the year does not start by itself and zooms are immediate.
+It is WebGL2 written by hand, with no dependencies. Places are worked out in 64-bit numbers and
+each group of things (tree, leaf, cells, molecules) is handed to the graphics card relative to the
+camera, which is what lets one model span from metres to a tenth of a nanometre. Nothing moves
+unless the year is playing, a zoom is in flight or light is arriving; with reduced motion the year
+does not start by itself, zooms are immediate and the light is off until switched on. If the
+graphics context is lost the page loads itself again at the same zoom and date.
 
-Code: `model.js` the calendar, pigments and colour; `tree.js` the tree, each leaf's timetable and
-the leaf outline; `scene.js` tree to leaf surface; `micro.js` the cut leaf, cells and molecules; `figs.js` the two
-panel pictures; `main.js` the camera and controls. `css/maple.css` is the stylesheet.
+Code: `model.js` the calendar, pigments and colour; `tree.js` the tree in 3D, each leaf's timetable
+and the leaf outline; `world.js` everything that is drawn, from the hills to the atoms; `shaders.js`
+the shaders; `molecules.js` the three pigments' skeletons; `gl.js` small WebGL helpers, vectors and
+rotations; `figs.js` the panel pictures; `main.js` the camera and controls. `css/maple.css` is the
+stylesheet.
 `node tests/maple/model.mjs` checks the model without a browser; `node tests/maple/page.mjs` presses
 every control in a real one and steps both sliders end to end looking for jumps.

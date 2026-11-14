@@ -72,6 +72,8 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 .cap p{margin:0;font-size:0.875rem;line-height:1.42;color:var(--ink2);max-width:62ch}
 
 .ctl{display:grid;gap:4px}
+.check{display:flex;align-items:center;gap:10px;font-size:0.9rem;color:var(--ink);min-block-size:32px;cursor:pointer}
+.check input{width:20px;height:20px;margin:0;accent-color:#e9efff}
 .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;padding:3px;border-radius:12px;background:rgba(234,240,255,.06);border:1px solid var(--line)}
 .seg button{padding:7px 4px;border-radius:9px;border:0;background:transparent;color:var(--ink2);font:inherit;font-size:0.8438rem;font-weight:600;cursor:pointer;min-width:0}
 .seg button:hover{color:var(--ink)}
@@ -91,6 +93,9 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 .fig{margin:0;padding-top:10px;border-top:1px solid var(--line);display:grid;gap:4px}
 .fig canvas{display:block;width:100%;height:100px;border-radius:6px}
 #figCut{height:132px}
+#figChainCv{height:96px}
+#chainCap{min-height:5.6em}
+.ticks.zt{margin:-6px 9px 0}
 .nmaxis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.6562rem;color:var(--ink3)}
 .fig figcaption{display:grid;gap:4px;font-size:0.7812rem;line-height:1.4;color:var(--ink2)}
 .keyline{color:var(--ink3)}
