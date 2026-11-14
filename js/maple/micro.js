@@ -1,9 +1,9 @@
-// Inside the leaf: the cells seen from above through the leaf's clear outer layer, the chloroplasts
-// in one cell, and the pigment molecules. Drawn about the point the camera zooms into (the centre of
-// one cell), in micrometres for cells and nanometres for molecules.
+// Inside the leaf: the leaf cut through its thickness and seen from the cut edge, one of its cells,
+// the chloroplasts in that cell, and the pigment molecules. Drawn about the point the camera zooms
+// into (the middle of one cell), in micrometres for cells and nanometres for molecules.
 //
 // What is simplified, and said so on the page:
-//  - cells are drawn as circles in one layer; the cell's other contents (nucleus, mitochondria) are left out;
+//  - cells are drawn with regular shapes; a cell's other contents (nucleus, mitochondria) are left out;
 //  - molecules are flat skeleton diagrams without hydrogen atoms, the proteins and fats that hold
 //    chlorophyll and carotenoids in the membrane are left out, and so is water;
 //  - anthocyanin is drawn far more crowded than it is: a real view this size would usually hold none.
@@ -11,10 +11,12 @@ import { leafRGB, css, clamp, smooth, mix } from './model.js';
 
 const hash = (i, j) => { let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
-export const CELL = { r: 6, pitch: 12.7, vac: 3.3, plastids: 6, ring: 4.25 };          // micrometres
-const A0 = 0.35;                                                                         // where the followed chloroplast sits round the cell
+// The leaf cut through its thickness, in micrometres. y is up; (0,0) is the middle of the tall cell
+// the camera closes on. From the top: upper skin, tall cells, loose cells with air between, lower skin.
+export const SEC = { top: 35, skin: 21.5, tall: 41, wide: 11, pitch: 12.4, loose: -27, lower: -91, bottom: -101, vein: [92, -53, 21], veinEvery: 390, pore: 47.5, poreEvery: 76 };
+const PLASTID = [3.85, 0];                                                               // the followed chloroplast: on the right-hand wall, half-way up
 // The two places the Molecules scale can look, in metres from the cell's centre.
-export const TARGETS = { membrane: [CELL.ring * Math.cos(A0) * 1e-6, CELL.ring * Math.sin(A0) * 1e-6], vacuole: [0, 0] };
+export const TARGETS = { membrane: [PLASTID[0] * 1e-6, PLASTID[1] * 1e-6], vacuole: [0, 0] };
 const GRANUM = 0.24;                                                                     // micrometres: radius of one stack of membranes
 
 // ---- molecules, in nanometres ---------------------------------------------------------------
@@ -87,33 +89,89 @@ export function makeMicro() {
   const GREY = [0.62, 0.66, 0.7];
   const plast = { chl: 0, car: 0, anth: 0 }, vac = { chl: 0, car: 0, anth: 0 };
 
-  function cell(ctx, cx, cy, r, rot, p, px, isMain) {
-    // p: this cell's pigments. px: CSS pixels per micrometre.
-    ctx.fillStyle = 'rgba(232,240,214,.24)'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
-    ctx.strokeStyle = 'rgba(236,244,224,.42)'; ctx.lineWidth = Math.max(0.22, 0.8 / px); ctx.stroke();
-    vac.anth = p.anth;
-    const vr = CELL.vac * r / CELL.r, vc = leafRGB(vac, 1.25, 1.9);
-    const g = ctx.createRadialGradient(cx - vr * 0.3, cy + vr * 0.3, vr * 0.1, cx, cy, vr);
-    g.addColorStop(0, css(vc, 1.08, 0.2 + 0.72 * p.anth)); g.addColorStop(1, css(vc, 0.86, 0.12 + 0.8 * p.anth));
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, vr, 0, 7); ctx.fill();
-    plast.chl = p.chl; plast.car = p.car;
-    const body = css(leafRGB(plast, 2.3, 1.55)), size = mix(0.7, 1, smooth(p.chl * 1.6)) * r / CELL.r, n = CELL.plastids, ringR = CELL.ring * r / CELL.r;
-    for (let i = 0; i < n; i++) {
-      const a = rot + i * 2 * Math.PI / n, x = cx + ringR * Math.cos(a), y = cy + ringR * Math.sin(a);
-      ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(x, y, 1.08 * size, 1.8 * size, a, 0, 7); ctx.fill();
-      if (px * 4 * size < 46) continue;
-      // the stacks of membrane, seen end on as dots
-      const fade = clamp((px * 4 * size - 46) / 50), dot = css(leafRGB(plast, 3.4, 1.5));
-      ctx.fillStyle = dot;
-      for (let k = 0; k < 15; k++) {
-        const main = isMain && i === 0 && k === 0, th = main ? -1 : 0.06 + 0.9 * hash(k * 7 + i, 11 + i * 3), on = clamp((p.chl - th) / 0.12);
-        if (on <= 0) continue;
-        const u = main ? 0 : (hash(k, i * 5 + 1) - 0.5) * 1.5, v = main ? 0 : (hash(k + 40, i * 5 + 2) - 0.5) * 3, e = (u / 0.86) ** 2 + (v / 1.55) ** 2;
-        if (e > 1 || (!main && isMain && i === 0 && Math.hypot(u, v) < 0.55)) continue;
-        ctx.globalAlpha = fade * on;
-        ctx.beginPath(); ctx.arc(x + size * (u * Math.cos(a) - v * Math.sin(a)), y + size * (u * Math.sin(a) + v * Math.cos(a)), main ? GRANUM : 0.17 * size, 0, 7); ctx.fill();
-      }
-      ctx.globalAlpha = 1;
+  const rr = (ctx, x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, Math.min(r, w / 2, h / 2)); };
+  const WALL = 'rgba(236,244,224,.42)', CYTO = 'rgba(214,238,204,.13)', CLEAR = 'rgba(225,235,225,.08)';
+  // The colours of one cell's parts for given pigments. share: how much of the leaf's anthocyanin this kind of cell makes.
+  function tones(p, share) {
+    plast.chl = p.chl; plast.car = p.car; vac.anth = p.anth * share;
+    const vc = leafRGB(vac, 1.25, 1.9), a = vac.anth;
+    return { body: css(leafRGB(plast, 2.0, 1.9)), dot: css(leafRGB(plast, 3.4, 1.6)), vacA: css(vc, 1.08, 0.07 + 0.85 * a), vacB: css(vc, 0.86, 0.04 + 0.88 * a), chl: p.chl, size: mix(0.7, 1, smooth(p.chl * 1.6)) };
+  }
+  // One chloroplast, its long side along a wall. rot turns it; the stacks of membrane inside show as dots from close by.
+  function plastid(ctx, x, y, rot, size, t, um, main, seed) {
+    ctx.fillStyle = t.body; ctx.beginPath(); ctx.ellipse(x, y, 1.2 * size, 2.45 * size, rot, 0, 7); ctx.fill();
+    if (um * 4 * size < 46) return;
+    const fade = clamp((um * 4 * size - 46) / 50), c = Math.cos(rot), s = Math.sin(rot);
+    ctx.fillStyle = t.dot;
+    for (let k = 0; k < 15; k++) {
+      const first = main && k === 0, th = first ? -1 : 0.06 + 0.9 * hash(k * 7 + seed, 11 + seed * 3), on = clamp((t.chl - th) / 0.12);
+      if (on <= 0) continue;
+      const u = first ? 0 : (hash(k, seed * 5 + 1) - 0.5) * 1.8, v = first ? 0 : (hash(k + 40, seed * 5 + 2) - 0.5) * 4.2;
+      if ((u / 0.95) ** 2 + (v / 2.15) ** 2 > 1 || (!first && main && Math.hypot(u, v) < 0.55)) continue;
+      ctx.globalAlpha *= fade * on;
+      ctx.beginPath(); ctx.arc(x + size * (u * c - v * s), y + size * (u * s + v * c), first ? GRANUM : 0.17 * size, 0, 7); ctx.fill();
+      ctx.globalAlpha /= fade * on;
+    }
+  }
+  const vacFill = (ctx, t, x0, y0, x1, y1) => { const g = ctx.createLinearGradient(x0, y1, x1, y0); g.addColorStop(0, t.vacA); g.addColorStop(1, t.vacB); return g; };
+
+  // The cut leaf. pigAt(days): the followed leaf's pigments that many days earlier.
+  function section(ctx, um, x0, x1, pigAt) {
+    const S = SEC, lw = Math.max(0.22, 0.8 / um), simple = um < 1.5;
+    const veinNear = (x) => S.vein[0] + Math.round((x - S.vein[0]) / S.veinEvery) * S.veinEvery;
+    const poreNear = (x) => S.pore + Math.round((x - S.pore) / S.poreEvery) * S.poreEvery;
+    const T = [], tone = (x, share) => {                    // cells beside a vein run a few days behind
+      const b = Math.round(clamp(1 - Math.abs(x - veinNear(x)) / 75) * 3), key = b + (share < 0.5 ? 4 : 0);
+      return T[key] || (T[key] = tones(pigAt(-2.5 * b), share));
+    };
+    ctx.lineWidth = lw; ctx.strokeStyle = WALL;
+    // upper skin: one layer of clear cells under a waxy film
+    for (let i = Math.floor(x0 / 21) - 1; i <= Math.ceil(x1 / 21); i++) {
+      const a = i * 21 + (hash(i, 5) - 0.5) * 6, b = (i + 1) * 21 + (hash(i + 1, 5) - 0.5) * 6;
+      rr(ctx, a + 0.3, S.skin + 0.4, b - a - 0.6, S.top - S.skin - 0.8, 3.5); ctx.fillStyle = CLEAR; ctx.fill(); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(255,255,240,.55)'; ctx.lineWidth = Math.max(0.7, 1 / um); ctx.beginPath(); ctx.moveTo(x0, S.top); ctx.lineTo(x1, S.top); ctx.stroke();
+    ctx.lineWidth = lw; ctx.strokeStyle = WALL;
+    // tall cells, side by side
+    for (let i = Math.floor(x0 / S.pitch) - 1; i <= Math.ceil(x1 / S.pitch) + 1; i++) {
+      const main = i === 0, cx = i * S.pitch, h = main ? S.tall : S.tall - 3 * hash(i, 77), top = S.skin - 0.6, t = tone(cx, 1), w = S.wide;
+      rr(ctx, cx - w / 2, top - h, w, h, 4.5); ctx.fillStyle = CYTO; ctx.fill(); ctx.stroke();
+      rr(ctx, cx - 2.2, top - h + 3, 4.4, h - 6, 2.2); ctx.fillStyle = vacFill(ctx, t, cx - 2.5, top - h, cx + 2.5, top); ctx.fill();
+      if (simple) { ctx.fillStyle = t.body; ctx.fillRect(cx - w / 2 + 0.6, top - h + 2.5, 2.3, h - 5); ctx.fillRect(cx + w / 2 - 2.9, top - h + 2.5, 2.3, h - 5); continue; }
+      const mid = top - h / 2;
+      for (const side of [1, -1]) for (let j = 0; j < 7; j++) plastid(ctx, cx + side * PLASTID[0], main ? (j - 3) * 5.6 : mid + (j - 3) * 5.6 * h / S.tall + (hash(i * 9 + j, side) - 0.5) * 1.2, 0, t.size, t, um, main && side === 1 && j === 3, i * 10 + j + (side > 0 ? 5 : 0));
+    }
+    // loose cells with air between them; fewer chloroplasts, and little anthocyanin
+    for (let r = 0; r < 5; r++) for (let i = Math.floor(x0 / 17) - 1; i <= Math.ceil(x1 / 17) + 1; i++) {
+      if (hash(i * 3 + 1, r * 7 + 2) < 0.26) continue;
+      const cx = (i + (r & 1) * 0.5) * 17 + (hash(i, r + 30) - 0.5) * 6, cy = S.loose - 5 - r * 13 + (hash(i + 60, r) - 0.5) * 5, rad = 5.6 + 2.4 * hash(i - 7, r + 3);
+      const v = veinNear(cx); if (Math.hypot(cx - v, cy - S.vein[1]) < S.vein[2] + rad - 1) continue;
+      if (cy < -70 && Math.abs(cx - poreNear(cx)) < 11) continue;                        // the air chamber above each pore
+      const t = tone(cx, 0.2);
+      ctx.beginPath(); ctx.ellipse(cx, cy, rad * (1.05 + 0.2 * hash(i, r + 9)), rad * 0.92, hash(i + 4, r) * 3, 0, 7); ctx.fillStyle = CYTO; ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, cy, rad * 0.5, 0, 7); ctx.fillStyle = vacFill(ctx, t, cx - rad * 0.5, cy - rad * 0.5, cx + rad * 0.5, cy + rad * 0.5); ctx.fill();
+      if (simple) continue;
+      const n = 5, a0 = hash(i, r + 21) * 6.283;
+      for (let k = 0; k < n; k++) { const a = a0 + k * 6.283 / n; plastid(ctx, cx + (rad - 1.8) * Math.cos(a), cy + (rad - 1.8) * 0.9 * Math.sin(a), a, t.size * 0.82, t, um, false, i * 13 + r * 5 + k); }
+    }
+    // a vein, cut across: water pipes (thick walls) above, sugar pipes (small) below, inside a ring of cells
+    for (let v = veinNear(x0); v <= x1 + S.vein[2]; v += S.veinEvery) {
+      const [, vy, vr] = S.vein;
+      ctx.beginPath(); ctx.arc(v, vy, vr - 4, 0, 7); ctx.fillStyle = 'rgba(20,26,22,.9)'; ctx.fill();
+      for (let k = 0; k < 12; k++) { const a = k * 6.283 / 12; ctx.beginPath(); ctx.arc(v + (vr - 5) * Math.cos(a), vy + (vr - 5) * Math.sin(a), 4.6, 0, 7); ctx.fillStyle = CLEAR; ctx.fill(); ctx.stroke(); }
+      ctx.strokeStyle = 'rgba(232,222,180,.6)'; ctx.lineWidth = Math.max(0.9, lw);
+      for (let k = 0; k < 7; k++) { const a = 0.5 + k * 0.36, d = k % 2 ? 4.2 : 9; ctx.beginPath(); ctx.arc(v + d * Math.cos(a), vy + 1 + d * Math.sin(a) * 0.9, 2.7 - 0.25 * (k % 3), 0, 7); ctx.stroke(); }
+      ctx.lineWidth = lw; ctx.strokeStyle = WALL; ctx.fillStyle = 'rgba(190,214,170,.45)';
+      for (let k = 0; k < 16; k++) { const a = 3.45 + (k % 8) * 0.35, d = k < 8 ? 4.5 : 8.6; ctx.beginPath(); ctx.arc(v + d * Math.cos(a), vy - 1.5 + d * Math.sin(a) * 0.85, 1.55, 0, 7); ctx.fill(); }
+    }
+    // lower skin, with pores: each a gap between two small cells that hold chloroplasts
+    const t0 = tone(1e9, 0);
+    for (let i = Math.floor(x0 / 19) - 1; i <= Math.ceil(x1 / 19); i++) {
+      const a = i * 19, pore = Math.abs(a + 9.5 - poreNear(a + 9.5)) < 1;
+      if (!pore) { rr(ctx, a + 0.3, S.bottom + 0.4, 18.4, S.lower - S.bottom - 0.8, 3); ctx.fillStyle = CLEAR; ctx.fill(); ctx.stroke(); continue; }
+      rr(ctx, a + 0.3, S.bottom + 0.4, 4.6, S.lower - S.bottom - 0.8, 2.5); ctx.fillStyle = CLEAR; ctx.fill(); ctx.stroke();
+      rr(ctx, a + 14.1, S.bottom + 0.4, 4.6, S.lower - S.bottom - 0.8, 2.5); ctx.fill(); ctx.stroke();
+      for (const side of [1, -1]) { const gx = a + 9.5 + side * 2.9, gy = S.bottom + 4.2; ctx.beginPath(); ctx.ellipse(gx, gy, 1.9, 3.6, 0, 0, 7); ctx.fillStyle = CYTO; ctx.fill(); ctx.stroke(); if (!simple) { ctx.fillStyle = t0.body; ctx.beginPath(); ctx.arc(gx, gy + 1.3, 0.8, 0, 7); ctx.arc(gx, gy - 1.3, 0.8, 0, 7); ctx.fill(); } }
     }
   }
 
@@ -164,27 +222,21 @@ export function makeMicro() {
     ctx.globalAlpha = 1;
   }
 
-  // p: the followed leaf's pigments. X, Y: where the cell's centre falls on screen. centre: the
-  // camera's middle, in metres from the cell's centre. leafCol: the leaf's colour at this point.
-  function draw(ctx, cam, p, X, Y, centre, leafCol) {
-    const um = cam.k * 1e-6, a = smooth((um - 0.5) / 1.1);                               // CSS pixels per micrometre
-    if (a <= 0) return;
-    const { W, H, dpr } = cam, P = CELL.pitch, rowH = P * 0.866;
+  // pigAt(days): the followed leaf's pigments that many days earlier. X, Y: where the middle of the
+  // followed cell falls on screen. centre: the camera's middle, in metres from there.
+  function draw(ctx, cam, pigAt, X, Y, centre) {
+    const um = cam.k * 1e-6, turn = smooth((um - 0.45) / 0.5);                            // CSS pixels per micrometre
+    if (turn <= 0) return;
+    const { W, H, dpr } = cam, p = pigAt(0);
+    // The view of the leaf's face gives way to a view of its cut edge: a thin band at first, which grows with the zoom.
+    ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.globalAlpha = a * 0.66; ctx.fillStyle = '#060a0c'; ctx.fillRect(0, 0, W, H);      // the spaces between cells, darker
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = turn;
+    ctx.fillStyle = '#0a0f20'; ctx.fillRect(0, 0, W, H);                                 // the air outside the leaf
+    ctx.fillStyle = '#0b100f'; ctx.fillRect(0, Y - um * SEC.top, W, um * (SEC.top - SEC.bottom));     // the air inside the leaf
     ctx.setTransform(um * dpr, 0, 0, -um * dpr, X * dpr, Y * dpr);
-    const j0 = Math.floor((Y - H) / um / rowH) - 1, j1 = Math.ceil(Y / um / rowH) + 1, i0 = Math.floor(-X / um / P) - 1, i1 = Math.ceil((W - X) / um / P) + 1;
-    const q = { chl: 0, car: 0, anth: 0 };
-    for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
-      const main = i === 0 && j === 0, jx = main ? 0 : (hash(i, j) - 0.5) * 1.1, jy = main ? 0 : (hash(j, i + 50) - 0.5) * 1.1;
-      const cx = (i + (j & 1) * 0.5) * P + jx, cy = j * rowH + jy, r = main ? CELL.r : CELL.r * (0.9 + 0.13 * hash(i + 7, j + 3));
-      if (um * r < 3.2) { ctx.fillStyle = leafCol; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill(); continue; }
-      const d = main ? 0 : (hash(i - 3, j + 8) - 0.5) * 0.2;                             // neighbouring cells are not quite in step
-      q.chl = clamp(p.chl * (1 + d)); q.car = p.car; q.anth = clamp(p.anth * (1 - d * 1.5));
-      cell(ctx, cx, cy, r, main ? A0 : hash(i, j + 21) * 6.283, q, um, main);
-    }
-    ctx.globalAlpha = 1;
+    section(ctx, um, -X / um - 30, (W - X) / um + 30, pigAt);
+    ctx.restore(); ctx.globalAlpha = 1;
     // molecules: in a stack of chloroplast membrane, or in the water of the vacuole
     const kn = cam.k * 1e-9, ma = smooth((kn - 7) / 16);
     if (ma <= 0) return;
@@ -192,7 +244,7 @@ export function makeMicro() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalAlpha = 0.82 * ma; ctx.fillStyle = inMembrane ? '#07100c' : '#0d090c'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     if (inMembrane) molecules(ctx, kn, X + cam.k * T[0], Y - cam.k * T[1], cam, 'membrane', p, ma);
-    else if (Math.hypot(centre[0], centre[1]) < CELL.vac * 1e-6) molecules(ctx, kn, X, Y, cam, 'vacuole', p, ma);
+    else if (Math.hypot(centre[0], centre[1]) < 2.4e-6) molecules(ctx, kn, X, Y, cam, 'vacuole', p, ma);
   }
   return { draw, INK };
 }

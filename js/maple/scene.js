@@ -175,5 +175,5 @@ export function makeScene() {
     }
     return here;
   }
-  return { tree, update, draw, spot, leafCentre, focus: () => fo, count: L.length, BG };
+  return { tree, update, draw, spot, leafCentre, focus: () => fo, focusAt: (dd) => dd ? pigments(day + dd, F.T) : fo.p, count: L.length, BG };
 }

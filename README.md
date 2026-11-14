@@ -522,10 +522,12 @@ presses every control in a real one.
 A page at `maple/`: one leaf of a Japanese maple (*Acer palmatum*) from the day its bud opens to the
 day it falls, at every scale from the whole tree down to its pigment molecules. Two sliders drive it.
 
-- **Zoom** is continuous, with four named stops: Tree (the view is about 5.5 m tall),
-  Leaf (13 cm), Cells (125 µm) and Molecules (7 nm). It is one camera closing on one point: the
-  followed leaf hangs at the end of a low twig on the left of the tree, the Cells scale looks at a
-  point on its middle lobe, and the Molecules scale looks into one cell there. The scale bar at the
+- **Zoom** is continuous, with five named stops: Tree (the view is about 5.5 m tall),
+  Leaf (13 cm), Tissue (0.16 mm), Cells (54 µm) and Molecules (7 nm). It is one camera closing on
+  one point: the followed leaf hangs at the end of a low twig on the left of the tree, the Tissue
+  scale is the leaf cut through at a point on its middle lobe and seen from the cut edge, the Cells
+  scale is one tall cell of that cut, and the Molecules scale looks into that cell. Between Leaf and
+  Tissue the view of the leaf's face gives way to the view of its edge. The scale bar at the
   top right is measured from the camera. The mouse wheel zooms too.
 - **Season** runs from 25 March to 20 December, with a Play button. Summer, when little changes,
   takes less of the slider than autumn. The date is shown, and the day length for it at 35° N
@@ -552,9 +554,16 @@ What the page shows, and where each part comes from (`js/maple/model.js` unless 
   wavelength. The panel's small chart shows the same numbers: the share of each wavelength that
   comes back, over what each pigment absorbs. The colour's name in its caption is taken from the
   computed hue.
-- **Cells** are seen from above, through the leaf's clear outer layer: chloroplasts round the wall
-  of each cell, the vacuole in the middle. In autumn the stacks of membrane inside each chloroplast
-  (dark dots) go, the chloroplasts shrink and turn yellow, and the vacuole turns crimson.
+- **Tissue** is the leaf's thickness (0.14 mm here): an upper skin of clear cells, a row of tall
+  cells packed with chloroplasts (the palisade layer), loose cells with air between (the spongy
+  layer), a lower skin with pores (stomata), and a small vein cut across with its water-carrying
+  cells above and sugar-carrying cells below. The tall cells make all of the anthocyanin share
+  shown in the panel and the loose cells a fifth of it, so the leaf reddens from its upper side;
+  cells within 75 µm of the vein run up to 7.5 days behind the rest, so green lasts longest there.
+  Both numbers are illustrative.
+- **Cells**: one tall cell from the side, chloroplasts along its walls and the vacuole down its
+  middle. In autumn the stacks of membrane inside each chloroplast (dark dots) go, the
+  chloroplasts shrink and turn yellow, and the vacuole turns crimson.
 - **Molecules** are skeleton diagrams to scale (a carbon to carbon bond is 0.14 nm): chlorophyll
   *a* (the ring, its magnesium atom, the 20-carbon tail), β-carotene and cyanidin 3-glucoside.
   As chlorophyll is broken down, each molecule in turn loses its magnesium, then its tail, then
@@ -571,7 +580,8 @@ Simplified or exaggerated, and said so on the page:
   flat: a leaf's depth in the crown only makes it darker.
 - A fall takes seconds; it is spread over two and a half days of the slider so that it can be seen.
   Fallen leaves keep their colour (real ones brown within days).
-- Cells are circles in one layer, with only chloroplasts and vacuole drawn.
+- The cut leaf is a diagram: cells have regular shapes, and only their walls, chloroplasts and
+  vacuoles are drawn.
 - Molecules are flat, without hydrogen atoms; the proteins and lipids that hold chlorophyll and
   carotenoids in the membrane are left out, and so is water. One molecule has no colour: each is
   drawn in the colour its pigment has in bulk. Anthocyanin is drawn far more crowded than it is: a
@@ -581,7 +591,7 @@ It is a 2D canvas with no dependencies. Nothing moves unless the year is playing
 flight; with reduced motion the year does not start by itself and zooms are immediate.
 
 Code: `model.js` the calendar, pigments and colour; `tree.js` the tree, each leaf's timetable and
-the leaf outline; `scene.js` tree to leaf surface; `micro.js` cells and molecules; `figs.js` the two
+the leaf outline; `scene.js` tree to leaf surface; `micro.js` the cut leaf, cells and molecules; `figs.js` the two
 panel pictures; `main.js` the camera and controls. `css/maple.css` is the stylesheet.
 `node tests/maple/model.mjs` checks the model without a browser; `node tests/maple/page.mjs` presses
 every control in a real one and steps both sliders end to end looking for jumps.

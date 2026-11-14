@@ -1,4 +1,4 @@
-// Japanese maple: the controller. Two numbers drive the page: the zoom (0 = tree ... 3 = molecules)
+// Japanese maple: the controller. Two numbers drive the page: the zoom (0 = tree ... 4 = molecules)
 // and the season (0 = late March ... 1 = late December). The picture is redrawn only when one changes.
 import { dayOf, dateOf, dayLength, PHASES, phaseAt, LAT, clamp, smooth, mix, css, leafRGB } from './model.js';
 import { makeScene } from './scene.js';
@@ -14,12 +14,13 @@ const scene = makeScene(), micro = makeMicro();
 const STOPS = [
   { id: 'tree', name: 'Tree', w: 7.8, h: 5.5 },
   { id: 'leaf', name: 'Leaf', w: 0.105, h: 0.128 },
-  { id: 'cells', name: 'Cells', w: 1.45e-4, h: 1.25e-4 },
+  { id: 'tissue', name: 'Tissue', w: 2.1e-4, h: 1.62e-4 },
+  { id: 'cells', name: 'Cells', w: 7.4e-5, h: 5.4e-5 },
   { id: 'molecules', name: 'Molecules', w: 9.5e-9, h: 7e-9 },
 ];
 const LAST = STOPS.length - 1, LAWN_SHOWN = 1.0;      // metres of lawn in front of the tree, where leaves land
 { const b = scene.tree.bounds; STOPS[0].w = (b.x1 - b.x0) * 1.1; STOPS[0].h = (b.y1 + LAWN_SHOWN) * 1.08; }   // the Tree scale frames the tree as grown
-const HOP_OUT = 2.22;                    // changing where the Molecules scale looks pulls back to this zoom on the way
+const HOP_OUT = 3.17;                    // changing where the Molecules scale looks pulls back to this zoom on the way
 
 const CAP = {
   tree: [
@@ -36,9 +37,16 @@ const CAP = {
     ['Red', 'The leaf makes a new pigment, an anthocyanin, from sugar that builds up in it. Anthocyanin absorbs light from about 480 to 580 nm. What comes back is mostly longer than 600 nm, which we see as red.'],
     ['The stalk lets go', 'Across the foot of the stalk, a layer of cells dissolves the walls that join them, while cork seals the twig behind. Then the leaf\'s weight breaks it off.'],
   ],
+  tissue: [
+    ['The leaf cut through', 'The leaf is 0.14 mm thick, seen here from its cut edge with the upper side on top. Under a clear skin one cell thick stand tall cells, side by side. Below them are loose cells with air between, then the lower skin.'],
+    ['Where the light is used', 'Most light is absorbed in the tall cells, which hold the most chloroplasts. The gaps in the lower skin are pores: carbon dioxide comes in through them and spreads through the air spaces. The ring of cells on the right is a vein, cut across.'],
+    ['Green lasts by the vein', 'Cells far from a vein lose their chlorophyll first. Those beside it keep theirs a few days longer.'],
+    ['Red on the sunlit side', 'Anthocyanin is made mostly in the tall cells under the upper skin, where the light is strongest. The loose cells below make little. That is why a maple leaf is redder on top than underneath.'],
+    ['Emptied', 'Sugar, and the nitrogen from dismantled proteins, left through the vein before the stalk was sealed. Cell walls, carotenoids and anthocyanin stay behind.'],
+  ],
   cells: [
-    ['Inside the leaf', 'Looking down through the leaf\'s clear outer layer at the cells below, each about 12 µm across. The green bodies are chloroplasts, where the chlorophyll is. The clear middle is the vacuole, a store of water.'],
-    ['Chloroplasts', 'Each cell holds several chloroplasts pressed against its wall. Inside a chloroplast, chlorophyll sits in stacks of membrane, seen here as dark dots.'],
+    ['One cell', 'One of the tall cells, 11 µm wide and 41 µm tall. The green bodies along its walls are chloroplasts, where the chlorophyll is. The clear middle is the vacuole, a store of water.'],
+    ['Chloroplasts', 'Each chloroplast is about 4 µm long and lies against the cell wall, next to the air spaces that bring carbon dioxide. Inside it, chlorophyll sits in stacks of membrane, seen here as dark dots.'],
     ['Chloroplasts fade', 'The stacks of membrane are taken apart and their chlorophyll is broken down. The chloroplasts shrink and turn yellow: carotenoids are what is left in them.'],
     ['Crimson vacuoles', 'Anthocyanin dissolves in water, so it collects in the vacuole and not in the chloroplasts. Seen from outside, the leaf\'s red is the yellow of its chloroplasts and the crimson of its vacuoles together.'],
     ['The last days', 'The cells have sent most of their nitrogen and phosphorus back into the tree. They die soon after the leaf falls.'],
@@ -61,7 +69,8 @@ const CAP = {
 const NOTE = {
   tree: `Drawn with ${scene.count.toLocaleString('en')} leaves; a real tree this size carries several times more. Dates are typical for Kyoto, ${LAT}° N. A fall takes seconds; here it is spread over two and a half days so that it can be seen.`,
   leaf: 'A fall takes seconds; here it is spread over two and a half days of the slider so that it can be seen.',
-  cells: 'Cells are drawn as circles in one layer, and only their chloroplasts and vacuole are shown.',
+  tissue: 'A diagram: real cells are less regular. Only walls, chloroplasts and vacuoles are drawn, and the vein is a small one.',
+  cells: 'Only the walls, chloroplasts and vacuoles are drawn.',
   membrane: 'Each line is a bond between two atoms; hydrogen atoms are left out. Thick lines are the bonds whose electrons absorb visible light. The proteins and fats that hold these molecules in the membrane are not drawn. One molecule has no colour: each is drawn in the colour its pigment has in bulk.',
   vacuole: 'Each line is a bond between two atoms; hydrogen atoms are left out. Thick lines are the bonds whose electrons absorb visible light. Water is not drawn. The pigment is drawn far more crowded than it is: a real view this size would usually hold no molecule at all.',
 };
@@ -101,7 +110,7 @@ function aim(z) {
   const F = scene.spot(), lc = scene.leafCentre(), b = scene.tree.bounds;
   const target = [mix(TARGETS.membrane[0], TARGETS.vacuole[0], w), mix(TARGETS.membrane[1], TARGETS.vacuole[1], w)];
   // each stop's centre, measured from the point on the leaf that the deeper scales look into
-  const rel = [[(b.x0 + b.x1) / 2 - F[0], (b.y1 - LAWN_SHOWN) / 2 - F[1]], [lc[0] - F[0], lc[1] - F[1]], [0, 0], target];
+  const rel = [[(b.x0 + b.x1) / 2 - F[0], (b.y1 - LAWN_SHOWN) / 2 - F[1]], [lc[0] - F[0], lc[1] - F[1]], [38e-6, -33e-6], [0, 0], target];
   const c = [mix(rel[i + 1][0], rel[i][0], t), mix(rel[i + 1][1], rel[i][1], t)];   // linear in the size of the view: a zoom toward one point
   cam.k = k;
   cam.ox = free.x + free.w / 2 - k * (F[0] + c[0]); cam.oy = free.y + free.h / 2 + k * (F[1] + c[1]);
@@ -111,9 +120,9 @@ function aim(z) {
 function draw() {
   const day = dayOf(st.s);
   scene.update(day);
-  const a = aim(zShown()), p = scene.focus().p;
-  const leafCol = scene.draw(ctx, cam);
-  micro.draw(ctx, cam, p, a.X, a.Y, a.c, leafCol);
+  const a = aim(zShown());
+  scene.draw(ctx, cam);
+  micro.draw(ctx, cam, scene.focusAt, a.X, a.Y, a.c);
   ctx.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
   const g = ctx.createRadialGradient(free.x + free.w / 2, free.y + free.h / 2, Math.min(free.w, free.h) * 0.45, free.x + free.w / 2, free.y + free.h / 2, Math.hypot(cam.W, cam.H) * 0.62);
   g.addColorStop(0, 'rgba(5,7,15,0)'); g.addColorStop(1, 'rgba(5,7,15,.55)');
@@ -146,7 +155,7 @@ function sync() {
   const pl = st.play ? 'Pause' : st.s > 0.995 ? 'Play the year again' : 'Play the year';
   if (shown.play !== pl) { shown.play = pl; $('play').setAttribute('aria-pressed', String(st.play)); $('play').setAttribute('aria-label', pl); }
 
-  const deep = lvl >= 2;
+  const deep = lvl >= 3;
   if (shown.deep !== deep) { shown.deep = deep; $('whereCtl').hidden = !deep; }
   for (const b of document.querySelectorAll('[data-where]')) b.setAttribute('aria-pressed', String(b.dataset.where === st.where));
   const capId = lvl === LAST ? st.where : stop.id, key = capId + ph;
@@ -191,7 +200,7 @@ function zoomTo(z) {
 function look(where) {
   if (where === st.where) return;
   st.where = where; const to = where === 'vacuole' ? 1 : 0;
-  if (reduced || st.z <= 2.01) { hop = null; w = to; } else hop = { from: w, to, t: 0, dur: st.z > HOP_OUT ? 2.6 : 1.2 };
+  if (reduced || st.z <= 3.01) { hop = null; w = to; } else hop = { from: w, to, t: 0, dur: st.z > HOP_OUT ? 2.6 : 1.2 };
   touch();
 }
 
