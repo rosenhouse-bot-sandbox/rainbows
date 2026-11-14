@@ -532,7 +532,11 @@ day it falls, at every scale from the whole tree down to its pigment molecules. 
   of its vacuole). A white ring marks the point each scale zooms into (the leaf on the tree, the
   window on the leaf, the cell in the wall, the spot in the cell), and the Zoom slider has a tick
   and a name at each stop. The scale bar at the top right is measured at the point looked at. The
-  mouse wheel zooms too.
+  size of the view is one smooth curve along the slider (no change of pace at a stop), a flight to
+  a stop eases in and out and keeps its speed if another stop is pressed on the way, and things
+  smaller than a pixel show only as their share of it, so nothing is switched on at a zoom level.
+  The mouse wheel zooms too (one notch is the same change of scale everywhere); an arrow key moves
+  the Zoom slider a twentieth of a scale and the Season slider five thousandths of the year.
 - **Season** runs from 25 March to 20 December, with a Play button. The date and the zoom never
   move together: while the zoom is moving the year waits, then goes on. Summer, when little changes,
   takes less of the slider than autumn. The date is shown, and the day length for it at 35° N
@@ -571,14 +575,15 @@ What the page shows, and where each part comes from (`js/maple/model.js` unless 
   take their place (in the followed cell they are drawn one by one), the chloroplasts shrink and
   turn yellow, and the vacuole turns crimson.
 - **Molecules** are built atom by atom to scale (a carbon to carbon bond is 0.14 nm): chlorophyll
-  *a* (the ring, its magnesium atom, the 20-carbon tail) and β-carotene standing on the membrane,
+  *a* (the ring, its magnesium atom, the 20-carbon tail) and β-carotene lifted onto the face of the membrane,
   whose bumps are the heads of its fat molecules; cyanidin 3-glucoside in the vacuole. The bonds
   that glow are the row or ring of alternating double and single bonds whose shared electrons
   take in visible light. With **Light arriving** switched on, dots of light of single wavelengths
   (each drawn in the colour we see that wavelength as) fall on the molecules; whether a molecule
   takes one in is decided by its pigment's absorption band at that wavelength, the same band the
-  leaf colour is computed from, and a molecule that takes one in flashes. So chlorophyll swallows
-  the dots we see as blue and red and lets green pass, which is why it is green. As a pigment's
+  leaf colour is computed from, and a molecule that takes one in flashes. So chlorophyll takes in
+  most of the dots at the wavelengths we see as blue and red and fewest near 550 nm, which is why
+  a leaf full of it looks green. As a pigment's
   share falls, its molecules go one at a time.
 - **Try it: double bonds in a row** (panel, at Molecules) shows why. It steps through five real
   carotenoids that the plant makes one from the next: phytoene (3 double bonds in a row, absorbs
@@ -604,12 +609,16 @@ Simplified or exaggerated, and said so on the page:
   whole at the cut where real ones would be sliced open, and only their walls, chloroplasts and
   vacuoles are drawn. Only the followed cell's chloroplasts have their membrane stacks drawn; the
   rest carry dark dots in their place.
-- Molecules are flat, without hydrogen atoms; the proteins that hold chlorophyll and carotenoids in
-  the membrane are left out, and so is water. Only the 63 molecules nearest the middle are built
+- Molecules are flat, without hydrogen atoms, and chlorophyll's side groups are stubs (one of its
+  five oxygen atoms is drawn). Real pigments sit inside the membrane, held by proteins; here the
+  proteins are left out and the pigments are lifted onto the membrane's face so that they can be
+  seen. Water is left out. The membrane stays to the end of the year at this scale, though in a
+  real cell it is taken apart and the remaining carotenoids end up in drops of fat. In the chain
+  slider's drawing, double bonds outside the row are not drawn. Only the 63 molecules nearest the middle are built
   atom by atom; those further off are flat outlines. One molecule has no colour: each is drawn in
   the colour its pigment has in bulk, and in the vacuole the atoms are drawn pale and dark red so
-  that they show against the red water. Anthocyanin is drawn far more crowded than it is: a real
-  view 10 nm across would usually hold no molecule at all. The dots of light move far slower than
+  that they show against the red water. Anthocyanin is drawn a few times more crowded than it is
+  in a deep red cell (about 18 mM here; a red leaf's vacuoles hold several mM). The dots of light move far slower than
   light, and one dot stands for a little light of one wavelength. When chlorophyll is broken down
   the caption gives the enzymes' order (magnesium out, tail off, ring opened); the picture only
   takes each molecule away in its turn.

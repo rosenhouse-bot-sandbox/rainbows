@@ -157,6 +157,7 @@ in vec3 vN; in vec3 vV; in vec4 vCol; in vec3 vMat; in vec3 vL; out vec4 o;
 uniform vec4 uBody[8], uDot[8], uVac[8];
 uniform float uFlash[64];
 uniform vec4 uFog;                  // colour and thickness of what the view is inside (the vacuole's water)
+uniform float uFade;                // how much of a molecule built atom by atom shows: they are smaller than a pixel from far off
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
 void main() {
   int kind = int(vMat.x + 0.5), idx = int(vMat.z + 0.5);
@@ -179,11 +180,14 @@ void main() {
   else if (kind == 5) { vec3 m = uDot[0].rgb * 1.2; c = m * (0.45 + 0.55 * ndl) + 0.3 * spec + m * 0.4 * rim; }
   else if (kind == 6) { c = uBody[idx].rgb * (0.7 + 0.3 * ndl) + 0.6 * spec; a = 0.3 + 0.6 * rim; }
   else if (kind == 14) c = uBody[idx].rgb * (0.75 + 0.5 * ndl) + 0.4 * spec;
+  else if (kind == 15) c = uBody[idx].rgb * 0.3;                                  // the rest of the leaf behind the cells that are drawn, in shade
   else if (kind == 10) { float r = length(vL.xy); float w = fwidth(r); a = smoothstep(0.78 - w, 0.78, r) * (1.0 - smoothstep(0.92, 0.92 + w, r)); if (a < 0.01) discard; }
   else if (kind == 11) { float w = fwidth(vL.y); a = 1.0 - smoothstep(0.5, 0.5 + w, abs(vL.y)); if (a < 0.01) discard; }
   else if (kind == 12) { float r = length(vL.xy); a = exp(-r * r * 7.0); c = c * 1.3 + vec3(0.35) * exp(-r * r * 40.0); if (a < 0.01) discard; }
   else if (kind == 13) { float r = length(vL.xy), w = max(1.6 * vMat.y * vCol.a, fwidth(r) * 0.5); a = smoothstep(1.0 - 2.0 * w, 1.0 - w, r) * (1.0 - smoothstep(1.0 - w, 1.0, r)); c = vec3(1.0); if (a < 0.01) discard; }
-  if (uFog.a > 0.0 && kind != 12 && kind != 13) c = mix(uFog.rgb, c, exp(-uFog.a * length(vV)));
+  if (kind == 7 || kind == 8 || kind == 9) a *= uFade;
+  if (kind == 10 || kind == 11 || kind == 12) a *= clamp(2.0 / max(fwidth(vL.x), fwidth(vL.y)), 0.0, 1.0);   // smaller than a pixel: only its share of the pixel shows
+  if (uFog.a > 0.0 && kind != 12 && kind != 13) a *= exp(-uFog.a * length(vV));     // hidden by the coloured water in front of it
   o = vec4(c, a);
 }`;
 

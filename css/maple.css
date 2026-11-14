@@ -27,7 +27,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 .scalebar i{display:block;height:6px;border:1.5px solid rgba(234,240,255,.85);border-top:0;width:80px}
 .scalebar b{font-family:var(--mono);font-weight:500;font-size:0.75rem;color:var(--ink);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px rgba(3,5,12,.95),0 0 8px rgba(3,5,12,.8)}
 
-.panel{position:fixed;left:0;right:0;bottom:0;z-index:2;height:47%;display:grid;gap:12px;align-content:start;padding:12px max(14px,env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--glass);backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);border-top:1px solid var(--line);border-radius:20px 20px 0 0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.panel{grid-auto-rows:max-content;position:fixed;left:0;right:0;bottom:0;z-index:2;height:47%;display:grid;gap:12px;align-content:start;padding:12px max(14px,env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:var(--glass);backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);border-top:1px solid var(--line);border-radius:20px 20px 0 0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
 .title h1,.title span{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .title h1{font-family:var(--display);font-weight:600;font-size:1.625rem;letter-spacing:-.025em;line-height:1;margin:0}
 .title span{font-size:0.875rem;color:var(--ink3)}
@@ -94,7 +94,7 @@ input.big::-moz-range-thumb{width:22px;height:22px}
 .fig canvas{display:block;width:100%;height:100px;border-radius:6px}
 #figCut{height:132px}
 #figChainCv{height:96px}
-#chainCap{min-height:5.6em}
+#chainCap{min-height:7em}
 .ticks.zt{margin:-6px 9px 0}
 .nmaxis{display:flex;justify-content:space-between;font-family:var(--mono);font-size:0.6562rem;color:var(--ink3)}
 .fig figcaption{display:grid;gap:4px;font-size:0.7812rem;line-height:1.4;color:var(--ink2)}

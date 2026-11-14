@@ -2,8 +2,8 @@
 // leaf's own timetable, and the outline of a leaf. Built once from a fixed seed, so every visit
 // shows the same tree. Lengths are in metres; x is to the right, y is up, z is toward the viewer,
 // and the foot of the trunk is at (0, 0, 0). No DOM.
-import { add, sub, mul, dot, cross, unit, len, quatOf, qmul, qaxis, slerp } from './gl.js?v=a6cc9af8';
-import { timetable, FOCUS, pigments, mix, smooth, clamp } from './model.js?v=a6cc9af8';
+import { add, sub, mul, dot, cross, unit, len, quatOf, qmul, qaxis, slerp } from './gl.js?v=a18ea26b';
+import { timetable, FOCUS, pigments, mix, smooth, clamp } from './model.js?v=a18ea26b';
 
 const UP = [0, 1, 0];
 function rng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
