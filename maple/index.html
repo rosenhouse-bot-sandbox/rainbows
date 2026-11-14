@@ -12,14 +12,14 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="modulepreload" href="../js/maple/model.js?v=a6cc9af8">
-<link rel="modulepreload" href="../js/maple/tree.js?v=a6cc9af8">
-<link rel="modulepreload" href="../js/maple/gl.js?v=a6cc9af8">
-<link rel="modulepreload" href="../js/maple/shaders.js?v=a6cc9af8">
-<link rel="modulepreload" href="../js/maple/molecules.js?v=a6cc9af8">
-<link rel="modulepreload" href="../js/maple/world.js?v=a6cc9af8">
-<link rel="modulepreload" href="../js/maple/figs.js?v=a6cc9af8">
-<link rel="stylesheet" href="../css/maple.css?v=a6cc9af8">
+<link rel="modulepreload" href="../js/maple/model.js?v=a18ea26b">
+<link rel="modulepreload" href="../js/maple/tree.js?v=a18ea26b">
+<link rel="modulepreload" href="../js/maple/gl.js?v=a18ea26b">
+<link rel="modulepreload" href="../js/maple/shaders.js?v=a18ea26b">
+<link rel="modulepreload" href="../js/maple/molecules.js?v=a18ea26b">
+<link rel="modulepreload" href="../js/maple/world.js?v=a18ea26b">
+<link rel="modulepreload" href="../js/maple/figs.js?v=a18ea26b">
+<link rel="stylesheet" href="../css/maple.css?v=a18ea26b">
 </head>
 <body>
 <canvas id="view" role="img" aria-label="Picture of the maple at the chosen zoom and date" aria-describedby="capTitle capBody"></canvas>
@@ -59,12 +59,6 @@
     </div>
   </div>
 
-  <div class="cap" id="cap" aria-live="polite">
-    <div class="eyebrow"><span id="capScale"></span> · <span id="capPhase"></span></div>
-    <h2 id="capTitle"></h2>
-    <p id="capBody"></p>
-  </div>
-
   <div class="ctl" id="whereCtl" hidden>
     <span class="lab" id="lab-where">Zoom into</span>
     <div class="seg" role="group" aria-labelledby="lab-where">
@@ -74,6 +68,12 @@
   </div>
 
   <label class="check" id="lightCtl" hidden><input type="checkbox" id="light"> <span>Light arriving</span></label>
+
+  <div class="cap" id="cap" aria-live="polite">
+    <div class="eyebrow"><span id="capScale"></span> · <span id="capPhase"></span></div>
+    <h2 id="capTitle"></h2>
+    <p id="capBody"></p>
+  </div>
 
   <figure class="fig" id="figChain" hidden>
     <div class="lab"><label for="chain">Try it: double bonds in a row</label><b id="chainV" aria-hidden="true"></b></div>
@@ -109,6 +109,6 @@
   <p class="fine" id="note"></p>
 </main>
 
-<script type="module" src="../js/maple/main.js?v=a6cc9af8"></script>
+<script type="module" src="../js/maple/main.js?v=a18ea26b"></script>
 </body>
 </html>

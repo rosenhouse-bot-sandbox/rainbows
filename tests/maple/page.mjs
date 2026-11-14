@@ -92,7 +92,8 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
     const a = await page.evaluate(SNAP); await page.waitForTimeout(motion === 'reduce' ? 700 : 6000); const moved = diff(a, await page.evaluate(SNAP));
     if (motion !== 'reduce' && moved === 0) fail(`${name}: no light is moving at Molecules`);
     if (motion === 'reduce' && moved !== 0) fail(`${name}: the picture moves by itself with reduced motion`);
-    if (on) await page.click('#light');
+    if (!on) { await page.click('#light'); await frame(); await page.waitForTimeout(400); if (!(await page.$eval('#oops', (e) => e.hidden))) fail(`${name}: switching "Light arriving" on broke the picture`); }
+    await page.click('#light');
     const b = await page.evaluate(SNAP); await page.waitForTimeout(500);
     if (diff(b, await page.evaluate(SNAP)) !== 0) fail(`${name}: the picture still moves with "Light arriving" switched off`);
     const caps = new Set();
@@ -111,9 +112,9 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
   await put('zoom', 1); await page.focus('#zoom'); await page.keyboard.press('ArrowRight'); await frame();
   if (!((await state()).z > 1)) fail(`${name}: the arrow key did not move the Zoom slider`);
   await page.focus('#season'); await page.keyboard.press('ArrowRight'); await frame();
-  if (Math.abs((await state()).s - 0.521) > 1e-6) fail(`${name}: the arrow key did not move the Season slider`);
+  if (Math.abs((await state()).s - 0.525) > 1e-6) fail(`${name}: the arrow key did not move the Season slider`);
   await page.focus('#play'); await page.keyboard.press('Space'); await page.waitForTimeout(2500);
-  if (!((await state()).s > 0.521)) fail(`${name}: Space on Play did not move the year on`);
+  if (!((await state()).s > 0.525)) fail(`${name}: Space on Play did not move the year on`);
   await page.keyboard.press('Space');
   if (!(await page.getAttribute('#zoom', 'aria-valuetext')) || !/\d+ \w+/.test(await page.getAttribute('#season', 'aria-valuetext'))) fail(`${name}: a slider has no spoken value`);
 
@@ -171,8 +172,7 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
     for (const season of full ? [300, 700] : [520]) { await put('season', season); await sweep('zoom', 0, 4, 0.02, `a zoom in at season ${season / 1000}`); }
     for (const z of full ? [0, 1, 2, 3, 4] : [0, 2]) { await put('zoom', z); await sweep('season', 0, 960, 10, `the year at scale ${z}`); await sweep('season', 960, 1000, 1, `the leaf's fall at scale ${z}`); }
     { }
-    await page.click('[data-where=vacuole]'); await idle();
-    await put('zoom', 4); if (full) await sweep('season', 0, 1000, 10, 'the year in the vacuole'); await sweep('zoom', 4, 3, -0.02, 'a zoom out from the vacuole');
+    await put('zoom', 4); await page.click('[data-where=vacuole]'); await idle(); if (full) await sweep('season', 0, 1000, 10, 'the year in the vacuole'); await sweep('zoom', 4, 3, -0.02, 'a zoom out from the vacuole');
   }
   if (name === 'desktop') {                                                           // the graphics card can drop the picture at any time; the page must draw it again
     await put('zoom', 1);

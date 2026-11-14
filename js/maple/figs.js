@@ -1,6 +1,6 @@
 // The two small pictures in the panel: the light that comes back from the leaf, by wavelength, and
 // the foot of the leaf stalk cut lengthwise. Both are drawn from the same model as the main picture.
-import { returned, bandTable, wavelengthRGB, encode, NS, nm, NM0, NM1, PIG, css, clamp, smooth, mix, leafRGB, colourName, rgbOf } from './model.js?v=a6cc9af8';
+import { returned, bandTable, wavelengthRGB, encode, NS, nm, NM0, NM1, PIG, css, clamp, smooth, mix, leafRGB, colourName, rgbOf } from './model.js?v=a18ea26b';
 
 const spec = new Float64Array(NS);
 // Size the canvas for the screen's pixels and return a context that draws in CSS pixels.
@@ -120,5 +120,5 @@ export function drawChain(cv, n) {
   ctx.strokeStyle = 'rgba(234,240,255,.5)'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(xOf(NM0), top); ctx.lineTo(xOf(NM0), H); ctx.stroke(); ctx.setLineDash([]);
   const seen = m.peak < NM0 ? 'ultraviolet, which we cannot see' : 'light we see as ' + (m.peak < 450 ? 'violet' : 'blue');
   const looks = plain ? 'All the light we can see passes, so it has no colour.' : `White light that has passed through it looks ${colourName(col)}.`;
-  return { n: `${m.n} · ${m.name}`, cap: `With ${m.n} double bonds in a row the electrons shared along the row take in light most strongly near ${m.peak} nm: ${seen}. ${looks} A longer row takes in a longer wavelength.` };
+  return { n: `${m.n} · ${m.name}`, cap: `With ${m.n} double bonds in a row the electrons shared along the row take in light most strongly near ${m.peak} nm: ${seen}. ${looks} A longer row takes in a longer wavelength. Double bonds outside the row are not drawn.` };
 }

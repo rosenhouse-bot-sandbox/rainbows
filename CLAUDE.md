@@ -88,7 +88,7 @@ Before pushing:
 - For Japanese maple, run `node tests/maple/model.mjs` (no browser needed) after changing the
   calendar, a pigment curve, an absorption band or the tree: it fails if an event happens out of
   order or a leaf's computed colour gets the wrong name. Then `node tests/maple/page.mjs` (about a
-  quarter of an hour): it presses every control at a desktop and a phone size, steps both sliders end
+  quarter of an hour with a graphics card, 40 minutes without one): it presses every control at a desktop and a phone size, steps both sliders end
   to end comparing each picture with the one before, and fails on a jump, a control that moved, or a
   console error. Leaf colours must stay computed from the pigment amounts; do not type them in.
   The page is one 3D model: never fade one picture into another or swap one for another between

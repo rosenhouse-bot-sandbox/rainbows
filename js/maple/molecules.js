@@ -8,12 +8,15 @@ function chlorophyll() {
   const ring = [], rest = [], tail = [], mg = [];
   for (let q = 0; q < 4; q++) {
     const t = q * 90, N = pol(0.205, t), a1 = pol(0.3, t + 23), a2 = pol(0.3, t - 23), b1 = pol(0.425, t + 9.3), b2 = pol(0.425, t - 9.3), meso = pol(0.342, t + 45), next = pol(0.3, t + 90 - 23);
-    ring.push([N, a1], [N, a2], [a1, b1], [a2, b2], [b1, b2], [a1, meso], [meso, next]);
+    ring.push([N, a1], [N, a2], [a1, b1], [a2, b2], [a1, meso], [meso, next]);
+    (q === 0 ? rest : ring).push([b1, b2]);                 // in chlorophyll a this one bond of the fourth ring is single, which is what gives it its strong band near 675 nm
     mg.push([[0, 0], N]);
     if (q !== 0) rest.push([b2, pol(0.56, t - 11)]);
-    rest.push([b1, pol(0.56, t + 11)]);
+    if (q !== 3) rest.push([b1, pol(0.56, t + 11)]);        // (that carbon of the third ring carries the fifth ring instead)
   }
-  const x = pol(0.5, 225 + 22); rest.push([pol(0.342, 225), x], [x, pol(0.425, 270 - 9.3)], [x, pol(0.63, 250)]);     // the fifth ring
+  // the fifth ring: two more carbons joining the third ring to the bridge beside the tail; one carries an oxygen
+  const x1 = pol(0.56, 290), x2 = pol(0.5, 307), oxy = pol(0.69, 287);
+  rest.push([pol(0.425, 279.3), x1], [x1, x2], [x2, pol(0.342, 315)], [x1, oxy], [x2, pol(0.63, 314)]);
   let p = pol(0.425, -9.3), dir = -24 * Math.PI / 180;                                                                   // the tail, 20 carbons long
   for (let i = 0; i < 21; i++) {
     const s = i % 2 ? 1 : -1, n = [p[0] + 0.121 * Math.cos(dir) - s * 0.07 * Math.sin(dir), p[1] + 0.121 * Math.sin(dir) + s * 0.07 * Math.cos(dir)];
@@ -21,27 +24,27 @@ function chlorophyll() {
     if (i > 4 && i % 4 === 1) tail.push([n, [n[0] - s * -0.12 * Math.sin(dir), n[1] + s * -0.12 * Math.cos(dir)]]);
     p = n; dir += 0.035 * Math.sin(i * 0.7);
   }
-  return { ring, rest, tail, mg };
+  return { ring, rest, tail, mg, oxy };
 }
 const hex = (cx, cy, rot = 30, r = 0.14) => Array.from({ length: 6 }, (_, i) => [cx + r * Math.cos((rot + 60 * i) * Math.PI / 180), cy + r * Math.sin((rot + 60 * i) * Math.PI / 180)]);
 const around = (v) => v.map((p, i) => [p, v[(i + 1) % v.length]]);
 function carotene() {
-  const chain = [], dbl = [], rest = [], n = 19, x0 = -n * 0.121 / 2;
+  // β-carotene: 40 carbons. The row of alternating bonds is 21 long: 19 along the chain and one in the ring at each end.
+  const chain = [], rest = [], n = 19, x0 = -n * 0.121 / 2;
   let p = [x0, 0.035];
   for (let i = 0; i < n; i++) {
     const q = [x0 + (i + 1) * 0.121, i % 2 ? 0.035 : -0.035];
     chain.push([p, q]);
-    if (i % 2 === 0) { const o = i % 4 ? 0.03 : -0.03; dbl.push([[p[0] + 0.02, p[1] + o + (i % 4 ? 0 : 0.0)], [q[0] - 0.02, q[1] + o]]); }
-    if (i === 3 || i === 7 || i === 11 || i === 15) rest.push([q, [q[0], q[1] + (i % 2 ? 0.13 : -0.13)]]);
+    if (i === 2 || i === 6 || i === 11 || i === 15) rest.push([q, [q[0], q[1] + (i % 2 ? 0.13 : -0.13)]]);   // the four methyl groups of the chain
     p = q;
   }
   for (const s of [-1, 1]) {
     const end = s < 0 ? [x0, 0.035] : p, c = [end[0] + s * 0.14, end[1]], h = hex(c[0], c[1], 0);
-    rest.push(...around(h));
-    dbl.push([[h[s < 0 ? 1 : 2][0], h[1][1] - 0.03], [h[s < 0 ? 2 : 1][0] , h[1][1] - 0.03]]);
-    const far = h[s < 0 ? 3 : 0]; rest.push([far, [far[0] + s * 0.09, far[1] + 0.09]], [far, [far[0] + s * 0.09, far[1] - 0.09]]);
+    const c5 = h[s < 0 ? 1 : 2], c1 = h[s < 0 ? 5 : 4], out = (v, turn, l = 0.13) => { const a = Math.atan2(v[1] - c[1], v[0] - c[0]) + turn; return [v[0] + l * Math.cos(a), v[1] + l * Math.sin(a)]; };
+    around(h).forEach((b, i) => (i === (s < 0 ? 0 : 2) ? chain : rest).push(b));          // the ring's one double bond continues the row
+    rest.push([c5, out(c5, 0)], [c1, out(c1, 0.6)], [c1, out(c1, -0.6)]);                  // one methyl beside the double bond, two on the carbon the other side
   }
-  return { chain, dbl, rest };
+  return { chain, rest };
 }
 function cyanidin() {
   const d = 0.14 * Math.sqrt(3), A = hex(0, 0), C = hex(d, 0), ring = [...around(A), ...around(C).filter((_, i) => i !== 2)], rest = [], dots = [];
@@ -49,7 +52,7 @@ function cyanidin() {
   ring.push([c2, B[2]], ...around(B));
   dots.push(C[4]);                                                                       // the oxygen in the middle ring
   const oh = (v, deg, to = rest) => { const e = [v[0] + 0.125 * Math.cos(deg * Math.PI / 180), v[1] + 0.125 * Math.sin(deg * Math.PI / 180)]; to.push([v, e]); dots.push(e); return e; };
-  oh(A[2], 150); oh(A[4], 270); oh(B[0], 30); oh(B[5], -30);
+  oh(A[1], 90); oh(A[3], 210); oh(B[0], 30); oh(B[5], -30);
   const o3 = oh(C[0], 30), gc = [o3[0] + 0.265 * Math.cos(Math.PI / 6), o3[1] + 0.265 * Math.sin(Math.PI / 6)], G = hex(gc[0], gc[1]);
   rest.push([o3, G[3]], ...around(G)); dots.push(G[4]);
   oh(G[0], 30); oh(G[1], 90); oh(G[2], 150);
@@ -69,7 +72,7 @@ function build(conj, rest, mark) {
 export function pigmentShapes() {
   const c = chlorophyll(), k = carotene(), y = cyanidin(), near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) < 1e-3;
   return {
-    chl: build(c.ring, [...c.rest, ...c.tail, ...c.mg], (p) => Math.hypot(p[0], p[1]) < 1e-3 ? 'Mg' : Math.abs(Math.hypot(p[0], p[1]) - 0.205) < 1e-3 ? 'N' : null),
+    chl: build(c.ring, [...c.rest, ...c.tail, ...c.mg], (p) => Math.hypot(p[0], p[1]) < 1e-3 ? 'Mg' : Math.abs(Math.hypot(p[0], p[1]) - 0.205) < 1e-3 ? 'N' : near(p, c.oxy) ? 'O' : null),
     car: build(k.chain, k.rest, () => null),
     anth: build(y.ring, y.rest, (p) => y.dots.some((d) => near(d, p)) ? 'O' : null),
   };
