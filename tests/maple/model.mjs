@@ -20,18 +20,19 @@ for (let i = 1; i < M.PHASES.length; i++) ok(M.PHASES[i].at > M.PHASES[i - 1].at
 
 // the tree
 const T = buildTree(), T2 = buildTree();
-ok(T.leaves.length > 2000 && T.leaves.length < 6000, `leaf count ${T.leaves.length} is between 2000 and 6000`);
-ok(JSON.stringify(T.leaves.map((l) => [l.nx, l.ny, l.T.d0])) === JSON.stringify(T2.leaves.map((l) => [l.nx, l.ny, l.T.d0])), 'two builds give the same tree');
-ok(T.bounds.y1 > 3 && T.bounds.y1 < 5.5 && T.bounds.x1 - T.bounds.x0 > 4 && T.bounds.x1 - T.bounds.x0 < 8, 'the crown is 3 to 5.5 m tall and 4 to 8 m wide');
+ok(T.leaves.length > 5000 && T.leaves.length < 10000, `leaf count ${T.leaves.length} is between 5000 and 10000`);
+ok(JSON.stringify(T.leaves.map((l) => [l.node, l.q, l.T.d0])) === JSON.stringify(T2.leaves.map((l) => [l.node, l.q, l.T.d0])), 'two builds give the same tree');
+ok(T.bounds.y1 > 3 && T.bounds.y1 < 5.5 && T.bounds.x1 - T.bounds.x0 > 4 && T.bounds.x1 - T.bounds.x0 < 8 && T.bounds.z1 - T.bounds.z0 > 3 && T.bounds.z1 - T.bounds.z0 < 8, `the crown is 3 to 5.5 m tall, 4 to 8 m wide and 3 to 8 m deep (${T.bounds.y1.toFixed(1)}, ${(T.bounds.x1 - T.bounds.x0).toFixed(1)}, ${(T.bounds.z1 - T.bounds.z0).toFixed(1)})`);
 ok(T.leaves.filter((l) => l.focus).length === 1, 'one leaf is followed');
 for (const l of T.leaves) {
   const t = l.T;
   ok(t.bud >= M.DAY_START && t.bud < 100, 'buds open in the first fortnight');
   ok(t.d0 > 290 && t.d0 < 320 && t.drop > t.d0 + 20 && t.land <= M.DAY_END + 1e-9, 'a leaf turns, then falls, and has landed by the last day');
   if (!l.focus) ok(t.drop < T.focus.T.drop, 'the followed leaf is the last to fall');
-  ok(l.gy < 0.5 && l.gy > -1.6, 'a fallen leaf lies on the lawn');
-  for (const d of [M.DAY_START, 200, t.d0 + 10, t.drop + 1, M.DAY_END]) { const o = place(l, d); ok([o.x, o.y, o.a, o.q, o.size].every(Number.isFinite), 'a leaf has a finite place'); }
-  ok(place(l, M.DAY_END).state === 2, 'every leaf is on the ground on the last day');
+  ok(l.g[1] >= 0 && l.g[1] < 0.03 && Math.hypot(l.g[0], l.g[2]) < 7, 'a fallen leaf lies on the lawn, within 7 m of the trunk');
+  ok(l.len > 0.06 && l.len < 0.1 && Math.abs(Math.hypot(...l.q) - 1) < 1e-6, 'a leaf is 6 to 10 cm long and has a proper rotation');
+  for (const d of [M.DAY_START, 200, t.d0 + 10, t.drop + 1, M.DAY_END]) { const o = place(l, d, {}); ok([...o.pos, ...o.q, o.size].every(Number.isFinite) && o.pos[1] > -1e-6, 'a leaf has a finite place above the ground'); }
+  ok(place(l, M.DAY_END, {}).state === 2, 'every leaf is on the ground on the last day');
 }
 // sun leaves turn first and reddest
 const sunny = T.leaves.filter((l) => l.sunny > 0.8 && !l.focus), shaded = T.leaves.filter((l) => l.sunny < 0.2);

@@ -91,6 +91,9 @@ Before pushing:
   quarter of an hour): it presses every control at a desktop and a phone size, steps both sliders end
   to end comparing each picture with the one before, and fails on a jump, a control that moved, or a
   console error. Leaf colours must stay computed from the pigment amounts; do not type them in.
+  The page is one 3D model: never fade one picture into another or swap one for another between
+  scales; move the camera or the object. The test draws WebGL in software, so it is slow; on a
+  machine with a graphics card look at the page itself as well.
   After changing any file under `js/maple/` or `css/maple.css`, run `node tests/maple/stamp.mjs`: it
   writes one shared version into every address that loads one of them (`model.js?v=...`), so that a
   browser never pairs a new file with an old cached copy of another. Both tests fail if the stamp is

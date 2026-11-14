@@ -1,6 +1,6 @@
 // The two small pictures in the panel: the light that comes back from the leaf, by wavelength, and
 // the foot of the leaf stalk cut lengthwise. Both are drawn from the same model as the main picture.
-import { returned, bandTable, wavelengthRGB, encode, NS, nm, NM0, NM1, PIG, css, clamp, smooth, mix, leafRGB, colourName } from './model.js?v=1ce981fb';
+import { returned, bandTable, wavelengthRGB, encode, NS, nm, NM0, NM1, PIG, css, clamp, smooth, mix, leafRGB, colourName, rgbOf } from './model.js?v=a6cc9af8';
 
 const spec = new Float64Array(NS);
 // Size the canvas for the screen's pixels and return a context that draws in CSS pixels.
@@ -73,4 +73,52 @@ export function drawStalk(cv, absc, gone, stalkCol) {
     cell(x + gap + away, j * c + away * 0.5, i > zone + 6 && vein ? c : c, c, col);
     ctx.globalAlpha = 1;
   }
+}
+
+// ---- why a pigment has its colour: the longer the row of alternating double bonds, the longer the wavelength it takes in ----
+// Five real molecules of the carotenoid family, which the plant makes one from the next by adding double bonds
+// to the row. `peak` is the wavelength each absorbs most strongly, as measured in solution (to the nearest few nm).
+export const CHAIN = [
+  { n: 3, name: 'phytoene', peak: 286 }, { n: 5, name: 'phytofluene', peak: 348 }, { n: 7, name: 'ζ-carotene', peak: 400 },
+  { n: 9, name: 'neurosporene', peak: 440 }, { n: 11, name: 'lycopene', peak: 472 }];
+const bell = (l, m, w) => Math.exp(-0.5 * ((l - m) / w) ** 2);
+// Three peaks side by side, as carotenoids have; the same shape as the leaf's own carotenoid band, moved to `peak`.
+const chainBand = (l, peak) => 1.5 * bell(l, peak - 26, 13) + 1.9 * bell(l, peak, 13) + 1.7 * bell(l, peak + 30, 12);
+const lin = (v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+const flat = rgbOf(new Float64Array(NS).fill(1)), UV0 = 250;
+export function chainColour(peak) {                         // white light after passing through a layer of the pigment
+  for (let i = 0; i < NS; i++) spec[i] = Math.exp(-2.2 * chainBand(nm(i), peak));
+  return rgbOf(spec).map((v, i) => encode(clamp(lin(v) / lin(flat[i]))));
+}
+export function drawChain(cv, n) {
+  const m = CHAIN.find((c) => c.n === n) || CHAIN[CHAIN.length - 1], { ctx, W, H } = prep(cv, 96), col = chainColour(m.peak);
+  const plain = Math.max(...col) - Math.min(...col) < 0.08;
+  // the backbone: 29 bonds in a zigzag; the middle 2n - 1 of them are the row of alternating double and single bonds
+  const B = 29, run = 2 * m.n - 1, first = (B - run) / 2, dx = (W - 56) / B, y0 = 22, amp = 7;
+  const pt = (i) => [6 + i * dx, y0 + (i % 2 ? -amp : amp)];
+  ctx.lineCap = 'round';
+  for (let i = 0; i < B; i++) {
+    const a = pt(i), b = pt(i + 1), inRun = i >= first && i < first + run, dbl = inRun && (i - first) % 2 === 0;
+    ctx.strokeStyle = inRun ? (plain ? 'rgba(234,240,255,.95)' : css(col)) : 'rgba(234,240,255,.32)'; ctx.lineWidth = inRun ? 2 : 1.3;
+    ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    if (dbl) { const ox = (b[1] - a[1]), oy = -(b[0] - a[0]), l = Math.hypot(ox, oy), k = 3.4 / l; ctx.beginPath(); ctx.moveTo(a[0] + ox * k, a[1] + oy * k); ctx.lineTo(b[0] + ox * k, b[1] + oy * k); ctx.stroke(); }
+  }
+  // what light, passed through it, looks like
+  ctx.fillStyle = css(col); ctx.beginPath(); ctx.roundRect(W - 38, 6, 34, 34, 8); ctx.fill();
+  ctx.strokeStyle = 'rgba(234,240,255,.35)'; ctx.lineWidth = 1; ctx.stroke();
+  // below: wavelengths from 250 to 700 nm; those we cannot see are drawn in grey
+  const top = 50, sh = H - top, xOf = (l) => (l - UV0) / (NM1 - UV0) * W;
+  for (let x = 0; x < W; x++) {
+    const l = UV0 + (NM1 - UV0) * x / (W - 1), pass = Math.exp(-2.2 * chainBand(l, m.peak));
+    if (l < NM0) { const v = Math.round(18 + 52 * pass); ctx.fillStyle = `rgb(${v},${v},${v + 6})`; }
+    else { const c = wavelengthRGB(l); ctx.fillStyle = css([encode(c[0] * pass * 1.5), encode(c[1] * pass * 1.5), encode(c[2] * pass * 1.5)]); }
+    ctx.fillRect(x, top, 1, sh);
+  }
+  ctx.strokeStyle = 'rgba(234,240,255,.9)'; ctx.lineWidth = 1.5; ctx.lineJoin = 'round'; ctx.beginPath();
+  for (let x = 0; x <= W; x += 2) { const l = UV0 + (NM1 - UV0) * x / W, y = H - 2 - chainBand(l, m.peak) / 2.1 * (sh - 6); x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(234,240,255,.5)'; ctx.setLineDash([2, 3]); ctx.beginPath(); ctx.moveTo(xOf(NM0), top); ctx.lineTo(xOf(NM0), H); ctx.stroke(); ctx.setLineDash([]);
+  const seen = m.peak < NM0 ? 'ultraviolet, which we cannot see' : 'light we see as ' + (m.peak < 450 ? 'violet' : 'blue');
+  const looks = plain ? 'All the light we can see passes, so it has no colour.' : `White light that has passed through it looks ${colourName(col)}.`;
+  return { n: `${m.n} · ${m.name}`, cap: `With ${m.n} double bonds in a row the electrons shared along the row take in light most strongly near ${m.peak} nm: ${seen}. ${looks} A longer row takes in a longer wavelength.` };
 }
