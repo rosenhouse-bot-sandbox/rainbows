@@ -114,14 +114,29 @@ export default {
   // and one of its units is 0.17 µm, so its wavelengths are this scene's wavelengths.
   embed: () => ({ o: [0, 0, 0], s: 550 / 3200, X: [0, -1, 0], Y: [0, 0, 1], Z: [-1, 0, 0] }),
 
+  // The words describe what is drawn, so they go by the view: dots in one, crests in the other. The
+  // dots show where the light goes; why it turns, and how much of it reflects, comes from the wave.
   caption(S) {
-    const c = setup(S);
-    if (S.cross === 'enter') return { title: 'Slower, closer crests, a new direction',
-      body: 'Crests cannot be created or lost at the surface, so each one in the air must join one in the water. Light is slower in water, so the crests there are closer together, and they can still match along the surface only if they travel in a different direction. That change of direction is refraction. A small part of the wave reflects.' };
-    if (S.cross === 'back') return { title: 'The back wall reflects only a little',
-      body: `The rainbow ray meets the back of the drop at about 40°, short of the ${(c.crit / DEG).toFixed(1)}° critical angle. So this is ordinary partial reflection: most of the light escapes into the air, and only about one part in twenty of sunlight reflects to carry on toward the bow. A ray inside a sphere meets the wall at the same angle it was bent to on the way in, which is always below critical.` };
-    return { title: 'Out again, bending toward you',
-      body: 'Leaving the water, the crests speed up, spread apart and turn away from the perpendicular. This last bend is the first one in reverse, and it sets the direction in which each wavelength finally travels to your eye.' };
+    const c = setup(S), wave = S.mode === 'wave';
+    const why = ' The dots show where the light goes. Why it turns is explained by treating light as a wave, the better model at a surface: switch to Waves.';
+    if (S.cross === 'enter') return wave
+      ? { title: 'Slower, closer crests, a new direction',
+        body: 'Each bright sheet is a crest, where the wave\'s field is strongest. Light travels more slowly in water, so the crests there are closer together. Each crest in the air stays joined to one in the water along the surface, and it can only do that if the wave turns. That turn is refraction. Part of the wave reflects.' }
+      : { title: 'Into the water: slower, and turned',
+        body: 'Each dot is a photon, a single particle of light. At the surface some photons reflect. The rest go on into the water, more slowly and in a new direction. That change of direction is refraction.' + why };
+    if (S.cross === 'back') {
+      // what the rainbow ray itself does there, whatever the sliders are set to: it arrives at the
+      // angle it was bent to on the way in, and sunlight is an even mix of the two polarisations
+      const n = O.nWater(550), th = presetAngle({ cross: 'back', lambda: 550 }) * DEG, pc = x => (x * 100).toFixed(x < 0.01 ? 1 : 0) + '%';
+      const Rs = O.fresnelAmp(n, 1, th, 's').R, Rp = O.fresnelAmp(n, 1, th, 'p').R;
+      return { title: 'The back wall reflects only a little',
+        body: `The rainbow ray meets the back of the drop at about ${(th / DEG).toFixed(0)}°. All of the light would reflect only beyond ${(c.crit / DEG).toFixed(1)}°, the critical angle, so ${wave ? 'most of the wave passes' : 'most photons pass'} out into the air. About ${pc((Rs + Rp) / 2)} of sunlight reflects to carry on toward the bow: ${pc(Rs)} or ${pc(Rp)}, depending on which way its electric field points. Light inside a sphere always meets the wall at the angle it was bent to on the way in, which is below the critical angle.` };
+    }
+    return wave
+      ? { title: 'Out again, bending toward you',
+        body: 'Leaving the water, the crests speed up, move further apart and turn away from the perpendicular, the dashed line at right angles to the surface. This bend is the first one in reverse. It sets the direction in which each wavelength finally travels to your eye.' }
+      : { title: 'Out again, bending toward you',
+        body: 'Leaving the water, the photons speed up and turn away from the perpendicular, the dashed line at right angles to the surface. This bend is the first one in reverse. It sets the direction in which each wavelength finally travels to your eye.' + why };
   },
   readout(S) {
     const c = setup(S), d = x => (x / DEG).toFixed(1) + '°';
@@ -133,7 +148,7 @@ export default {
 <dt>Reflected</dt><dd>${(c.F.R * 100).toFixed(1)}% (other polarisation ${(other.R * 100).toFixed(1)}%)</dd>`;
     rows += `<dt>Transmitted, leaving at</dt><dd>${((1 - c.F.R) * 100).toFixed(1)}% at ${d(c.F.thetaT)}</dd>
 <dt>700 nm would leave at</dt><dd>${d(bend(nr))}</dd><dt>400 nm would leave at</dt><dd>${d(bend(nv))}</dd>`;
-    return `<dl>${rows}</dl><p>The drop is drawn cut open along the plane of the ray: the bright line is its surface seen edge-on, with the water's cut face on one side and air on the other. The light itself is a round beam, in front of the cut as well as behind it.</p>` + (S.pol === 'p' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
+    return `<dl>${rows}</dl><p>The drop is drawn cut open along the plane of the ray: the bright line is its surface seen edge-on, with the water's cut face on one side and air on the other. The light itself is a round beam, in front of the cut as well as behind it.</p>` + (S.pol === 'p' && S.mode === 'wave' ? '<p>With the electric field in the plane of the bend, the quantity drawn is the magnetic field, which then points along the surface.</p>' : '');
   },
   labels(S) {
     const c = setup(S), L = [];

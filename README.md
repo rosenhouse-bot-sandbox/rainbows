@@ -58,6 +58,10 @@ The physics, all in `js/v2/optics.js`:
 - At the surface the field is the exact plane-wave solution at a flat boundary, in a beam of finite
   width. The surface around it is the drop's own, a sphere of 1 mm radius drawn to scale: it runs to
   a horizon about 90 µm away and curves out of sight. Across the beam it is flat to about 20 nm.
+- The Surface scale's words go by the view. With Particles (the view it opens in) they describe the
+  dots: photons that reflect or pass with the Fresnel odds and travel at c/n. That view shows where
+  the light goes and is a simplification; the text says so, and that the wave is the better model
+  of why light turns at a surface. With Waves they describe the crests.
 - Changing which crossing the Surface scale shows flies the camera out until the drop is in view,
   round the drop to the new crossing and back in. The camera stays upright in the drop's frame
   throughout, so each crossing is seen tilted the way it lies on the drop: the back wall with water
