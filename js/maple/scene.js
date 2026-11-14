@@ -1,7 +1,7 @@
 // Everything from the whole tree down to the surface of one leaf, drawn in metres with one camera.
 // cam = { k: CSS pixels per metre, ox, oy: where the world's (0,0) falls on screen, W, H, dpr }.
-import { leafRGB, css, pigments, clamp, smooth, mix } from './model.js?v=1ea05274';
-import { buildTree, leafShape, place, SPOT } from './tree.js?v=1ea05274';
+import { leafRGB, css, pigments, clamp, smooth, mix } from './model.js?v=1ce981fb';
+import { buildTree, leafShape, place, SPOT } from './tree.js?v=1ce981fb';
 
 const poly = (lists) => { const p = new Path2D(); for (const pts of lists) { p.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) p.lineTo(pts[i][0], pts[i][1]); p.closePath(); } return p; };
 const lines = (lists) => { const p = new Path2D(); for (const [a, b] of lists) { p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); } return p; };

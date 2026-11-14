@@ -1,9 +1,9 @@
 // Japanese maple: the controller. Two numbers drive the page: the zoom (0 = tree ... 4 = molecules)
 // and the season (0 = late March ... 1 = late December). The picture is redrawn only when one changes.
-import { dayOf, dateOf, dayLength, PHASES, phaseAt, LAT, clamp, smooth, mix, css, leafRGB } from './model.js?v=1ea05274';
-import { makeScene } from './scene.js?v=1ea05274';
-import { makeMicro, TARGETS, turnOf } from './micro.js?v=1ea05274';
-import { drawSpectrum, drawStalk } from './figs.js?v=1ea05274';
+import { dayOf, dateOf, dayLength, PHASES, phaseAt, LAT, clamp, smooth, mix, css, leafRGB } from './model.js?v=1ce981fb';
+import { makeScene } from './scene.js?v=1ce981fb';
+import { makeMicro, TARGETS, turnOf } from './micro.js?v=1ce981fb';
+import { drawSpectrum, drawStalk } from './figs.js?v=1ce981fb';
 
 const $ = (id) => document.getElementById(id);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -194,7 +194,7 @@ function frame(now) {
   raf = 0;
   const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now;
   const zooming = !!(fly || hop) || now - zoomAt < HOLD, dating = now - seasonAt < HOLD;
-  if (st.play && !zooming) { st.s = Math.min(1, st.s + dt / 50); if (st.s >= 1) st.play = false; dirty = true; }
+  if (st.play && !zooming) { st.s = Math.min(1, st.s + dt / 25); if (st.s >= 1) st.play = false; dirty = true; }
   if (fly && !dating) { fly.t = Math.min(1, fly.t + dt / fly.dur); st.z = mix(fly.from, fly.to, smooth(fly.t)); if (fly.t >= 1) fly = null; dirty = true; }
   if (hop && !dating) { hop.t = Math.min(1, hop.t + dt / hop.dur); w = mix(hop.from, hop.to, smooth((hop.t - 0.3) / 0.4)); if (hop.t >= 1) hop = null; dirty = true; }
   if (dirty) {

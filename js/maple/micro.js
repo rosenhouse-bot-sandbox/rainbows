@@ -7,7 +7,7 @@
 //  - molecules are flat skeleton diagrams without hydrogen atoms, the proteins and fats that hold
 //    chlorophyll and carotenoids in the membrane are left out, and so is water;
 //  - anthocyanin is drawn far more crowded than it is: a real view this size would usually hold none.
-import { leafRGB, css, clamp, smooth, mix } from './model.js?v=1ea05274';
+import { leafRGB, css, clamp, smooth, mix } from './model.js?v=1ce981fb';
 
 const hash = (i, j) => { let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
