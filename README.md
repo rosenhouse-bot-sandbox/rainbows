@@ -332,9 +332,8 @@ A game at `optics/`: build things that bend light on a bench where every ray is 
 Each challenge has a one-line task, one to three things to change (sliders, and a row of buttons
 where the choice is a glass), and a goal measured from the trace. The challenges are taken in order: each is
 locked until the ones before it are solved. A bar at the foot of the panel holds Previous and one
-button for going on: Next, which becomes Submit while the goal is met and the challenge is not yet solved. Pressing it wins the challenge and opens a note, in a
-dialog, about what you just built and why it works; a solved challenge keeps a button that opens
-the note again.
+button for going on: Next, which becomes Submit while the goal is met and the challenge is not yet solved. Pressing it wins the challenge: the button becomes Next, and the
+text under the bar becomes a note about what you just built and why it works. Nothing opens over the page.
 
 | Challenge | You change | It teaches |
 | --- | --- | --- |

@@ -42,7 +42,6 @@ function go(i, quiet) {
   $('eyebrow').textContent = `Challenge ${S.i + 1} of ${LEVELS.length}`;
   $('capTitle').textContent = L.title;
   $('capTask').textContent = L.task;
-  $('capBody').textContent = L.brief;
   $('scaleText').textContent = L.scale;
   $('status').textContent = '';
 
@@ -106,7 +105,8 @@ function paintNav() {
     if (i === S.i) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
   });
   const done = solved.has(LEVELS[S.i].id);
-  $('again').hidden = !done;
+  // under the bar: how to go about it, and once solved, what was built and why it works
+  $('capBody').textContent = done ? LEVELS[S.i].learned : LEVELS[S.i].brief;
   $('prev').setAttribute('aria-disabled', String(S.i === 0));
   const last = S.i === LEVELS.length - 1;
   $('next').setAttribute('aria-disabled', String(last || !done));   // no going on until this one is solved
@@ -172,23 +172,13 @@ function update() {
   invalidate();
 }
 
-// Meeting the goal only offers the Submit button. Pressing it is what wins the challenge, and
-// opens the note about what was built.
-const won = $('won');
-function note() {
-  const L = LEVELS[S.i], last = S.i === LEVELS.length - 1;
-  $('wonTitle').textContent = L.title;
-  $('learned').textContent = L.learned;
-  $('wonNext').hidden = last;
-  if (!won.open) won.showModal();
-}
+// Meeting the goal only offers the Submit button. Pressing it is what wins the challenge: the
+// button becomes Next, and the text under the bar becomes the note about what was built.
 $('submit').addEventListener('click', () => {
   if (!S.out.score.solved) return;
-  solved.add(LEVELS[S.i].id); save(); paintNav(); note();
+  solved.add(LEVELS[S.i].id); save(); paintNav();
+  $('status').textContent = 'Solved. ' + LEVELS[S.i].learned;
 });
-$('again').addEventListener('click', note);
-$('wonStay').addEventListener('click', () => won.close());
-$('wonNext').addEventListener('click', () => { won.close(); if (S.i < LEVELS.length - 1) go(S.i + 1); });
 
 $('prev').addEventListener('click', () => { if (S.i > 0) go(S.i - 1); });
 $('next').addEventListener('click', () => { if (S.i < LEVELS.length - 1 && solved.has(LEVELS[S.i].id)) go(S.i + 1); });

@@ -125,18 +125,20 @@ for (const [name, viewport, touch] of [['desktop', { width: 1280, height: 800 },
     const meters = await page.evaluate(() => [...document.querySelectorAll('.meter')].map((m) => m.textContent));
     console.log('  ' + meters.join(' | '));
     check(await page.evaluate(() => window.__optics.S.out.score.solved), `${name}/${id}: the known solution does not solve it`);
-    check(!(await page.evaluate(() => document.getElementById('won').open || window.__optics.solved.has(window.__optics.LEVELS[window.__optics.S.i].id))), `${name}/${id}: counted as solved before Submit was pressed`);
+    check(!(await page.evaluate(() => window.__optics.solved.has(window.__optics.LEVELS[window.__optics.S.i].id))), `${name}/${id}: counted as solved before Submit was pressed`);
     const sub = page.locator('#submit');
     check(await sub.isVisible(), `${name}/${id}: Submit did not appear when the goal was met`);
     check(await page.evaluate(() => { const r = document.getElementById('submit').getBoundingClientRect(); const n = document.getElementById('next'); return r.bottom <= innerHeight && r.bottom > innerHeight - 90 && n.hidden; }), `${name}/${id}: Submit is not at the bottom of the screen`);
     await page.screenshot({ path: path.join(out, `${name}-${id}-goal.png`) });
     await (touch ? sub.tap() : sub.click());
     await page.waitForTimeout(150);
-    const said = await page.evaluate(() => ({ open: document.getElementById('won').open, text: document.getElementById('learned').textContent.length, marked: document.querySelector('#levels [aria-current]').classList.contains('done') }));
-    check(said.open && said.text > 80 && said.marked, `${name}/${id}: Submit did not open the note or mark the challenge solved`);
+    const said = await page.evaluate(() => { const o = window.__optics, L = o.LEVELS[o.S.i], n = document.getElementById('next'), r = n.getBoundingClientRect(), last = o.S.i === o.LEVELS.length - 1;
+      return { note: document.getElementById('capBody').textContent === L.learned && L.learned.length > 80, marked: document.querySelector('#levels [aria-current]').classList.contains('done'),
+        modal: !!document.querySelector('dialog[open]'), next: !n.hidden && document.getElementById('submit').hidden && r.bottom <= innerHeight && (last || (n.getAttribute('aria-disabled') === 'false' && n.classList.contains('primary'))) }; });
+    check(said.note && said.marked, `${name}/${id}: Submit did not show the note or mark the challenge solved`);
+    check(!said.modal, `${name}/${id}: something opened over the page on Submit`);
+    check(said.next, `${name}/${id}: Next is not offered at the bottom of the screen after Submit`);
     await page.screenshot({ path: path.join(out, `${name}-${id}-solved.png`) });
-    await page.keyboard.press('Escape');
-    check(!(await page.evaluate(() => document.getElementById('won').open)), `${name}/${id}: the note did not close`);
     // the page must not scroll sideways, and every control must be big enough for the input
     const layout = await page.evaluate(() => ({ wide: document.documentElement.scrollWidth > innerWidth + 1 || document.getElementById('panel').scrollWidth > document.getElementById('panel').clientWidth + 1,
       small: [...document.querySelectorAll('button, input, a.back')].filter((e) => { const r = e.getBoundingClientRect(); return r.height > 0 && r.height < (matchMedia('(pointer:coarse)').matches ? 44 : 24) - 0.5; }).map((e) => e.id || e.textContent.trim()) }));

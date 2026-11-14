@@ -71,16 +71,7 @@ html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font-family
 .meter.ok small{color:var(--good)}
 
 .more{margin:0;font-size:0.8438rem;line-height:1.42;color:var(--ink2);max-width:62ch;text-wrap:pretty}
-.btn.quiet{font-family:var(--body);font-weight:600;font-size:0.8438rem;color:var(--good);border-color:rgba(111,227,161,.4)}
 
-dialog{width:min(440px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:20px;border-radius:18px;border:1px solid rgba(111,227,161,.55);background:#0b1220;color:var(--ink);box-shadow:0 20px 80px rgba(0,0,0,.7);overflow-y:auto}
-dialog:modal{overscroll-behavior:contain}
-dialog::backdrop{background:rgba(3,5,12,.6);overflow:hidden;overscroll-behavior:contain}
-dialog[open]{display:grid;gap:10px}
-dialog .eyebrow{display:block;margin:0;color:var(--good)}
-dialog h2{margin:0;font-family:var(--display);font-weight:600;font-size:1.375rem;letter-spacing:-.015em;line-height:1.15;text-wrap:balance}
-dialog p{margin:0;font-size:0.9062rem;line-height:1.45;color:var(--ink2);text-wrap:pretty}
-dialog .step{margin-top:6px}
 
 .step{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 /* One bar at the foot of the panel, always in view: back on the left, the way forward on the right.
