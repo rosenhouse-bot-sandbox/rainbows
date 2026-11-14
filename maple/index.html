@@ -12,12 +12,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..700&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="modulepreload" href="../js/maple/model.js">
-<link rel="modulepreload" href="../js/maple/tree.js">
-<link rel="modulepreload" href="../js/maple/scene.js">
-<link rel="modulepreload" href="../js/maple/micro.js">
-<link rel="modulepreload" href="../js/maple/figs.js">
-<link rel="stylesheet" href="../css/maple.css">
+<link rel="modulepreload" href="../js/maple/model.js?v=1ea05274">
+<link rel="modulepreload" href="../js/maple/tree.js?v=1ea05274">
+<link rel="modulepreload" href="../js/maple/scene.js?v=1ea05274">
+<link rel="modulepreload" href="../js/maple/micro.js?v=1ea05274">
+<link rel="modulepreload" href="../js/maple/figs.js?v=1ea05274">
+<link rel="stylesheet" href="../css/maple.css?v=1ea05274">
 </head>
 <body>
 <canvas id="view" role="img" aria-label="Picture of the maple at the chosen zoom and date" aria-describedby="capTitle capBody"></canvas>
@@ -26,6 +26,11 @@
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M14.5 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
 </a>
 <div class="scalebar" aria-hidden="true"><i id="scaleBar"></i><b id="scaleText"></b></div>
+
+<div class="oops" id="oops" role="alert" hidden>
+  <p>The picture could not be drawn. Loading the page again usually fixes it.</p>
+  <button type="button" id="reload">Load again</button>
+</div>
 
 <main class="panel" id="panel">
   <header class="title">
@@ -91,6 +96,6 @@
   <p class="fine" id="note"></p>
 </main>
 
-<script type="module" src="../js/maple/main.js"></script>
+<script type="module" src="../js/maple/main.js?v=1ea05274"></script>
 </body>
 </html>

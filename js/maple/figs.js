@@ -1,6 +1,6 @@
 // The two small pictures in the panel: the light that comes back from the leaf, by wavelength, and
 // the foot of the leaf stalk cut lengthwise. Both are drawn from the same model as the main picture.
-import { returned, bandTable, wavelengthRGB, encode, NS, nm, NM0, NM1, PIG, css, clamp, smooth, mix, leafRGB, colourName } from './model.js';
+import { returned, bandTable, wavelengthRGB, encode, NS, nm, NM0, NM1, PIG, css, clamp, smooth, mix, leafRGB, colourName } from './model.js?v=1ea05274';
 
 const spec = new Float64Array(NS);
 // Size the canvas for the screen's pixels and return a context that draws in CSS pixels.

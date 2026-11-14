@@ -527,9 +527,13 @@ day it falls, at every scale from the whole tree down to its pigment molecules. 
   one point: the followed leaf hangs at the end of a low twig on the left of the tree, the Tissue
   scale is the leaf cut through at a point on its middle lobe and seen from the cut edge, the Cells
   scale is one tall cell of that cut, and the Molecules scale looks into that cell. Between Leaf and
-  Tissue the view of the leaf's face gives way to the view of its edge. The scale bar at the
+  Tissue the leaf is cut and turned as one solid, with nothing faded in or out: once the leaf fills
+  the screen it is cut along a level line through that point, the near piece slides away, and the
+  piece left (2.5 mm of it) tips back about the cut until its cut face is seen square on. The zoom
+  slows over this part of the slider. The scale bar at the
   top right is measured from the camera. The mouse wheel zooms too.
-- **Season** runs from 25 March to 20 December, with a Play button. Summer, when little changes,
+- **Season** runs from 25 March to 20 December, with a Play button. The date and the zoom never
+  move together: while the zoom is moving the year waits, then goes on. Summer, when little changes,
   takes less of the slider than autumn. The date is shown, and the day length for it at 35° N
   (sunrise to sunset by geometry, without the bending of light by the air).
 - At Cells and Molecules, **Zoom into** chooses between a chloroplast and the vacuole of the same

@@ -1,13 +1,14 @@
 // Everything from the whole tree down to the surface of one leaf, drawn in metres with one camera.
 // cam = { k: CSS pixels per metre, ox, oy: where the world's (0,0) falls on screen, W, H, dpr }.
-import { leafRGB, css, pigments, clamp, smooth, mix } from './model.js';
-import { buildTree, leafShape, place, SPOT } from './tree.js';
+import { leafRGB, css, pigments, clamp, smooth, mix } from './model.js?v=1ea05274';
+import { buildTree, leafShape, place, SPOT } from './tree.js?v=1ea05274';
 
 const poly = (lists) => { const p = new Path2D(); for (const pts of lists) { p.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) p.lineTo(pts[i][0], pts[i][1]); p.closePath(); } return p; };
 const lines = (lists) => { const p = new Path2D(); for (const [a, b] of lists) { p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); } return p; };
 const hash = (i, j) => { let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
 const BG = [5, 7, 15];
+export const AIR = '#0a0f20';                                // what is drawn where the leaf has been cut away
 const SKY = [[0, '#060916'], [0.35, '#0e1838'], [0.62, '#243061'], [0.8, '#5a4a76'], [0.91, '#a7697a'], [1, '#e2a274']];
 const SKY_TOP = 15, SKY_FOOT = 1.1, LAWN = 0.55;          // metres: the sky's gradient runs between these; the lawn's far edge
 // two lines of far trees, as heights in metres at each x
@@ -135,12 +136,12 @@ export function makeScene() {
     ctx.globalAlpha = 1;
   }
   // the net of small veins, seen once the leaf is a few centimetres across the screen
-  function net(ctx, cam, clip) {
+  function net(ctx, cam) {
     const mm = cam.k * 1e-3, a = smooth((mm - 12) / 30);
     if (a <= 0) return;
     const [fx, fy] = spot(), X0 = cam.ox + cam.k * fx, Y0 = cam.oy - cam.k * fy, side = 0.42, dx = side * Math.sqrt(3), dy = side * 1.5;
     ctx.save();
-    if (clip) { setLeaf(ctx, cam, F, fo); ctx.clip(P.plain); }
+    setLeaf(ctx, cam, F, fo); ctx.clip(P.plain);
     ctx.setTransform(mm * cam.dpr, 0, 0, -mm * cam.dpr, X0 * cam.dpr, Y0 * cam.dpr);
     const j0 = Math.floor((Y0 - cam.H) / mm / dy) - 1, j1 = Math.ceil(Y0 / mm / dy) + 1, i0 = Math.floor(-X0 / mm / dx) - 1, i1 = Math.ceil((cam.W - X0) / mm / dx) + 1;
     if ((j1 - j0) * (i1 - i0) < 9000) {
@@ -155,25 +156,44 @@ export function makeScene() {
     ctx.restore(); ctx.globalAlpha = 1;
   }
 
-  // Draws the scene. Returns the colour of the leaf at the point the deeper scales look into.
-  function draw(ctx, cam) {
-    const here = shade(F, fo, -1.5), flat = smooth((cam.k - 1.2e5) / 2.5e5);
-    if (flat < 1) {
-      backdrop(ctx, cam);
-      const lv = (lo, hi, st) => { for (let i = 0; i < L.length; i++) { const l = L[i], o = S[i]; if (o.state === st && l.z >= lo && l.z < hi && (st !== 2 || (l.gy >= 0) === (lo === 0))) drawLeaf(ctx, cam, l, o); } };
-      for (let i = 0; i < L.length; i++) if (S[i].state === 2 && L[i].gy >= 0) drawLeaf(ctx, cam, L[i], S[i]);      // fallen, on the far lawn
-      branches(ctx, cam, true);
-      lv(0, 0.5, 0); lv(0, 0.5, 1);
-      branches(ctx, cam, false); stalks(ctx, cam);
-      lv(0.5, 2, 0); lv(0.5, 2, 1);
-      for (let i = 0; i < L.length; i++) if (S[i].state === 2 && L[i].gy < 0) drawLeaf(ctx, cam, L[i], S[i]);       // fallen, on the near lawn
-      net(ctx, cam, true);
+  function world3(ctx, cam) {
+    backdrop(ctx, cam);
+    const lv = (lo, hi, st) => { for (let i = 0; i < L.length; i++) { const l = L[i], o = S[i]; if (o.state === st && l.z >= lo && l.z < hi && (st !== 2 || (l.gy >= 0) === (lo === 0))) drawLeaf(ctx, cam, l, o); } };
+    for (let i = 0; i < L.length; i++) if (S[i].state === 2 && L[i].gy >= 0) drawLeaf(ctx, cam, L[i], S[i]);      // fallen, on the far lawn
+    branches(ctx, cam, true);
+    lv(0, 0.5, 0); lv(0, 0.5, 1);
+    branches(ctx, cam, false); stalks(ctx, cam);
+    lv(0.5, 2, 0); lv(0.5, 2, 1);
+    for (let i = 0; i < L.length; i++) if (S[i].state === 2 && L[i].gy < 0) drawLeaf(ctx, cam, L[i], S[i]);       // fallen, on the near lawn
+    net(ctx, cam);
+  }
+
+  // Draws the scene. turn (from micro.js, or null) says how far the leaf has been cut and tipped:
+  // the leaf is cut along a level line through the point the camera closes on, the piece on the near
+  // side slides away, and the piece left is tipped back about the cut until it is seen edge-on.
+  // Everything is drawn with one rule, as a solid seen from far away: a point `d` behind the cut on
+  // the leaf's face is drawn d * turn.cs above the cut edge.
+  function draw(ctx, cam, turn) {
+    if (!turn) { world3(ctx, cam); return; }
+    const { W, H, dpr } = cam, px = (v) => Math.round(v * dpr) / dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = AIR; ctx.fillRect(0, 0, W, H);
+    if (turn.cs > 0.003) {
+      // the piece that stays: its upper face, foreshortened as it tips
+      const shown = Math.min(turn.far, turn.Ye / turn.cs + 2), top = px(turn.Ye - shown * turn.cs), foot = px(turn.Ye);
+      const shift = Math.max(0, shown - turn.Y), pivot = (turn.Y + shift) * dpr, cs = turn.cs, set = ctx.setTransform;
+      ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, foot - top); ctx.clip();
+      ctx.setTransform = (a, b, c, d, e, f) => set.call(ctx, a, b * cs, c, d * cs, e, turn.Ye * dpr - (pivot - f) * cs);
+      try { world3(ctx, { ...cam, oy: cam.oy + shift, H: turn.Y + shift }); } finally { delete ctx.setTransform; }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = `rgba(4,6,12,${(0.5 * turn.sn).toFixed(3)})`; ctx.fillRect(0, top, W, foot - top);   // less light reaches the eye from a face seen at a slant
+      ctx.restore();
     }
-    if (flat > 0) {
-      ctx.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0); ctx.globalAlpha = flat; ctx.fillStyle = here; ctx.fillRect(0, 0, cam.W, cam.H); ctx.globalAlpha = 1;
-      net(ctx, cam, false);
+    if (turn.gap < H - turn.Y) {
+      // the piece on the near side, sliding away
+      const edge = px(turn.Y + turn.gap);
+      ctx.save(); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.beginPath(); ctx.rect(0, edge, W, H - edge); ctx.clip();
+      world3(ctx, { ...cam, oy: cam.oy + turn.gap });
+      ctx.restore();
     }
-    return here;
   }
   return { tree, update, draw, spot, leafCentre, focus: () => fo, focusAt: (dd) => dd ? pigments(day + dd, F.T) : fo.p, count: L.length, BG };
 }

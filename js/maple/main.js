@@ -1,9 +1,9 @@
 // Japanese maple: the controller. Two numbers drive the page: the zoom (0 = tree ... 4 = molecules)
 // and the season (0 = late March ... 1 = late December). The picture is redrawn only when one changes.
-import { dayOf, dateOf, dayLength, PHASES, phaseAt, LAT, clamp, smooth, mix, css, leafRGB } from './model.js';
-import { makeScene } from './scene.js';
-import { makeMicro, TARGETS } from './micro.js';
-import { drawSpectrum, drawStalk } from './figs.js';
+import { dayOf, dateOf, dayLength, PHASES, phaseAt, LAT, clamp, smooth, mix, css, leafRGB } from './model.js?v=1ea05274';
+import { makeScene } from './scene.js?v=1ea05274';
+import { makeMicro, TARGETS, turnOf } from './micro.js?v=1ea05274';
+import { drawSpectrum, drawStalk } from './figs.js?v=1ea05274';
 
 const $ = (id) => document.getElementById(id);
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -80,6 +80,11 @@ const CUT = 'The foot of the leaf stalk cut lengthwise, twig on the left. Brown:
 const st = { z: 0, s: 0, play: false, where: 'membrane' };
 let w = 0;                               // 0 = looking into the chloroplast membrane, 1 = into the vacuole
 let fly = null, hop = null, dirty = true, last = 0, raf = 0;
+// The zoom and the date never move together. While the zoom is moving the year waits, and while the
+// Season slider is being moved a flight between scales waits. These are when each was last moved by hand.
+let zoomAt = -1e9, seasonAt = -1e9, broken = false;
+const HOLD = 450;                        // milliseconds
+const drawn = { z: 0, s: 0, n: 0 };       // what the last picture showed, for the tests
 const free = { x: 0, y: 0, w: 1, h: 1 }, cam = { k: 1, ox: 0, oy: 0, W: 1, H: 1, dpr: 1 };
 
 function readHash() {
@@ -94,7 +99,7 @@ const writeHash = () => { clearTimeout(hashTimer); hashTimer = setTimeout(() => 
 
 function measure() {
   const W = innerWidth, H = innerHeight, r = $('panel').getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
-  if (W >= 900) { free.x = r.right + 12; free.y = 0; free.w = W - free.x; free.h = H; }
+  if (r.right < W * 0.7) { free.x = r.right + 12; free.y = 0; free.w = W - free.x; free.h = H; }
   else { free.x = 0; free.y = 52; free.w = W; free.h = Math.max(120, r.top - 52); }
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
   cam.W = W; cam.H = H; cam.dpr = dpr; dirty = true; kick();
@@ -105,7 +110,8 @@ const fitK = (i) => Math.min(free.w / STOPS[i].w, free.h / STOPS[i].h) * 0.94;
 const zShown = () => hop ? mix(st.z, Math.min(st.z, HOP_OUT), Math.sin(Math.PI * hop.t) ** 0.7) : st.z;
 
 function aim(z) {
-  const i = Math.min(LAST - 1, Math.floor(z)), f = z - i, k0 = fitK(i), k1 = fitK(i + 1);
+  const i = Math.min(LAST - 1, Math.floor(z)), g = z - i, k0 = fitK(i), k1 = fitK(i + 1);
+  const f = i === 1 ? 0.35 * g + 0.65 * g * (2 - g) : g;   // from Leaf to Tissue the zoom slows toward the end, to give the cut and the tipping of the leaf more of the slider
   const k = Math.exp(mix(Math.log(k0), Math.log(k1), f)), t = (1 / k - 1 / k1) / (1 / k0 - 1 / k1);
   const F = scene.spot(), lc = scene.leafCentre(), b = scene.tree.bounds;
   const target = [mix(TARGETS.membrane[0], TARGETS.vacuole[0], w), mix(TARGETS.membrane[1], TARGETS.vacuole[1], w)];
@@ -119,10 +125,12 @@ function aim(z) {
 
 function draw() {
   const day = dayOf(st.s);
+  drawn.z = st.z; drawn.s = st.s; drawn.n++;
   scene.update(day);
   const a = aim(zShown());
-  scene.draw(ctx, cam);
-  micro.draw(ctx, cam, scene.focusAt, a.X, a.Y, a.c);
+  const turn = turnOf(cam.k * 1e-6, a.Y, cam.H, fitK(2) * 1e-6);
+  scene.draw(ctx, cam, turn);
+  micro.draw(ctx, cam, scene.focusAt, a.X, a.Y, a.c, turn);
   ctx.setTransform(cam.dpr, 0, 0, cam.dpr, 0, 0);
   const g = ctx.createRadialGradient(free.x + free.w / 2, free.y + free.h / 2, Math.min(free.w, free.h) * 0.45, free.x + free.w / 2, free.y + free.h / 2, Math.hypot(cam.W, cam.H) * 0.62);
   g.addColorStop(0, 'rgba(5,7,15,0)'); g.addColorStop(1, 'rgba(5,7,15,.55)');
@@ -185,38 +193,50 @@ function kick() { if (!raf) raf = requestAnimationFrame(frame); }
 function frame(now) {
   raf = 0;
   const dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now;
-  if (st.play) { st.s = Math.min(1, st.s + dt / 50); if (st.s >= 1) st.play = false; dirty = true; }
-  if (fly) { fly.t = Math.min(1, fly.t + dt / fly.dur); st.z = mix(fly.from, fly.to, smooth(fly.t)); if (fly.t >= 1) fly = null; dirty = true; }
-  if (hop) { hop.t = Math.min(1, hop.t + dt / hop.dur); w = mix(hop.from, hop.to, smooth((hop.t - 0.3) / 0.4)); if (hop.t >= 1) hop = null; dirty = true; }
-  if (dirty) { dirty = false; draw(); sync(); }
+  const zooming = !!(fly || hop) || now - zoomAt < HOLD, dating = now - seasonAt < HOLD;
+  if (st.play && !zooming) { st.s = Math.min(1, st.s + dt / 50); if (st.s >= 1) st.play = false; dirty = true; }
+  if (fly && !dating) { fly.t = Math.min(1, fly.t + dt / fly.dur); st.z = mix(fly.from, fly.to, smooth(fly.t)); if (fly.t >= 1) fly = null; dirty = true; }
+  if (hop && !dating) { hop.t = Math.min(1, hop.t + dt / hop.dur); w = mix(hop.from, hop.to, smooth((hop.t - 0.3) / 0.4)); if (hop.t >= 1) hop = null; dirty = true; }
+  if (dirty) {
+    dirty = false;
+    try { draw(); } catch (e) { oops(e); }
+    try { sync(); } catch (e) { oops(e); }
+  }
   if (st.play || fly || hop) kick(); else last = 0;
 }
 const touch = () => { dirty = true; kick(); };
+// If the picture cannot be drawn, say so and offer to reload, and leave the controls working.
+function oops(e) {
+  console.error(e);
+  if (broken) return;
+  broken = true; fly = hop = null; st.play = false; $('oops').hidden = false;
+}
 function zoomTo(z) {
   z = clamp(z, 0, LAST);
-  if (reduced) { fly = null; st.z = z; } else fly = { from: st.z, to: z, t: 0, dur: 0.9 + 1.5 * Math.abs(z - st.z) };
+  if (reduced) { fly = null; st.z = z; zoomAt = performance.now(); } else fly = { from: st.z, to: z, t: 0, dur: 0.9 + 1.5 * Math.abs(z - st.z) };
   touch();
 }
 function look(where) {
   if (where === st.where) return;
   st.where = where; const to = where === 'vacuole' ? 1 : 0;
-  if (reduced || st.z <= 3.01) { hop = null; w = to; } else hop = { from: w, to, t: 0, dur: st.z > HOP_OUT ? 2.6 : 1.2 };
+  if (reduced || st.z <= 3.01) { hop = null; w = to; zoomAt = performance.now(); } else hop = { from: w, to, t: 0, dur: st.z > HOP_OUT ? 2.6 : 1.2 };
   touch();
 }
 
 // ---- controls ------------------------------------------------------------------------------------
 STOPS.forEach((s, i) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = s.name; b.dataset.i = i; b.style.left = (i / LAST * 100) + '%'; b.addEventListener('click', () => zoomTo(i)); $('stops').append(b); });
 PHASES.forEach((ph) => { const t = document.createElement('i'); t.style.left = (ph.at * 100) + '%'; $('ticks').append(t); });
-$('zoom').addEventListener('input', (e) => { fly = null; st.z = clamp(+e.target.value, 0, LAST); touch(); });
-$('season').addEventListener('input', (e) => { st.s = e.target.value / 1000; shown.sv = +e.target.value; st.play = false; touch(); });
+$('zoom').addEventListener('input', (e) => { fly = null; zoomAt = performance.now(); st.z = clamp(+e.target.value, 0, LAST); touch(); });
+$('season').addEventListener('input', (e) => { st.s = e.target.value / 1000; shown.sv = +e.target.value; st.play = false; seasonAt = performance.now(); touch(); });
 $('play').addEventListener('click', () => { if (!st.play && st.s > 0.995) st.s = 0; st.play = !st.play; touch(); });
 for (const b of document.querySelectorAll('[data-where]')) b.addEventListener('click', () => look(b.dataset.where));
-cv.addEventListener('wheel', (e) => { e.preventDefault(); fly = null; st.z = clamp(st.z - e.deltaY * (e.deltaMode ? 0.03 : 0.0012), 0, LAST); touch(); }, { passive: false });
+cv.addEventListener('wheel', (e) => { e.preventDefault(); fly = null; zoomAt = performance.now(); st.z = clamp(st.z - e.deltaY * (e.deltaMode ? 0.03 : 0.0012), 0, LAST); touch(); }, { passive: false });
+$('reload').addEventListener('click', () => location.reload());
 addEventListener('resize', measure);
 addEventListener('hashchange', () => { if (readHash()) { st.play = false; fly = hop = null; touch(); } });
 document.fonts?.ready.then(measure);
 
 const fromLink = readHash();
 measure();
-window.__maple = { st, cam, free, stops: STOPS, get busy() { return !!(fly || hop || st.play); } };
+window.__maple = { st, drawn, cam, free, stops: STOPS, get busy() { return !!(fly || hop || st.play); } };
 if (!reduced && !fromLink) setTimeout(() => { if (st.s === 0 && !st.play) { st.play = true; touch(); } }, 1400);

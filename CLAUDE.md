@@ -91,6 +91,10 @@ Before pushing:
   quarter of an hour): it presses every control at a desktop and a phone size, steps both sliders end
   to end comparing each picture with the one before, and fails on a jump, a control that moved, or a
   console error. Leaf colours must stay computed from the pigment amounts; do not type them in.
+  After changing any file under `js/maple/` or `css/maple.css`, run `node tests/maple/stamp.mjs`: it
+  writes one shared version into every address that loads one of them (`model.js?v=...`), so that a
+  browser never pairs a new file with an old cached copy of another. Both tests fail if the stamp is
+  out of date.
 - A frozen screenshot does not show a jump. When a person reports one, first add the gesture to
   `tests/smooth/scenarios.mjs` and see the report show it, then fix it.
 - Load each affected page in a browser with the console open, at a desktop width and at a phone

@@ -1,9 +1,10 @@
 // Opens the Japanese maple page at a desktop and a phone size (and the phone again with reduced
-// motion), then:
+// motion, and held sideways), then:
 //  - presses every scale button, both "Zoom into" buttons and Play, and works both sliders with the keyboard;
 //  - sweeps the Zoom slider end to end at five dates and the Season slider end to end at every scale,
 //    one small step at a time, and compares each picture with the one before. A step that changes
 //    the picture far more than its neighbours do is reported as a jump;
+//  - checks that the zoom and the date never move in the same frame;
 //  - checks that neither slider nor the Play button moves or changes size at any point of either sweep.
 // Fails on a console error, a jump, a control that moved, a blank picture, or a panel wider than the screen.
 //
@@ -13,6 +14,9 @@ import { createRequire } from 'node:module';
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
+import { stamp } from './stamp.mjs';
+
+{ const r = stamp(true); if (r.stale.length) { console.error(`The version stamp is out of date in: ${r.stale.join(', ')}. Run: node tests/maple/stamp.mjs`); process.exit(1); } }
 
 const root = path.resolve(import.meta.dirname, '../..');
 let chromium;
@@ -40,7 +44,7 @@ const SNAP = () => { const c = document.getElementById('view'), s = window.__sna
 const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i += 4) s += Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]); return s / (a.length / 4) / 3; };
 const spread = (a) => { let lo = 255, hi = 0; for (let i = 0; i < a.length; i += 4) { const v = a[i] + a[i + 1] + a[i + 2]; lo = Math.min(lo, v); hi = Math.max(hi, v); } return hi - lo; };
 
-for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preference'], ['phone', 390, 844, 'no-preference'], ['phone, reduced motion', 390, 844, 'reduce']]) {
+for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preference'], ['phone', 390, 844, 'no-preference'], ['phone, reduced motion', 390, 844, 'reduce'], ['phone held sideways', 844, 390, 'no-preference']]) {
   const page = await browser.newPage({ viewport: { width, height }, reducedMotion: motion, hasTouch: width < 600 });
   page.on('console', (m) => { if (m.type() === 'error') fail(`${name}: console: ${m.text()}`); });
   page.on('pageerror', (e) => fail(`${name}: ${e.message}`));
@@ -91,10 +95,32 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
   if (!((await state()).z > 1)) fail(`${name}: the arrow key did not move the Zoom slider`);
   await page.focus('#season'); await page.keyboard.press('ArrowRight'); await frame();
   if (Math.abs((await state()).s - 0.521) > 1e-6) fail(`${name}: the arrow key did not move the Season slider`);
-  await page.focus('#play'); await page.keyboard.press('Space'); await page.waitForTimeout(300);
+  await page.focus('#play'); await page.keyboard.press('Space'); await page.waitForTimeout(900);
   if (!((await state()).s > 0.521)) fail(`${name}: Space on Play did not move the year on`);
   await page.keyboard.press('Space');
   if (!(await page.getAttribute('#zoom', 'aria-valuetext')) || !/\d+ \w+/.test(await page.getAttribute('#season', 'aria-valuetext'))) fail(`${name}: a slider has no spoken value`);
+
+  // the zoom and the date never move in the same frame: press Play, then fly between scales, move the Zoom slider and change where the cell is looked into
+  if (motion !== 'reduce') {
+    await put('season', 300); await put('zoom', 1);
+    await page.evaluate(() => { const m = window.__maple, d = m.drawn; let z = d.z, s = d.s; window.__both = 0; window.__watch = true; const tick = () => { if (d.z !== z && d.s !== s) window.__both++; z = d.z; s = d.s; if (window.__watch) requestAnimationFrame(tick); }; requestAnimationFrame(tick); });
+    await page.click('#play'); await page.waitForTimeout(700);
+    await stops[3].click(); await page.waitForTimeout(150);
+    const s0 = (await state()).s;
+    await page.waitForTimeout(1200);
+    s = await state();
+    if (s.s !== s0) fail(`${name}: the year moved on during a flight between scales`);
+    await page.waitForFunction(() => window.__maple.st.z === 3, null, { timeout: 30000 }); await page.waitForTimeout(900);
+    if (!((await state()).s > s0)) fail(`${name}: the year did not go on after the flight ended`);
+    await page.focus('#zoom'); for (let i = 0; i < 8; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(40); }
+    await page.click('[data-where=vacuole]'); await page.waitForTimeout(300); await page.click('[data-where=membrane]');
+    await stops[1].click(); await page.waitForTimeout(500); await put('season', 400); await page.waitForTimeout(100); await put('season', 410);
+    await page.waitForFunction(() => window.__maple.st.z === 1, null, { timeout: 30000 });
+    const both = await page.evaluate(() => { window.__watch = false; return window.__both; });
+    if (both) fail(`${name}: the zoom and the date moved together in ${both} frames`);
+    if ((await state()).play) fail(`${name}: moving the Season slider did not pause the year`);
+    if (!(await page.$eval('#oops', (e) => e.hidden))) fail(`${name}: the "could not be drawn" notice is showing`);
+  }
 
   // sweeps: no jumps in the picture, and no control moves
   const home = await boxes();
@@ -123,7 +149,7 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
     }
     console.log(`  ${name}: ${what}: ${d.length} steps, largest change ${Math.max(...d.map((x) => x[0])).toFixed(1)}`);
   };
-  if (name !== 'phone') {                                   // the phone without reduced motion draws the same pictures as with it
+  if (name === 'desktop' || motion === 'reduce') {                                   // the phone without reduced motion draws the same pictures as with it
     for (const season of [40, 300, 520, 700, 990]) { await put('season', season); await sweep('zoom', 0, 4, 0.01, `a zoom in at season ${season / 1000}`); }
     await put('season', 700); await sweep('zoom', 4, 0, -0.01, 'a zoom out');
     for (const z of [0, 1, 2, 3, 4]) { await put('zoom', z); await sweep('season', 0, 1000, 4, `the year at scale ${z}`); }

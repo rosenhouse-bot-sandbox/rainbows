@@ -7,7 +7,7 @@
 //  - molecules are flat skeleton diagrams without hydrogen atoms, the proteins and fats that hold
 //    chlorophyll and carotenoids in the membrane are left out, and so is water;
 //  - anthocyanin is drawn far more crowded than it is: a real view this size would usually hold none.
-import { leafRGB, css, clamp, smooth, mix } from './model.js';
+import { leafRGB, css, clamp, smooth, mix } from './model.js?v=1ea05274';
 
 const hash = (i, j) => { let h = Math.imul(i | 0, 374761393) ^ Math.imul(j | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
 
@@ -17,6 +17,19 @@ export const SEC = { top: 35, skin: 21.5, tall: 41, wide: 11, pitch: 12.4, loose
 const PLASTID = [3.85, 0];                                                               // the followed chloroplast: on the right-hand wall, half-way up
 // The two places the Molecules scale can look, in metres from the cell's centre.
 export const TARGETS = { membrane: [PLASTID[0] * 1e-6, PLASTID[1] * 1e-6], vacuole: [0, 0] };
+// Between the Leaf and Tissue scales the leaf is cut and tipped back, as one solid, until its cut face
+// is seen square on. Where that happens depends only on the zoom (um: CSS pixels per micrometre):
+// first the near piece slides away (gap, in pixels), then the rest tips (cs, sn: cosine and sine of the tip).
+export const TURN = { from: 0.4, slide: 0.36, depth: 2500 };                   // depth: micrometres of leaf kept behind the cut
+// atTissue: the zoom of the Tissue scale on this screen; the tipping is over a little before it.
+export function turnOf(um, Y, H, atTissue) {
+  const to = atTissue * 0.8, from = Math.min(TURN.from, to / 3);
+  if (um <= from) return null;
+  const u = clamp(Math.log(um / from) / Math.log(to / from)), th = Math.PI / 2 * smooth((u - TURN.slide) / (1 - TURN.slide));
+  const sn = Math.sin(th), cs = u >= 1 ? 0 : Math.cos(th);
+  return { cs, sn, Y, Ye: Y - um * SEC.top * sn, gap: smooth(u / TURN.slide) * (H - Y + 2), far: um * TURN.depth, done: u >= 1 };
+}
+const AIR = '#0a0f20';
 const GRANUM = 0.24;                                                                     // micrometres: radius of one stack of membranes
 
 // ---- molecules, in nanometres ---------------------------------------------------------------
@@ -150,7 +163,7 @@ export function makeMicro() {
       const t = tone(cx, 0.2);
       ctx.beginPath(); ctx.ellipse(cx, cy, rad * (1.05 + 0.2 * hash(i, r + 9)), rad * 0.92, hash(i + 4, r) * 3, 0, 7); ctx.fillStyle = CYTO; ctx.fill(); ctx.stroke();
       ctx.beginPath(); ctx.arc(cx, cy, rad * 0.5, 0, 7); ctx.fillStyle = vacFill(ctx, t, cx - rad * 0.5, cy - rad * 0.5, cx + rad * 0.5, cy + rad * 0.5); ctx.fill();
-      if (simple) continue;
+      if (simple) { ctx.save(); ctx.strokeStyle = t.body; ctx.lineWidth = 1.9 * t.size; ctx.beginPath(); ctx.ellipse(cx, cy, rad - 1.8, (rad - 1.8) * 0.9, 0, 0, 7); ctx.stroke(); ctx.restore(); continue; }   // from far off its chloroplasts run together into a ring
       const n = 5, a0 = hash(i, r + 21) * 6.283;
       for (let k = 0; k < n; k++) { const a = a0 + k * 6.283 / n; plastid(ctx, cx + (rad - 1.8) * Math.cos(a), cy + (rad - 1.8) * 0.9 * Math.sin(a), a, t.size * 0.82, t, um, false, i * 13 + r * 5 + k); }
     }
@@ -223,20 +236,21 @@ export function makeMicro() {
   }
 
   // pigAt(days): the followed leaf's pigments that many days earlier. X, Y: where the middle of the
-  // followed cell falls on screen. centre: the camera's middle, in metres from there.
-  function draw(ctx, cam, pigAt, X, Y, centre) {
-    const um = cam.k * 1e-6, turn = smooth((um - 0.45) / 0.5);                            // CSS pixels per micrometre
-    if (turn <= 0) return;
-    const { W, H, dpr } = cam, p = pigAt(0);
-    // The view of the leaf's face gives way to a view of its cut edge: a thin band at first, which grows with the zoom.
-    ctx.save();
+  // followed cell falls on screen. centre: the camera's middle, in metres from there. turn: see turnOf.
+  function draw(ctx, cam, pigAt, X, Y, centre, turn) {
+    if (!turn) return;
+    const um = cam.k * 1e-6, { W, H, dpr } = cam, p = pigAt(0);                           // um: CSS pixels per micrometre
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.globalAlpha = turn;
-    ctx.fillStyle = '#0a0f20'; ctx.fillRect(0, 0, W, H);                                 // the air outside the leaf
-    ctx.fillStyle = '#0b100f'; ctx.fillRect(0, Y - um * SEC.top, W, um * (SEC.top - SEC.bottom));     // the air inside the leaf
-    ctx.setTransform(um * dpr, 0, 0, -um * dpr, X * dpr, Y * dpr);
-    section(ctx, um, -X / um - 30, (W - X) / um + 30, pigAt);
-    ctx.restore(); ctx.globalAlpha = 1;
+    if (turn.done) { ctx.fillStyle = AIR; ctx.fillRect(0, 0, W, H); }                    // the air outside the leaf
+    if (turn.sn > 0.004) {
+      // the cut face of the leaf, which comes into view as the leaf is tipped back
+      const top = Math.round(turn.Ye * dpr) / dpr, tall = um * (SEC.top - SEC.bottom) * turn.sn;
+      ctx.save(); ctx.beginPath(); ctx.rect(0, top, W, tall); ctx.clip();
+      ctx.fillStyle = '#0b100f'; ctx.fillRect(0, top, W, tall);                          // the air inside the leaf
+      ctx.setTransform(um * dpr, 0, 0, -um * turn.sn * dpr, X * dpr, Y * dpr);
+      section(ctx, um, -X / um - 30, (W - X) / um + 30, pigAt);
+      ctx.restore();
+    }
     // molecules: in a stack of chloroplast membrane, or in the water of the vacuole
     const kn = cam.k * 1e-9, ma = smooth((kn - 7) / 16);
     if (ma <= 0) return;
