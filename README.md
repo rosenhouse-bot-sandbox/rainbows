@@ -520,9 +520,9 @@ presses every control in a real one.
 ## Japanese maple
 
 A page at `maple/`: one leaf of a Japanese maple (*Acer palmatum*) from the day its bud opens to the
-day it falls, at every scale from the park down to its pigment molecules. Two sliders drive it.
+day it falls, at every scale from the whole tree down to its pigment molecules. Two sliders drive it.
 
-- **Zoom** is continuous, with five named stops: Park (the view is about 9 m tall), Tree (4.5 m),
+- **Zoom** is continuous, with four named stops: Tree (the view is about 5.5 m tall),
   Leaf (13 cm), Cells (125 µm) and Molecules (7 nm). It is one camera closing on one point: the
   followed leaf hangs at the end of a low twig on the left of the tree, the Cells scale looks at a
   point on its middle lobe, and the Molecules scale looks into one cell there. The scale bar at the
@@ -581,7 +581,7 @@ It is a 2D canvas with no dependencies. Nothing moves unless the year is playing
 flight; with reduced motion the year does not start by itself and zooms are immediate.
 
 Code: `model.js` the calendar, pigments and colour; `tree.js` the tree, each leaf's timetable and
-the leaf outline; `scene.js` park to leaf surface; `micro.js` cells and molecules; `figs.js` the two
+the leaf outline; `scene.js` tree to leaf surface; `micro.js` cells and molecules; `figs.js` the two
 panel pictures; `main.js` the camera and controls. `css/maple.css` is the stylesheet.
 `node tests/maple/model.mjs` checks the model without a browser; `node tests/maple/page.mjs` presses
 every control in a real one and steps both sliders end to end looking for jumps.

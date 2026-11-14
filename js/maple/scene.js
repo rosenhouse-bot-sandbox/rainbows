@@ -1,4 +1,4 @@
-// Everything from the park down to the surface of one leaf, drawn in metres with one camera.
+// Everything from the whole tree down to the surface of one leaf, drawn in metres with one camera.
 // cam = { k: CSS pixels per metre, ox, oy: where the world's (0,0) falls on screen, W, H, dpr }.
 import { leafRGB, css, pigments, clamp, smooth, mix } from './model.js';
 import { buildTree, leafShape, place, SPOT } from './tree.js';
@@ -85,16 +85,10 @@ export function makeScene() {
     const lawn = ctx.createLinearGradient(0, Y(LAWN), 0, Y(-2.6));
     lawn.addColorStop(0, '#2b4a33'); lawn.addColorStop(0.08, '#1d3a2a'); lawn.addColorStop(0.6, '#10241c'); lawn.addColorStop(1, '#070d12');
     ctx.fillStyle = lawn; ctx.fillRect(0, Y(LAWN), W, Math.max(0, H - Y(LAWN)));
-    // the tree's shadow, and a bench for size (its seat is 45 cm off the ground)
+    // the tree's shadow
     world(ctx, cam);
     const sh = ctx.createRadialGradient(0, 0, 0, 0, 0, 1); sh.addColorStop(0, 'rgba(3,6,10,.5)'); sh.addColorStop(1, 'rgba(3,6,10,0)');
     ctx.save(); ctx.translate(-0.3, -0.05); ctx.scale(3.6, 0.5); ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(0, 0, 1, 0, 7); ctx.fill(); ctx.restore();
-    if (k < 900) {
-      ctx.fillStyle = '#0c1220'; const bx = 4.1, by = 0.16;
-      ctx.fillRect(bx, by + 0.41, 1.5, 0.05); ctx.fillRect(bx, by + 0.62, 1.5, 0.07); ctx.fillRect(bx, by + 0.76, 1.5, 0.07);
-      for (const x of [bx + 0.08, bx + 1.36]) { ctx.fillRect(x, by, 0.06, 0.84); ctx.fillRect(x - 0.03, by - 0.1, 0.05, 0.5); }
-      ctx.fillStyle = 'rgba(226,162,116,.5)'; ctx.fillRect(bx, by + 0.455, 1.5, 0.012); ctx.fillRect(bx, by + 0.825, 1.5, 0.012);
-    }
   }
   function branches(ctx, cam, back) {
     world(ctx, cam); ctx.lineCap = 'round';

@@ -63,7 +63,7 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
 
   // every scale button; with reduced motion the change is immediate
   const stops = await page.$$('#stops button');
-  if (stops.length !== 5) fail(`${name}: expected five scales, found ${stops.length}`);
+  if (stops.length !== 4) fail(`${name}: expected four scales, found ${stops.length}`);
   await put('season', 520);
   for (let i = stops.length - 1; i >= 0; i--) {
     await stops[i].click();
@@ -75,10 +75,10 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
     await fits(`at scale ${i}`);
     if (shots) await page.screenshot({ path: path.join(out, `${name.replace(/\W+/g, '-')}-${i}.png`) });
     const shownWhere = await page.$eval('#whereCtl', (e) => !e.hidden);
-    if (shownWhere !== (i >= 3)) fail(`${name}: "Zoom into" is ${shownWhere ? 'shown' : 'hidden'} at scale ${i}`);
+    if (shownWhere !== (i >= 2)) fail(`${name}: "Zoom into" is ${shownWhere ? 'shown' : 'hidden'} at scale ${i}`);
   }
   // the two places to look inside the cell
-  await stops[4].click(); await idle(); await frame();
+  await stops[3].click(); await idle(); await frame();
   const before = await page.evaluate(SNAP);
   await page.click('[data-where=vacuole]'); await idle(); await frame();
   if ((await state()).where !== 'vacuole' || diff(before, await page.evaluate(SNAP)) < 2) fail(`${name}: "The vacuole" did not change the picture`);
@@ -87,8 +87,8 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
   if (diff(before, await page.evaluate(SNAP)) > 1) fail(`${name}: going to the vacuole and back did not return to the same picture`);
 
   // keyboard: both sliders and Play
-  await put('zoom', 2); await page.focus('#zoom'); await page.keyboard.press('ArrowRight'); await frame();
-  if (!((await state()).z > 2)) fail(`${name}: the arrow key did not move the Zoom slider`);
+  await put('zoom', 1); await page.focus('#zoom'); await page.keyboard.press('ArrowRight'); await frame();
+  if (!((await state()).z > 1)) fail(`${name}: the arrow key did not move the Zoom slider`);
   await page.focus('#season'); await page.keyboard.press('ArrowRight'); await frame();
   if (Math.abs((await state()).s - 0.521) > 1e-6) fail(`${name}: the arrow key did not move the Season slider`);
   await page.focus('#play'); await page.keyboard.press('Space'); await page.waitForTimeout(300);
@@ -124,11 +124,11 @@ for (const [name, width, height, motion] of [['desktop', 1280, 800, 'no-preferen
     console.log(`  ${name}: ${what}: ${d.length} steps, largest change ${Math.max(...d.map((x) => x[0])).toFixed(1)}`);
   };
   if (name !== 'phone') {                                   // the phone without reduced motion draws the same pictures as with it
-    for (const season of [40, 300, 520, 700, 990]) { await put('season', season); await sweep('zoom', 0, 4, 0.01, `a zoom in at season ${season / 1000}`); }
-    await put('season', 700); await sweep('zoom', 4, 0, -0.01, 'a zoom out');
-    for (const z of [0, 1, 2, 3, 4]) { await put('zoom', z); await sweep('season', 0, 1000, 4, `the year at scale ${z}`); }
+    for (const season of [40, 300, 520, 700, 990]) { await put('season', season); await sweep('zoom', 0, 3, 0.0075, `a zoom in at season ${season / 1000}`); }
+    await put('season', 700); await sweep('zoom', 3, 0, -0.0075, 'a zoom out');
+    for (const z of [0, 1, 2, 3]) { await put('zoom', z); await sweep('season', 0, 1000, 4, `the year at scale ${z}`); }
     await page.click('[data-where=vacuole]'); await idle();
-    await put('zoom', 4); await sweep('season', 0, 1000, 4, 'the year in the vacuole'); await sweep('zoom', 4, 3, -0.01, 'a zoom out from the vacuole');
+    await put('zoom', 3); await sweep('season', 0, 1000, 4, 'the year in the vacuole'); await sweep('zoom', 3, 2, -0.0075, 'a zoom out from the vacuole');
   }
   await fits('at the end');
   await page.close();

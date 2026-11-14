@@ -1,4 +1,4 @@
-// Japanese maple: the controller. Two numbers drive the page: the zoom (0 = park ... 4 = molecules)
+// Japanese maple: the controller. Two numbers drive the page: the zoom (0 = tree ... 3 = molecules)
 // and the season (0 = late March ... 1 = late December). The picture is redrawn only when one changes.
 import { dayOf, dateOf, dayLength, PHASES, phaseAt, LAT, clamp, smooth, mix, css, leafRGB } from './model.js';
 import { makeScene } from './scene.js';
@@ -12,26 +12,18 @@ const scene = makeScene(), micro = makeMicro();
 
 // The five scales: the width and height, in metres, that must fit in the free part of the screen.
 const STOPS = [
-  { id: 'park', name: 'Park', w: 13, h: 8.6 },
   { id: 'tree', name: 'Tree', w: 7.8, h: 5.5 },
   { id: 'leaf', name: 'Leaf', w: 0.105, h: 0.128 },
   { id: 'cells', name: 'Cells', w: 1.45e-4, h: 1.25e-4 },
   { id: 'molecules', name: 'Molecules', w: 9.5e-9, h: 7e-9 },
 ];
-const LAST = STOPS.length - 1;
-{ const b = scene.tree.bounds; STOPS[1].w = (b.x1 - b.x0) * 1.1; STOPS[1].h = b.y1 * 1.16; }   // the Tree scale frames the tree as grown
-const HOP_OUT = 3.22;                    // changing where the Molecules scale looks pulls back to this zoom on the way
+const LAST = STOPS.length - 1, LAWN_SHOWN = 1.0;      // metres of lawn in front of the tree, where leaves land
+{ const b = scene.tree.bounds; STOPS[0].w = (b.x1 - b.x0) * 1.1; STOPS[0].h = (b.y1 + LAWN_SHOWN) * 1.08; }   // the Tree scale frames the tree as grown
+const HOP_OUT = 2.22;                    // changing where the Molecules scale looks pulls back to this zoom on the way
 
 const CAP = {
-  park: [
-    ['Buds open', 'A Japanese maple, Acer palmatum, about 4 m tall. In late March its buds open and the new leaves unfold.'],
-    ['A green summer', 'From May to October the tree hardly changes to the eye. Each leaf is making sugar from light, air and water.'],
-    ['The days shorten', 'Nights grow longer and colder. The tree stops renewing the green pigment in its leaves, and other pigments begin to show.'],
-    ['Red', 'For about two weeks nearly every leaf is red, orange or yellow.'],
-    ['Leaves fall', 'Each leaf is cut loose at the foot of its stalk and drops. The buds for next spring are already on the twigs.'],
-  ],
   tree: [
-    ['New leaves', 'Leaves grow in pairs along each twig. A new leaf is pale yellow-green: it is still making chlorophyll, the pigment that absorbs light for making sugar.'],
+    ['New leaves', 'A Japanese maple, Acer palmatum, about 4 m tall. Its buds open in late March and leaves grow in pairs along each twig. A new leaf is pale yellow-green: it is still making chlorophyll, the pigment that absorbs light for making sugar.'],
     ['Full leaf', 'The leaves hang in flat layers, so few are shaded by the ones above. All of them hold about the same amount of chlorophyll.'],
     ['The outside turns first', 'Leaves in full sun turn first and turn reddest, because a leaf needs light to make the red pigment. Shaded leaves inside the crown turn yellow or orange.'],
     ['Every leaf has turned', 'Red on the outside of the crown, orange and yellow within. The first leaves are falling.'],
@@ -67,7 +59,7 @@ const CAP = {
   ],
 };
 const NOTE = {
-  park: `Drawn with ${scene.count.toLocaleString('en')} leaves; a real tree this size carries several times more. Dates are typical for Kyoto, ${LAT}° N. A fall takes seconds; here it is spread over two and a half days so that it can be seen.`,
+  tree: `Drawn with ${scene.count.toLocaleString('en')} leaves; a real tree this size carries several times more. Dates are typical for Kyoto, ${LAT}° N. A fall takes seconds; here it is spread over two and a half days so that it can be seen.`,
   leaf: 'A fall takes seconds; here it is spread over two and a half days of the slider so that it can be seen.',
   cells: 'Cells are drawn as circles in one layer, and only their chloroplasts and vacuole are shown.',
   membrane: 'Each line is a bond between two atoms; hydrogen atoms are left out. Thick lines are the bonds whose electrons absorb visible light. The proteins and fats that hold these molecules in the membrane are not drawn. One molecule has no colour: each is drawn in the colour its pigment has in bulk.',
@@ -109,7 +101,7 @@ function aim(z) {
   const F = scene.spot(), lc = scene.leafCentre(), b = scene.tree.bounds;
   const target = [mix(TARGETS.membrane[0], TARGETS.vacuole[0], w), mix(TARGETS.membrane[1], TARGETS.vacuole[1], w)];
   // each stop's centre, measured from the point on the leaf that the deeper scales look into
-  const rel = [[0.35 - F[0], 2.9 - F[1]], [(b.x0 + b.x1) / 2 - F[0], b.y1 * 0.52 - F[1]], [lc[0] - F[0], lc[1] - F[1]], [0, 0], target];
+  const rel = [[(b.x0 + b.x1) / 2 - F[0], (b.y1 - LAWN_SHOWN) / 2 - F[1]], [lc[0] - F[0], lc[1] - F[1]], [0, 0], target];
   const c = [mix(rel[i + 1][0], rel[i][0], t), mix(rel[i + 1][1], rel[i][1], t)];   // linear in the size of the view: a zoom toward one point
   cam.k = k;
   cam.ox = free.x + free.w / 2 - k * (F[0] + c[0]); cam.oy = free.y + free.h / 2 + k * (F[1] + c[1]);
@@ -154,13 +146,13 @@ function sync() {
   const pl = st.play ? 'Pause' : st.s > 0.995 ? 'Play the year again' : 'Play the year';
   if (shown.play !== pl) { shown.play = pl; $('play').setAttribute('aria-pressed', String(st.play)); $('play').setAttribute('aria-label', pl); }
 
-  const deep = lvl >= 3;
+  const deep = lvl >= 2;
   if (shown.deep !== deep) { shown.deep = deep; $('whereCtl').hidden = !deep; }
   for (const b of document.querySelectorAll('[data-where]')) b.setAttribute('aria-pressed', String(b.dataset.where === st.where));
   const capId = lvl === LAST ? st.where : stop.id, key = capId + ph;
   if (shown.cap !== key) {
     const first = shown.cap === undefined; shown.cap = key;
-    const apply = () => { const [t, body] = CAP[capId][ph]; $('capTitle').textContent = t; $('capBody').textContent = body; $('capScale').textContent = stop.name; $('capPhase').textContent = PHASES[ph].name; $('note').textContent = NOTE[capId] || (lvl <= 1 ? NOTE.park : ''); $('cap').classList.remove('swap'); };
+    const apply = () => { const [t, body] = CAP[capId][ph]; $('capTitle').textContent = t; $('capBody').textContent = body; $('capScale').textContent = stop.name; $('capPhase').textContent = PHASES[ph].name; $('note').textContent = NOTE[capId] || ''; $('cap').classList.remove('swap'); };
     if (first || reduced) apply(); else { $('cap').classList.add('swap'); setTimeout(() => { if (shown.cap === key) apply(); }, 180); }
   }
 
@@ -169,7 +161,7 @@ function sync() {
   const dl = dayLength(day), hh = Math.floor(dl), mm = Math.round((dl - hh) * 60);
   set('daylight', `Daylight on this date at ${LAT}° N: ${mm === 60 ? hh + 1 : hh} h ${String(mm === 60 ? 0 : mm).padStart(2, '0')} min.`);
 
-  const stalk = lvl === 2 && p.absc > 0.004, fk = (stalk ? 'c' : 's') + Math.round(st.s * 1000);
+  const stalk = lvl === 1 && p.absc > 0.004, fk = (stalk ? 'c' : 's') + Math.round(st.s * 1000);
   if (fk !== figKey) {
     figKey = fk;
     $('figStalk').hidden = !stalk; $('figLight').hidden = stalk;
@@ -199,7 +191,7 @@ function zoomTo(z) {
 function look(where) {
   if (where === st.where) return;
   st.where = where; const to = where === 'vacuole' ? 1 : 0;
-  if (reduced || st.z <= 3.01) { hop = null; w = to; } else hop = { from: w, to, t: 0, dur: st.z > HOP_OUT ? 2.6 : 1.2 };
+  if (reduced || st.z <= 2.01) { hop = null; w = to; } else hop = { from: w, to, t: 0, dur: st.z > HOP_OUT ? 2.6 : 1.2 };
   touch();
 }
 
